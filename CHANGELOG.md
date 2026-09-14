@@ -27,6 +27,10 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Install Celluloid, mpv, and sxiv in every Fedora installer profile and both
+  ISO variants. Seed fresh-account audio/video defaults from Celluloid and
+  image defaults from sxiv, preserving existing application preferences (#308).
+
 - Keep the top bar sharp when panel menus open by placing their transparent
   click-away surface below the bar.
 

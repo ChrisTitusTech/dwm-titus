@@ -9,6 +9,7 @@ if [[ $(id -u) == 0 ]]; then
 	cp "$0" "$work/repo/tests/"
 	cp "$repo/scripts/image/seed-terminal.sh" "$repo/scripts/image/seed-apps.sh" "$work/repo/scripts/image/"
 	cp "$repo/config/starship/starship.toml" "$work/repo/config/starship/"
+	cp "$repo/scripts/seed-default-apps.sh" "$work/repo/scripts/"
 	chown -R nobody:"$(id -gn nobody)" "$work"
 	runuser -u nobody -- env TMPDIR="$work" bash "$work/repo/tests/test-image-user-defaults.sh"
 	exit
@@ -81,4 +82,86 @@ printf '[Default Applications]\nimage/png=custom.desktop;\n' >"$XDG_CONFIG_HOME/
 cp "$XDG_CONFIG_HOME/mimeapps.list" "$work/mime"
 bash "$repo/scripts/image/seed-apps.sh"
 cmp "$work/mime" "$XDG_CONFIG_HOME/mimeapps.list"
-printf 'Image user defaults preservation: PASS\n'
+# Exercise a fresh account with real xdg-mime and isolated desktop entries.
+export XDG_DATA_DIRS="$work/system-data"
+mkdir -p "$XDG_DATA_DIRS/applications"
+for app in celluloid sxiv brave-origin thunar; do
+	printf '#!/bin/sh\nexit 0\n' >"$work/bin/$app"
+	chmod +x "$work/bin/$app"
+done
+cat >"$XDG_DATA_DIRS/applications/io.github.celluloid_player.Celluloid.desktop" <<'APP'
+[Desktop Entry]
+Type=Application
+Name=Celluloid
+Exec=celluloid %U
+MimeType=audio/mpeg;audio/flac;video/mp4;application/ogg;application/x-matroska;
+APP
+cat >"$XDG_DATA_DIRS/applications/sxiv.desktop" <<'APP'
+[Desktop Entry]
+Type=Application
+Name=sxiv
+Exec=sxiv %F
+NoDisplay=true
+MimeType=image/png;image/jpeg;
+APP
+cat >"$XDG_DATA_DIRS/applications/brave-origin.desktop" <<'APP'
+[Desktop Entry]
+Type=Application
+Name=Brave Origin
+Exec=brave-origin %U
+MimeType=text/html;x-scheme-handler/http;x-scheme-handler/https;image/png;application/pdf;
+APP
+cat >"$XDG_DATA_DIRS/applications/thunar.desktop" <<'APP'
+[Desktop Entry]
+Type=Application
+Name=Thunar
+Exec=thunar %U
+MimeType=inode/directory;
+APP
+rm "$XDG_CONFIG_HOME/mimeapps.list"
+bash "$repo/scripts/image/seed-apps.sh"
+for mime in audio/mpeg audio/flac video/mp4 application/ogg application/x-matroska; do
+	[[ $(xdg-mime query default "$mime") == io.github.celluloid_player.Celluloid.desktop ]]
+done
+for mime in image/png image/jpeg; do
+	[[ $(xdg-mime query default "$mime") == sxiv.desktop ]]
+done
+[[ $(xdg-mime query default x-scheme-handler/https) == brave-origin.desktop ]]
+[[ $(xdg-mime query default inode/directory) == thunar.desktop ]]
+if grep -q 'image/webp=' "$XDG_CONFIG_HOME/mimeapps.list"; then exit 1; fi
+cp "$XDG_CONFIG_HOME/mimeapps.list" "$work/seeded-mimes"
+bash "$repo/scripts/image/seed-apps.sh"
+cmp "$XDG_CONFIG_HOME/mimeapps.list" "$work/seeded-mimes"
+# Missing required desktop entries must fail without leaving a partial seed.
+rm "$XDG_CONFIG_HOME/mimeapps.list"
+mv "$XDG_DATA_DIRS/applications/sxiv.desktop" "$work/sxiv.desktop"
+if bash "$repo/scripts/image/seed-apps.sh"; then
+	echo 'Missing image handler was accepted' >&2
+	exit 1
+fi
+[[ ! -e $XDG_CONFIG_HOME/mimeapps.list ]]
+mv "$work/sxiv.desktop" "$XDG_DATA_DIRS/applications/sxiv.desktop"
+# The existing-system path works without enabling a Brave repository.
+rm "$XDG_DATA_DIRS/applications/brave-origin.desktop"
+bash "$repo/scripts/seed-default-apps.sh"
+[[ $(xdg-mime query default video/mp4) == io.github.celluloid_player.Celluloid.desktop ]]
+if grep -q brave-origin "$XDG_CONFIG_HOME/mimeapps.list"; then exit 1; fi
+rm "$XDG_CONFIG_HOME/mimeapps.list"
+printf '[Default Applications]\nimage/png=custom.desktop;\n' >"$XDG_CONFIG_HOME/dwm-mimeapps.list"
+bash "$repo/scripts/seed-default-apps.sh"
+[[ ! -e $XDG_CONFIG_HOME/mimeapps.list ]]
+rm "$XDG_CONFIG_HOME/dwm-mimeapps.list"
+# A preference created after discovery but before publication must win.
+real_ln=$(command -v ln)
+export DWM_TEST_REAL_LN=$real_ln
+cat >"$work/bin/ln" <<'SH'
+#!/bin/sh
+printf '[Default Applications]\ntext/plain=user-editor.desktop;\n' >"$XDG_CONFIG_HOME/mimeapps.list"
+exec "$DWM_TEST_REAL_LN" "$@"
+SH
+chmod +x "$work/bin/ln"
+bash "$repo/scripts/seed-default-apps.sh"
+printf '[Default Applications]\ntext/plain=user-editor.desktop;\n' >"$work/concurrent-mimes"
+cmp "$work/concurrent-mimes" "$XDG_CONFIG_HOME/mimeapps.list"
+[[ -z $(find "$XDG_CONFIG_HOME" -name '.dwm-mimeapps.*' -print -quit) ]]
+printf 'Image and existing-system user defaults: PASS\n'

@@ -126,7 +126,7 @@ package names from the shared map:
 ./install.sh --profile full
 ```
 
-Use `core` for the required build/X11/session packages and Alacritty,
+Use `core` for the required build/X11/session packages, Alacritty, and media applications,
 `recommended` for the complete desktop layer, or `full` for optional extras
 such as file-manager integration, keyring login integration, wallpapers, and
 display-manager setup. On x86_64 Fedora, `full` can also install Steam,
@@ -208,7 +208,10 @@ existing user entries are preserved.
 
 Installer package profiles are selected with `DWM_INSTALL_PROFILE`:
 
-- `core`: required build packages, X11/session runtime, and Alacritty. Herdr is
+- `core`: required build packages, X11/session runtime, Alacritty, Celluloid, mpv,
+  and sxiv. Fresh accounts receive Celluloid audio/video and sxiv image defaults
+  for their advertised formats. Existing MIME preference files are preserved;
+  change these in Settings > Defaults when updating an existing account. Herdr is
   skipped unless `--install-herdr` is provided.
 - `recommended`: `core` plus the recommended desktop layer such as Quickshell,
   Picom, Feh, Dex, fonts, theming, screenshot, audio, Bluetooth control and

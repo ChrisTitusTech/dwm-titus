@@ -382,4 +382,36 @@ for failure in compression damaged; do
 	[[ -z $(find "$work/invalid-temp" -mindepth 1 -print -quit) ]]
 done
 
+# Execute the actual bootstrap against new and legacy filesystem fixtures.
+python3 - "$repo" "$work" <<'PYTEST'
+import os
+from pathlib import Path
+import subprocess
+import sys
+repo, work = map(Path, sys.argv[1:])
+profile = (repo / 'dwm-fedora-image.ks').read_text()
+body = profile.split('\nset -euo pipefail\n', 1)[1].split('\n%end', 1)[0]
+for modern in (False, True):
+    root = work / ('modern-root' if modern else 'legacy-root')
+    scripts = root / 'usr/share/dwm-titus-image/scripts'
+    (scripts / 'image').mkdir(parents=True)
+    (root / 'etc').mkdir()
+    (root / 'etc/dwm-titus-image').touch()
+    for helper in ('seed-apps.sh', 'seed-terminal.sh'):
+        (scripts / 'image' / helper).write_text('legacy helper\n')
+    shared = scripts / 'seed-default-apps.sh'
+    if modern:
+        shared.write_text('old shared helper\n')
+    test_body = body.replace('/mnt/sysimage', str(root)).replace('/run/install/repo/dwm-titus', str(repo))
+    test_body = test_body.replace('-o 0 -g 0', f'-o {os.getuid()} -g {os.getgid()}')
+    subprocess.run(['bash', '-ec', 'set -euo pipefail\n' + test_body], check=True)
+    assert (scripts / 'image/finish-install.sh').read_bytes() == (repo / 'scripts/image/finish-install.sh').read_bytes()
+    if modern:
+        assert shared.read_bytes() == (repo / 'scripts/seed-default-apps.sh').read_bytes()
+        assert (scripts / 'image/seed-apps.sh').read_bytes() == (repo / 'scripts/image/seed-apps.sh').read_bytes()
+    else:
+        assert not shared.exists()
+        assert (scripts / 'image/seed-apps.sh').read_text() == 'legacy helper\n'
+PYTEST
+
 printf 'Fedora ISO builder: PASS\n'

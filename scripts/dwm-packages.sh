@@ -31,7 +31,10 @@ dwm_packages() {
 		;;
 	fedora:image-desktop)
 		# Dedicated image defaults; existing-system installs retain user choices.
-		printf '%s\n' brave-origin sxiv desktop-file-utils
+		printf '%s\n' brave-origin
+		;;
+	fedora:media)
+		printf '%s\n' celluloid mpv sxiv python3 desktop-file-utils
 		;;
 	fedora:x11)
 		printf '%s\n' xorg-x11-server-Xorg xorg-x11-xinit xrandr xset xsetroot xinput setxkbmap xkbset
@@ -113,6 +116,7 @@ dwm_packages() {
 		dwm_packages "$family" build
 		dwm_packages "$family" x11
 		dwm_packages "$family" runtime-required
+		dwm_packages "$family" media
 		;;
 	fedora:recommended)
 		dwm_packages "$family" desktop

@@ -85,6 +85,11 @@ xclip
 xdotool
 xprop
 xdg-utils
+celluloid
+mpv
+sxiv
+desktop-file-utils
+brave-origin
 flatpak
 %include /tmp/dwm-titus-gaming-packages
 quickshell

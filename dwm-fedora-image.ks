@@ -14,7 +14,14 @@ set -euo pipefail
 install -o 0 -g 0 -m 0755 /run/install/repo/dwm-titus/scripts/image/finish-install.sh /mnt/sysimage/usr/share/dwm-titus-image/scripts/image/finish-install.sh
 # Refresh seeders only in images that already ship their required tools/config.
 # Legacy compressed captures retain their original account defaults.
+shared_seeder=/mnt/sysimage/usr/share/dwm-titus-image/scripts/seed-default-apps.sh
+if [[ -f $shared_seeder ]]; then
+    install -o 0 -g 0 -m 0755 /run/install/repo/dwm-titus/scripts/seed-default-apps.sh "$shared_seeder"
+fi
 for helper in seed-terminal.sh seed-apps.sh; do
+    # Older captures have image-only defaults and no shared media seeder.
+    # Keep that matching helper instead of installing a wrapper it cannot run.
+    if [[ $helper == seed-apps.sh && ! -f $shared_seeder ]]; then continue; fi
     target=/mnt/sysimage/usr/share/dwm-titus-image/scripts/image/$helper
     if [[ -f $target ]]; then
         install -o 0 -g 0 -m 0755 /run/install/repo/dwm-titus/scripts/image/$helper "$target"

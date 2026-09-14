@@ -578,6 +578,7 @@ info "Installing required build and runtime dependencies..."
 dwm_install_package_profile build
 dwm_install_package_profile x11
 dwm_install_package_profile runtime-required
+dwm_install_package_profile media
 ok "Required build and runtime dependencies installed."
 
 # ── Recommended desktop dependencies ─────────────────────
@@ -599,12 +600,6 @@ if install_recommended_profile; then
 	fi
 	install_nordic_gtk_theme || true
 	dwm_install_package_profile fonts
-	info "Setting up Gear Lever for AppImage management..."
-	if "$REPO_DIR/scripts/install-gearlever"; then
-		ok "Gear Lever is installed."
-	else
-		warn "Gear Lever setup failed; retry with scripts/install-gearlever when Flathub is reachable."
-	fi
 	ok "Recommended desktop dependencies installed."
 else
 	warn "Skipping recommended desktop dependencies for core profile."
@@ -750,6 +745,16 @@ sudo make install \
 	XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}" \
 	XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}" \
 	XDG_STATE_HOME="${XDG_STATE_HOME:-$HOME/.local/state}"
+# Seed before Gear Lever creates its AppImage MIME preference file.
+bash "$REPO_DIR/scripts/seed-default-apps.sh"
+if install_recommended_profile; then
+	info "Setting up Gear Lever for AppImage management..."
+	if "$REPO_DIR/scripts/install-gearlever"; then
+		ok "Gear Lever is installed."
+	else
+		warn "Gear Lever setup failed; retry with scripts/install-gearlever when Flathub is reachable."
+	fi
+fi
 configure_displays_after_install
 
 # ── Done ─────────────────────────────────────────────────

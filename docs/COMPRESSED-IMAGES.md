@@ -82,7 +82,12 @@ Offline account setup creates the standard XDG directories and seeds
 download a wallpaper collection on the installed machine.
 
 Fresh image accounts also receive the shared Starship prompt, verified Herdr,
-Brave Origin as the browser, and sxiv for the image formats it advertises.
+Brave Origin as the browser, Celluloid (with mpv) for its advertised audio/video
+formats, and sxiv for its advertised image formats. The existing-system installer
+also installs Celluloid, mpv, and sxiv in every profile and seeds these media/image
+defaults for fresh accounts. Existing MIME preference files are preserved; use
+Settings > Defaults to change handlers on an existing account. Thunar is the
+fresh image file-manager default when installed.
 Starship uses terminal palette colors; custom Bash and MIME files are preserved.
 The Alacritty shortcut and Herdr opt-in behavior stay the same. sxiv is visible
 in Defaults, and feh remains installed for wallpaper. Tool hashes are recorded

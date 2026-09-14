@@ -195,10 +195,14 @@ The supported installation flow must:
 7. Install the binary, man page, X session file, scripts, and default
    configuration.
 8. Seed missing user configuration while preserving existing files.
-9. Set ownership to the invoking user for files in that user's home.
-10. Support repeated execution without destructive side effects.
-11. Print a summary, skipped optional features, and actionable next steps.
-12. Offer interactive Xorg display setup when installation runs inside an
+9. Install Celluloid, mpv, and sxiv in every profile. Seed fresh-account
+   audio/video and image MIME defaults using Celluloid and sxiv respectively;
+   preserve existing MIME preference files. Both ISO variants include these
+   applications and defaults, with Brave Origin as their fresh-account browser.
+10. Set ownership to the invoking user for files in that user's home.
+11. Support repeated execution without destructive side effects.
+12. Print a summary, skipped optional features, and actionable next steps.
+13. Offer interactive Xorg display setup when installation runs inside an
     active X11 session. The setup must support resolution, refresh rate,
     position, rotation, primary-output selection, and compatible TearFree
     drivers; preview changes with rollback; and preserve existing system Xorg
