@@ -215,6 +215,27 @@ raise SystemExit(17)
         self.assertEqual(self.command("complete", self.operation).returncode, 0)
         self.assertEqual(guard("", ["/usr/bin/true"]), 0)
 
+    def test_live_uninstall_refuses_unfinished_transactions(self):
+        generation = hashlib.sha256(self.manifest_path.read_bytes()).hexdigest()
+        self.assertEqual(self.command("begin", generation, self.operation).returncode, 0)
+        journal = Path("/var/lib/dwm-titus/desktop-updates") / self.operation / "journal.json"
+        args = ["make", "uninstall", "PREFIX=" + str(self.prefix),
+                "XSESSIONSDIR=" + str(self.prefix / "share/xsessions")]
+        for pending in ("preparing", "applying", "applied", "rolling-back", "rolled-back-pending"):
+            journal.write_text(json.dumps({"state": pending, "uid": 1000}))
+            result = subprocess.run(args, cwd=REPO, text=True, capture_output=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("before source installation", result.stderr)
+            self.assertTrue(self.helper.exists())
+            self.assertTrue(self.manifest_path.exists())
+            self.assertEqual(self.binary.read_bytes(), b"original")
+        journal.write_text(json.dumps({"state": "complete", "uid": 1000}))
+        result = subprocess.run(args, cwd=REPO, text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(self.helper.exists())
+        self.assertFalse(self.manifest_path.exists())
+        self.assertFalse(self.binary.exists())
+
     def test_preparation_can_be_canceled_without_replacing_files(self):
         generation = hashlib.sha256(self.manifest_path.read_bytes()).hexdigest()
         self.assertEqual(self.command("begin", generation, self.operation).returncode, 0)

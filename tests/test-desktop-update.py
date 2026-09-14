@@ -74,6 +74,15 @@ class DesktopUpdate(unittest.TestCase):
         self.assertTrue(value["canUpdate"])
         self.assertIn(str(self.config / "quickshell"), value["changes"])
 
+    def test_missing_managed_roots_are_repairable_drift(self):
+        for target in (self.data, self.config / "quickshell"):
+            with self.subTest(target=target):
+                shutil.rmtree(target)
+                value = update.check(True)
+                self.assertEqual(value["state"], "drift")
+                self.assertTrue(value["canUpdate"])
+                self.assertTrue(any(str(target) in path for path in value["changes"]))
+
     def test_upstream_revision_and_missing_binary(self):
         self.command.return_value = "b" * 40 + "\trefs/heads/main"
         self.binary.unlink()

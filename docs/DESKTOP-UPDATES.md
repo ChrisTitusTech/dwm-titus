@@ -154,7 +154,9 @@ A complete `make install` holds both the target user lock and system lock throug
 system and user installation. Direct `make install-user` also takes the user
 lock. The installer and development synchronization use the complete guarded
 installation. Source installation refuses to replace system files while a desktop update or
-recovery transaction is unfinished. Complete recovery as the user who started
+recovery transaction is unfinished. Live `make uninstall` uses the same system
+transaction exclusion so recovery retains its installed helper and manifest.
+Complete recovery as the user who started
 the update before running the source installer. Managed data, Quickshell, and
 recovery directories must be separate, including after resolving symlinks.
 Incomplete or invalid user receipts never count as an up-to-date installation.

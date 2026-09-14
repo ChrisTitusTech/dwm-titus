@@ -203,7 +203,8 @@ def validate_user_trees():
     for target in (data, config / "quickshell"):
         if target.is_symlink() or (target.exists() and not target.is_dir()):
             raise RuntimeError("Managed update directories must be real directories: " + str(target))
-        tree_manifest(target)
+        if target.exists():
+            tree_manifest(target)
 
 
 def source_revision(source):
