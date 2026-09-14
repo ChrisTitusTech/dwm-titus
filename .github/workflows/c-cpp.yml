@@ -3,12 +3,10 @@ name: CI
 on:
   push:
     branches: ["main"]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
   workflow_dispatch:
-    inputs:
-      full_validation:
-        description: Run the full desktop suite (local pre-merge validation is required either way)
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -19,126 +17,38 @@ concurrency:
 
 jobs:
   validate:
-    # Ubuntu 24.04 restricts nested user namespaces even with an unconfined
-    # Docker profile. The tested userspace remains Fedora 44.
-    runs-on: ubuntu-22.04
-    timeout-minutes: 45
-    container:
-      image: fedora:44
-      # Allow the acceptance tests to create their own isolated namespaces.
-      options: >-
-        --security-opt seccomp=unconfined
-        --security-opt apparmor=unconfined
-        --security-opt systempaths=unconfined
+    name: Desktop smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    container: fedora:44
+    defaults:
+      run:
+        shell: bash
     env:
-      DWM_TEST_TMP_ROOT: /var/tmp/dwm-titus-tests
+      DWM_TEST_TMP_ROOT: /var/tmp/dwm-ci
 
     steps:
       - name: Install checkout dependency
-        run: dnf install -y --setopt=install_weak_deps=False git
+        run: dnf install -y --setopt=install_weak_deps=False git-core
 
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
-      - name: Trust the container checkout
-        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-
-      - name: Install build and validation dependencies
-        run: |
-          source scripts/dwm-utils.sh
-          source scripts/dwm-packages.sh
-          mapfile -t required_packages < <(dwm_packages fedora required | awk 'NF' | sort -u)
-          mapfile -t qml_packages < <(dwm_packages fedora qml-validation | awk 'NF' | sort -u)
-          mapfile -t system_management_packages < <(dwm_packages fedora system-management | awk 'NF' | sort -u)
-          mapfile -t image_packages < <(dwm_packages fedora image-build | awk 'NF' | sort -u)
-          mapfile -t source_update_packages < <(dwm_packages fedora source-update | awk 'NF' | sort -u)
-          dnf install -y --setopt=install_weak_deps=False \
-            "${required_packages[@]}" "${qml_packages[@]}" \
-            "${system_management_packages[@]}" "${image_packages[@]}" "${source_update_packages[@]}" \
-            diffutils dbus-daemon inotify-tools jq picom \
-            pkgconf-pkg-config ShellCheck shfmt pykickstart \
-            xorg-x11-server-Xvfb
-
-      - name: Validate Fedora package map
-        run: scripts/run-tests make check-fedora-packages
-
-      - name: Prepare unprivileged desktop validation
-        run: |
-          install -d -m 0755 /home/dwm-ci
-          chown nobody:nobody /home/dwm-ci
-          install -d -m 0700 -o nobody -g nobody /run/dwm-ci
-          chown -R nobody:nobody "$GITHUB_WORKSPACE" "$DWM_TEST_TMP_ROOT"
-
-      - name: Validate full desktop suite
-        if: github.event_name == 'push' || inputs.full_validation
-        run: runuser -u nobody -- env HOME=/home/dwm-ci XDG_RUNTIME_DIR=/run/dwm-ci scripts/run-tests
-
-      - name: Validate build, installation, and desktop updater
-        if: github.event_name == 'workflow_dispatch' && !inputs.full_validation
-        run: >-
-          runuser -u nobody -- env HOME=/home/dwm-ci XDG_RUNTIME_DIR=/run/dwm-ci
-          scripts/run-tests make clean all check-shell check-format
-          check-desktop-update check-install check-install-preservation
-          check-dev-sync-install check-kickstart check-test-runner
-
-      - name: Validate privileged display helper security
-        env:
-          DWM_SECURITY_CONTAINER: "1"
-        run: scripts/run-tests tests/test-settings-display-security.sh
-
-      - name: Validate privileged desktop helper security
-        run: scripts/run-tests /usr/bin/python3 tests/test-desktop-update-security.py
-
-      - name: Validate nested X11 runtime
-        run: runuser -u nobody -- env HOME=/home/dwm-ci XDG_RUNTIME_DIR=/run/dwm-ci scripts/run-tests make check-xvfb-runtime
-
-  clang-build:
-    if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    container: fedora:44
-
-    steps:
-      - name: Install checkout dependency
-        run: dnf install -y --setopt=install_weak_deps=False git
-
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
-      - name: Install Clang and build dependencies
-        run: |
-          dnf install -y --setopt=install_weak_deps=False \
-            clang make pkgconf-pkg-config \
-            libX11-devel libXft-devel libXinerama-devel libXrender-devel \
-            imlib2-devel libxcb-devel xcb-util-devel \
-            fontconfig-devel freetype-devel
-
-      - name: Build with Clang
-        run: make clean all CC=clang
-
-  quickshell-qml:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    container: fedora:44
-
-    steps:
-      - name: Install checkout dependency
-        run: dnf install -y --setopt=install_weak_deps=False git
-
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
-      - name: Install Quickshell QML lint dependencies
+      - name: Install build and smoke dependencies
         run: |
           source scripts/dwm-packages.sh
-          mapfile -t qml_packages < <(dwm_packages fedora qml-validation | awk 'NF' | sort -u)
-          dnf install -y --setopt=install_weak_deps=False make "${qml_packages[@]}"
+          mapfile -t packages < <(dwm_packages fedora ci-smoke)
+          dnf install -y --setopt=install_weak_deps=False "${packages[@]}"
 
-      - name: Validate Quickshell package version
-        run: scripts/run-tests scripts/dwm-quickshell-version-check
+      - name: Build dwm
+        run: |
+          scripts/run-tests make clean all
+          chmod 0755 dwm
 
-      - name: Validate Quickshell QML
-        run: scripts/run-tests make check-quickshell-qml
+      - name: Launch desktop and check basic interaction
+        timeout-minutes: 2
+        run: |
+          install -d -m 0700 -o nobody -g nobody /home/dwm-ci /run/dwm-ci "$DWM_TEST_TMP_ROOT"
+          runuser -u nobody -- env HOME=/home/dwm-ci XDG_RUNTIME_DIR=/run/dwm-ci \
+            scripts/run-tests timeout --kill-after=5s 90s python3 tests/test-desktop-smoke.py

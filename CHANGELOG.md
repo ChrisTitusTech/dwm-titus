@@ -6,6 +6,12 @@ versions from `config.mk`.
 
 ## [Unreleased]
 
+### Changed
+
+- Reduce hosted CI to one Fedora build and desktop smoke job. Check managed
+  Quickshell startup, its panel, launcher keyboard interaction, and application
+  launch. Skip documentation-only changes and keep extended validation local.
+
 ### Added
 
 - Add Desktop updates at the top of System Settings, with upstream and installed
