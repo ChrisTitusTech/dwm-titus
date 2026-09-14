@@ -229,6 +229,23 @@ class DesktopUpdate(unittest.TestCase):
         for key, value in overrides.items():
             self.assertIn("--setenv=" + key + "=" + value, command)
 
+    def test_malformed_status_can_be_rebuilt_by_forced_check(self):
+        cases = ['{"schema": 1, "checkedAt": Infinity}', "{", "[]", '{"schema": 0}', '{"schema": true}',
+                 '{"schema": 1, "checkedAt": "bad"}', '{"schema": 1, "percent": NaN}',
+                 '{"schema": 1, "state": []}', '{"schema": 1, "canUpdate": 1}',
+                 '{"schema": 1, "packages": [2]}', '{"schema": 1, "activationShells": ["bad"]}']
+        for content in cases:
+            with self.subTest(content=content):
+                (self.state / "status.json").write_text(content)
+                value = update.status_read(self.state)
+                self.assertEqual(value["state"], "failed")
+                self.assertFalse(value["canUpdate"])
+                with self.assertRaisesRegex(RuntimeError, "recover"):
+                    update.guard_user_install(self.state, ["/usr/bin/true"])
+                self.assertEqual(update.check(True)["state"], "current")
+                self.assertNotIn("statusInvalid", update.status_read(self.state))
+                self.assertEqual((self.state / "file").read_text(), "original")
+
     def test_permission_or_corrupt_receipt_not_current(self):
         (self.state / "installed.json").write_text("{")
         self.assertEqual(update.check(True)["state"], "failed")
@@ -268,6 +285,36 @@ class DesktopUpdate(unittest.TestCase):
         update.write_json(self.state / "status.json", {**update.status_default(), "state": "installing", "operation": "c" * 32})
         self.assertEqual(update.check(True)["state"], "interrupted")
         self.command.assert_not_called()
+
+    def test_corrupt_or_missing_status_keeps_current_recovery_identity(self):
+        operation = "c" * 32
+        directory = self.state / "operations" / operation
+        update.write_json(directory / "preview.json", {"manifest": str(self.manifest_path)})
+        older = self.state / "operations" / ("d" * 32)
+        update.write_json(older / "preview.json", {"manifest": str(self.manifest_path)})
+        for content in (None, "{", '{"schema": 1}', json.dumps({**update.status_default(), "state": "interrupted"})):
+            update.save_status(self.state, update.status_default(), state="interrupted", operation=operation)
+            if content is None:
+                (self.state / "status.json").unlink()
+            else:
+                (self.state / "status.json").write_text(content)
+            value = update.check(True)
+            self.assertEqual(value["state"], "interrupted")
+            self.assertEqual(value["operation"], operation)
+            self.assertEqual(update.read_json(self.state / "status.json"), value)
+            with patch.object(update, "trusted_installation"), patch.object(update, "quickshell_processes", return_value=set()):
+                self.assertIn(update.recover(operation)["state"], ("failed", "restart-required"))
+            self.assertEqual(update.status_read(self.state)["operation"], operation)
+
+    def test_lost_status_without_mirror_does_not_reset_retained_operation(self):
+        operation = "e" * 32
+        directory = self.state / "operations" / operation
+        update.write_json(directory / "preview.json", {"manifest": str(self.manifest_path)})
+        (self.state / "status.json").write_text("{")
+        self.assertEqual(update.check(True)["state"], "interrupted")
+        with patch.object(update, "trusted_installation"), patch.object(update, "quickshell_processes", return_value=set()):
+            self.assertEqual(update.recover(operation)["state"], "failed")
+        self.assertNotIn("statusInvalid", update.status_read(self.state))
 
     def test_dead_checker_recovers(self):
         update.write_json(self.state / "status.json", {**update.status_default(), "state": "checking"})

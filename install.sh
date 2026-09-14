@@ -744,6 +744,7 @@ make clean
 make
 sudo make install \
 	DATADIR="/usr/share" \
+	USER_RUNTIME_DIR="${XDG_RUNTIME_DIR:-}" \
 	USER_HOME="$HOME" \
 	OWNER="$(id -un)" \
 	XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}" \

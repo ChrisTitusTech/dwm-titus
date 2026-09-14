@@ -176,6 +176,25 @@ raise SystemExit(17)
                 guard("", ["/usr/bin/false"], "nobody", str(state))
         self.assertEqual(os.geteuid(), 0)
 
+    def test_dependency_action_rejects_unfinished_transactions_before_package_commands(self):
+        marker = self.prefix / "package-commands.json"
+        injected = "\ndef observed_package_command(args, **kwargs):\n    path = Path(" + repr(str(marker)) + ")\n    calls = json.loads(path.read_text()) if path.exists() else []\n    calls.append(args)\n    path.write_text(json.dumps(calls))\n    return subprocess.CompletedProcess(args, 1 if args[0] == '/usr/bin/rpm' else 0)\nsubprocess.run = observed_package_command\n"
+        self.helper.write_text(self.helper.read_text().replace('if __name__ == "__main__":', injected + '\nif __name__ == "__main__":'))
+        generation = hashlib.sha256(self.manifest_path.read_bytes()).hexdigest()
+        directory = Path("/var/lib/dwm-titus/desktop-updates") / self.operation
+        self.assertEqual(self.command("begin", generation, self.operation).returncode, 0)
+        for state in ("preparing", "applying", "applied", "rolling-back", "rolled-back-pending", "invalid"):
+            (directory / "journal.json").write_text(json.dumps({"state": state, "uid": 1000}))
+            result = self.command("dependencies", generation, uid=1001)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("finish or recover first", result.stderr)
+            self.assertFalse(marker.exists())
+        (directory / "journal.json").write_text(json.dumps({"state": "complete", "uid": 1000}))
+        result = self.command("dependencies", generation, uid=1001)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(marker.read_text()), [["/usr/bin/rpm", "-q", "--quiet", "--", "gcc"],
+                                                        ["/usr/bin/dnf", "install", "-y", "--", "gcc"]])
+
     def test_preparation_reservation_blocks_source_install_and_other_users(self):
         generation = hashlib.sha256(self.manifest_path.read_bytes()).hexdigest()
         result = self.command("begin", generation, self.operation)

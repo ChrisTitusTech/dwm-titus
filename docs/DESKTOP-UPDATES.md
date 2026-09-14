@@ -164,7 +164,14 @@ before reserving an update and again before copying.
 After confirmation, authorization reserves the update before downloads and builds
 so a source installation or another user's update cannot supersede its preview.
 A failed preparation releases the reservation; an interrupted preparation uses
-the same recovery command without replacing system files. Candidate manifests
+the same recovery command without replacing system files. Dependency installation
+also rejects every unfinished transaction before any package command runs.
+Every operation status change first updates a separate durable status copy. If
+the main status is lost, its operation identity and recovery state are restored
+from that copy. Malformed status without transaction records can be rebuilt by
+a forced check; retained transactions are never discarded by that reset. If
+both status copies are damaged and multiple operations remain, restore the
+current status from backup before recovery. Candidate manifests
 accept only the fixed schema and stay within the installed receipt size limit.
 
 Updater Git commands ignore system/global Git configuration and inherited Git

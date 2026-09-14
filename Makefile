@@ -160,8 +160,16 @@ install-files:
 				exit 1; \
 			}; \
 			target_uid="$$(id -u "$$target_user")"; \
-			runuser -u "$$target_user" -- env -u DBUS_SESSION_BUS_ADDRESS \
-				HOME="${USER_HOME}" XDG_RUNTIME_DIR="/run/user/$$target_uid" \
+			runtime_dir="${USER_RUNTIME_DIR}"; \
+			if [ -z "$$runtime_dir" ]; then runtime_dir="/run/user/$$target_uid"; fi; \
+			set --; \
+			if [ -d "$$runtime_dir" ] && [ ! -L "$$runtime_dir" ] && \
+				[ "$$(stat -c %u "$$runtime_dir")" = "$$target_uid" ] && \
+				[ "$$(stat -c %a "$$runtime_dir")" = 700 ]; then \
+				set -- "XDG_RUNTIME_DIR=$$runtime_dir"; \
+			fi; \
+			runuser -u "$$target_user" -- env -u DBUS_SESSION_BUS_ADDRESS -u XDG_RUNTIME_DIR \
+				HOME="${USER_HOME}" "$$@" \
 				$(MAKE) install-user-files \
 				USER_HOME="${USER_HOME}" OWNER="$$target_user" \
 				XDG_CONFIG_HOME="${XDG_CONFIG_HOME}" \

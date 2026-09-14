@@ -56,14 +56,14 @@ with tempfile.TemporaryDirectory(prefix="desktop-integration-", dir="/opt") as t
     finally:
         journal.unlink()
         journal.parent.rmdir()
-    subprocess.run(["make", "install-system", "PREFIX=" + str(prefix)], cwd=source, check=True)
+    # Image/bootstrap installations have no logind-created runtime directory.
+    assert not (Path("/run/user") / str(uid)).exists()
+    subprocess.run(["make", "install", "PREFIX=" + str(prefix), "OWNER=desktop-test",
+                    "USER_HOME=/home/desktop-test", "XDG_STATE_HOME=" + env["XDG_STATE_HOME"]],
+                   cwd=source, check=True)
     config = Path("/home/desktop-test/.config")
     data = Path("/home/desktop-test/.local/share/dwm-titus")
     state = Path(env["XDG_STATE_HOME"]) / "dwm-titus/desktop-update"
-    for original, target in ((source / "config", data / "config"), (source / "scripts", data / "scripts"),
-                             (source / "config/quickshell", config / "quickshell")):
-        shutil.copytree(original, target, symlinks=True)
-    (config / "dwm-titus").mkdir()
     (config / "dwm-titus/themes.toml").write_text("personal-theme-marker")
     subprocess.run(["chown", "-R", "desktop-test:desktop-test", "/home/desktop-test"], check=True)
     user("python3", source / "scripts/dwm-desktop-update", "record-user", source)

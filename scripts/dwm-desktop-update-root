@@ -358,6 +358,10 @@ def main():
             journal["state"] = "rolled-back" if journal["state"].startswith("rolled-back") else "complete"
             write_json(backup / "journal.json", journal)
         elif args[0] == "dependencies" and len(args) == 2:
+            for journal_path in STATE.glob("*/journal.json"):
+                journal = read_json(journal_path)
+                if not isinstance(journal, dict) or journal.get("state") not in ("complete", "rolled-back"):
+                    fail("Another desktop transaction must finish or recover first")
             manifest_path = PREFIX / "share/dwm-titus/desktop-install.json"
             manifest = read_json(manifest_path)
             if hashlib.sha256(manifest_path.read_bytes()).hexdigest() != args[1]:

@@ -54,10 +54,10 @@ run_as_owner() {
 grep -Fq 'Start LightDM now (optional): sudo systemctl start lightdm.service' \
 	"$REPO_DIR/install.sh"
 grep -Fq 'sudo make install ' "$REPO_DIR/install.sh"
-grep -Fq "runuser -u \"\$\$target_user\" -- env -u DBUS_SESSION_BUS_ADDRESS \\" \
-	"$REPO_DIR/Makefile"
-grep -Fq "HOME=\"\${USER_HOME}\" XDG_RUNTIME_DIR=\"/run/user/\$\$target_uid\" \\" \
-	"$REPO_DIR/Makefile"
+# shellcheck disable=SC2016
+grep -Fq 'runuser -u "$$target_user" -- env -u DBUS_SESSION_BUS_ADDRESS -u XDG_RUNTIME_DIR' "$REPO_DIR/Makefile"
+# shellcheck disable=SC2016
+grep -Fq 'set -- "XDG_RUNTIME_DIR=$$runtime_dir"' "$REPO_DIR/Makefile"
 grep -Fq "\$(MAKE) install-user-files " "$REPO_DIR/Makefile"
 grep -Fq 'dwm.desktop not found (run '\''./install.sh'\'')' \
 	"$REPO_DIR/scripts/check-deps.sh"

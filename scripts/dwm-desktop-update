@@ -277,7 +277,8 @@ def source_user_lock(state, owner=None):
                 stream = cleanup.enter_context(locked(Path(state)))
             except BlockingIOError as error:
                 raise RuntimeError("Desktop update is active; finish it before source installation") from error
-            if status_read(Path(state))["state"] in ACTIVE | {"interrupted"}:
+            status = status_read(Path(state))
+            if status.get("statusInvalid") or status["state"] in ACTIVE | {"interrupted"}:
                 raise RuntimeError("Finish or recover the desktop update before source installation")
         finally:
             os.seteuid(uid)
@@ -417,18 +418,66 @@ def status_default():
             "packages": [], "operation": "", "log": "", "backup": "", "restart": "none"}
 
 
-def status_read(state):
+def status_read(state, recovery_copy=False):
     try:
-        value = read_json(state / "status.json")
-        if value.get("schema") != 1:
+        value = read_json(state / ("status-backup.json" if recovery_copy else "status.json"))
+        if not isinstance(value, dict) or type(value.get("schema")) is not int or value["schema"] != 1:
             raise ValueError("Unknown status schema")
+        if not status_default().keys() <= value.keys():
+            raise ValueError("Incomplete status record")
+        expected = {**status_default(), "manifest": "", "generation": "", "systemStarted": False,
+                    "systemApplied": False, "activationShells": [], "changes": []}
+        for key, default in expected.items():
+            if key not in value:
+                continue
+            item = value[key]
+            if key in ("checkedAt", "percent"):
+                if type(item) not in (int, float) or not (0 <= item < 2 ** 63 if key == "checkedAt" else -1 <= item <= 100):
+                    raise ValueError("Invalid status number")
+            elif type(item) is not type(default):
+                raise ValueError("Invalid status field")
+        if (value["operation"] and not re.fullmatch(r"[0-9a-f]{32}", value["operation"])) or (
+                value["state"] in ACTIVE | {"interrupted"} and not value["operation"]):
+            raise ValueError("Invalid status operation identity")
+        for key in ("packages", "changes"):
+            if any(not isinstance(item, str) for item in value.get(key, [])):
+                raise ValueError("Invalid status list")
+        if any(not isinstance(item, list) or len(item) != 2 or any(not isinstance(part, str) for part in item)
+               for item in value.get("activationShells", [])):
+            raise ValueError("Invalid activation identities")
         return {**status_default(), **value}
     except FileNotFoundError:
-        return status_default()
+        damaged = False
+    except (ValueError, TypeError, RuntimeError):
+        damaged = True
+    if recovery_copy:
+        return None
+    saved = status_read(state, recovery_copy=True)
+    if saved is not None:
+        return saved
+    records = [path for path in (state / "operations").glob("*")
+               if re.fullmatch(r"[0-9a-f]{32}", path.name) and path.is_dir() and not path.is_symlink()
+               and (path / "preview.json").is_file()]
+    if records:
+        # Never replace missing transaction identity with a fresh check. New
+        # operations always have the independent status copy; retain old records
+        # conservatively when that copy is absent or also damaged.
+        directory = records[0] if len(records) == 1 else state / "operations"
+        return {**status_default(), "state": "interrupted", "statusInvalid": True,
+                "operation": records[0].name if len(records) == 1 else "", "backup": str(directory),
+                "log": str(directory / "update.log") if len(records) == 1 else "",
+                "detail": "Saved status is unavailable. Review retained recovery records before checking again."
+                if len(records) == 1 else "Both status records are unavailable; restore the current operation status from backup before recovery."}
+    if damaged:
+        return {**status_default(), "state": "failed", "statusInvalid": True,
+                "detail": "Saved desktop status is invalid. Check again; keep any recovery files."}
+    return status_default()
 
 
 def save_status(state_dir, value, **changes):
     value.update(changes)
+    if re.fullmatch(r"[0-9a-f]{32}", value.get("operation", "")):
+        write_json(state_dir / "status-backup.json", value)
     write_json(state_dir / "status.json", value)
     return value
 
@@ -441,6 +490,14 @@ def service_active():
 
 def recover_status(state):
     value = status_read(state)
+    # All callers hold the state lock. Publish the recovered record to the
+    # primary file as well as stdout, because Settings watches this file.
+    try:
+        primary = read_json(state / "status.json")
+    except (OSError, ValueError, RuntimeError):
+        primary = None
+    if primary != value:
+        write_json(state / "status.json", value)
     if value["state"] == "checking":
         save_status(state, value, state="failed", detail="The previous check was interrupted. Check again.", canUpdate=False)
     if value["state"] in ACTIVE and not service_active():
@@ -559,6 +616,7 @@ def check_bounded(force=False):
             return value
         if not force and time.time() - value["checkedAt"] < 300:
             return value
+        value.pop("statusInvalid", None)
         save_status(state, value, state="checking", detail="Checking desktop files and upstream main...", canUpdate=False, percent=-1)
         try:
             validate_update_paths()
@@ -1027,6 +1085,7 @@ def recover(operation):
         if value["operation"] != operation or value["state"] != "interrupted" or service_active():
             raise RuntimeError("Only the interrupted current operation can be recovered")
         directory = state / "operations" / operation
+        value.pop("statusInvalid", None)
         if (directory / "completion.json").exists():
             completion = read_json(directory / "completion.json")
             preview = read_json(directory / "preview.json")
