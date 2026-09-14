@@ -14,7 +14,9 @@ concurrency:
 
 jobs:
   validate:
-    runs-on: ubuntu-latest
+    # Ubuntu 24.04 restricts nested user namespaces even with an unconfined
+    # Docker profile. The tested userspace remains Fedora 44.
+    runs-on: ubuntu-22.04
     timeout-minutes: 45
     container:
       image: fedora:44
