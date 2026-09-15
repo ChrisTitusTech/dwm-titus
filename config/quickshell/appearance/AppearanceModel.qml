@@ -815,7 +815,20 @@ Scope {
     // The desktop provider owns typography. Legacy font.conf is a startup
     // fallback; transient failures retain the last valid desktop typography.
     function fontDescriptionFamily(description) {
-        return description.replace(/,?\s+\d+(?:\.\d+)?$/, "").trim();
+        const family = description.replace(/,?\s+\d+(?:\.\d+)?$/, "").trim();
+        if (family === description.trim()) return family;
+        // Prefer the longest installed family so names containing style words
+        // remain intact while Pango suffixes such as "Bold Italic" are removed.
+        let matched = "";
+        for (const installed of Qt.fontFamilies()) {
+            if (family.toLowerCase() === installed.toLowerCase()) return installed;
+            if (family.toLowerCase().startsWith(installed.toLowerCase() + " ")
+                    && installed.length > matched.length
+                    && /^(?:(?:thin|ultra-?light|extra-?light|light|semi-?light|book|regular|normal|medium|semi-?bold|demi-?bold|bold|ultra-?bold|extra-?bold|heavy|black|italic|oblique|condensed|expanded)\s*)+$/i.test(
+                        family.slice(installed.length).trim()))
+                matched = installed;
+        }
+        return matched || family;
     }
 
     function applySharedTypography() {
@@ -833,9 +846,7 @@ Scope {
         // resource. Explicit choices supply an absolute desktop scale instead.
         Theme.desktopTypography = root.desktopFontScale > 0 && !root.desktopFollowsSystemScale;
         Theme.applyFontPreferences(root.desktopFontFamily || root.fontFamily,
-            root.desktopFontScale > 0
-                ? (root.desktopFollowsSystemScale ? 1.0 : root.desktopFontScale)
-                : root.fontScale);
+            root.desktopFontScale > 0 ? root.desktopFontScale : root.fontScale);
     }
 
     function refreshPersonalizationStatus() {
@@ -1315,8 +1326,8 @@ Scope {
                 : "Personalization helper did not confirm the requested change";
             root.messageSeverity = "danger";
         }
+        Qt.callLater(root.refreshPersonalizationStatus);
         if (root.settingsVisible) {
-            Qt.callLater(root.refreshPersonalizationStatus);
             root.refreshInventory(true);
             root.refreshSnapshot();
         }

@@ -11,7 +11,7 @@ Rectangle {
     required property bool selected
     required property var launcherModel
 
-    height: 58
+    height: Theme.scaledSize(58)
     radius: Theme.largeSurfaceCardRadius
     color: selected ? Theme.menuSelectedBackground : resultMouse.containsMouse ? Theme.menuHoverBackground : Theme.transparent
     border.color: selected ? Theme.controlSelectedBorder : Theme.transparent

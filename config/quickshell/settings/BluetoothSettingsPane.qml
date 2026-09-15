@@ -66,7 +66,7 @@ ColumnLayout {
             readonly property bool thisBusy: root.bluetoothModel.busy
                 && root.bluetoothModel.actionAddress === modelData.address
             width: deviceList.width
-            height: 68
+            height: Theme.scaledSize(68)
             color: Theme.controlNormalFill
             border.color: thisBusy ? Theme.accent : Theme.controlNormalBorder
             border.width: Theme.controlBorderWidth

@@ -216,6 +216,8 @@ dwm-settings-personalization apply cursor Adwaita
 dwm-settings-personalization apply gtk Adwaita-dark
 dwm-settings-personalization apply qt gtk3
 dwm-settings-personalization reset cursor
+dwm-settings-personalization reset gtk
+dwm-settings-personalization reset qt
 dwm-settings-personalization status
 ```
 

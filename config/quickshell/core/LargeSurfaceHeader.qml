@@ -16,7 +16,7 @@ RowLayout {
 
     Rectangle {
         Layout.preferredWidth: 4
-        Layout.preferredHeight: 50
+        Layout.preferredHeight: Theme.scaledSize(50)
         color: root.statusColor
         radius: 2
     }

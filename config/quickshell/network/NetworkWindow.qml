@@ -11,8 +11,8 @@ ClickAwayPopup {
     required property var networkModel
     required property var panelWindow
 
-    readonly property int cardWidth: 620
-    readonly property int cardHeight: 680
+    readonly property int cardWidth: Theme.scaledSize(620)
+    readonly property int cardHeight: Theme.scaledSize(680)
     readonly property int edgeMargin: Theme.rowSpacing
 
     visible: panelWindow !== null && panelWindow.screen !== null
@@ -264,7 +264,7 @@ ClickAwayPopup {
 
                     RowLayout {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 44
+                        Layout.preferredHeight: Theme.scaledSize(44)
                         spacing: Theme.rowSpacing
 
                         Rectangle {

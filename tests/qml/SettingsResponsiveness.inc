@@ -1,5 +1,8 @@
     // Runs inside an isolated copy of the production ShellRoot.
     property int responseStage: -4
+    property var scaleAudioPopup: null
+    property var scaleRows: []
+    property var scaleBluetoothPane: null
     property int scrollFrames: 0
     property real scrollStartY: 0
     property var scrollPane: null
@@ -100,6 +103,15 @@
                 root.responseCheck(Theme.fontFamily === "Sans" && Theme.fontScale === 1
                     && !Theme.desktopTypography,
                     "Reset follows the same system typography in the shell");
+                appearanceModel.personalizationSelections = {
+                    "font": {state: "available", value: "Sans 10", option: "follow-system"},
+                    "text-size": {state: "available", value: "1.5", option: "follow-system"}
+                };
+                appearanceModel.applySharedTypography();
+                root.responseCheck(Theme.fontScale === 1.5 && !Theme.desktopTypography,
+                    "System-follow honors non-default text size while preserving native DPI");
+                appearanceModel.personalizationSelections["text-size"].value = "1.0";
+                appearanceModel.applySharedTypography();
                 settingsModel.openWindow();
                 root.responseStarted = Date.now();
                 root.responseStage = 1;
@@ -162,6 +174,18 @@
                     && choices.filter(item => item.capability === "text-size").length === 1,
                     "Appearance offers exactly one font and one text-size control");
                 const fontChoice = choices.find(item => item.capability === "font");
+                const fontInput = root.responseItems(fontChoice,
+                    item => item.selectByMouse !== undefined)[0];
+                fontInput.text = "Noto ";
+                fontInput.textEdited();
+                root.responseCheck(fontChoice.selectedValue === "Noto "
+                    && fontInput.text === "Noto " && fontChoice.submissionValue === "Noto",
+                    "Font editing preserves spaces and trims only the submitted value");
+                const installedFamily = Qt.fontFamilies().find(family => family === "Noto Sans")
+                    || Qt.fontFamilies()[0];
+                root.responseCheck(appearanceModel.fontDescriptionFamily(installedFamily + " Bold Italic 11") === installedFamily
+                    && appearanceModel.fontDescriptionFamily(installedFamily) === installedFamily,
+                    "Styled desktop descriptions resolve to an installed family");
                 root.responseCheck(fontChoice.candidateAvailable("An installed family outside the suggestions")
                     && appearanceModel.personalizationCandidateAvailable("font", "An installed family outside the suggestions")
                     && !fontChoice.candidateAvailable("Invalid\nfont"),
@@ -196,12 +220,78 @@
                     pane.flick(1200, 1600);
                 } else {
                     root.responseCheck(pane.contentY < root.scrollStartY - 1, "An inward flick from the bottom must scroll up");
-                    settingsModel.close();
-                    console.info("Settings responsiveness: PASS");
-                    Qt.quit();
+                    Theme.desktopTypography = false;
+                    Theme.applyFontPreferences("Noto Sans", 2);
+                    const launcher = Qt.createComponent("launcher/LauncherResultDelegate.qml");
+                    const wifi = Qt.createComponent("network/NetworkWifiRow.qml");
+                    const audio = Qt.createComponent("controls/ControlsWindow.qml");
+                    root.scaleAudioPopup = audio.createObject(root, {panelWindow: root.defaultPanelWindow,
+                        controlsModel: {visible: true, busy: false, volumeMuted: false, volumeDisplayText: "50%",
+                            message: "", volumePercent: 50, micText: "MIC on", mediaText: "Track",
+                            mediaPlayer: "Player", outputDevices: [{name: "output", description: "Speakers", isDefault: true}],
+                            close: () => {}}});
+                    const bluetooth = Qt.createComponent("settings/BluetoothSettingsPane.qml");
+                    root.scaleBluetoothPane = bluetooth.createObject(settingsWindow.contentItem,
+                        {width: 1000, height: 900, bluetoothModel: {
+                            providerState: "available", statusText: "Bluetooth", powered: true,
+                            available: true, actionsAvailable: true, busy: false, message: "",
+                            actionAddress: "", devices: [{name: "Headphones", address: "00:11:22:33:44:55",
+                                connected: false, paired: false, trusted: false}]}});
+                    root.scaleRows = [
+                        launcher.createObject(settingsWindow.contentItem, {width: 700, index: 0,
+                            selected: false, modelData: {name: "Application", generic: "Description", comment: "", primaryCategory: "Utility", icon: ""},
+                            launcherModel: {categoryLabel: () => "Utility"}}),
+                        wifi.createObject(settingsWindow.contentItem, {width: 700,
+                            network: {ssid: "Network", security: "WPA2", signal: 80, device: "wlan0", active: false}})
+                    ];
                 }
                 root.scrollFrames = 0;
                 root.responseStage++;
+            } else if (root.responseStage === 18) {
+                const sections = root.responseItems(settingsWindow.contentItem,
+                    item => item.selected !== undefined && item.modelData !== undefined
+                        && item.modelData.id !== undefined);
+                const bluetoothRows = root.responseItems(root.scaleBluetoothPane,
+                    item => item.modelData !== undefined && item.modelData.address !== undefined);
+                root.responseCheck(bluetoothRows.length > 0, "200 percent Bluetooth rows are rendered");
+                const rows = root.scaleRows.concat(sections, bluetoothRows);
+                root.responseCheck(root.scaleRows.every(item => item !== null) && sections.length > 0,
+                    "200 percent row checks have rendered delegates");
+                for (const row of rows) {
+                    for (const text of root.responseItems(row, item => item.visible && item.text !== undefined)) {
+                        const point = text.mapToItem(row, 0, 0);
+                        root.responseCheck(point.y >= -1 && point.y + text.height <= row.height + 1,
+                            "200 percent text fits its row: " + text.text);
+                    }
+                }
+                const viewport = root.responseItems(root.scaleAudioPopup.contentItem,
+                    item => item.objectName === "popupViewport")[0];
+                root.responseCheck(viewport && viewport.contentHeight > viewport.height
+                    && viewport.height <= root.defaultPanelWindow.screen.height,
+                    "Oversized audio popup stays on screen and scrolls");
+                const card = root.responseItems(root.scaleAudioPopup.contentItem,
+                    item => String(item).startsWith("ShellSurface"))[0];
+                root.responseCheck(card !== undefined, "Audio popup card is rendered");
+                for (const text of root.responseItems(card, item => item.visible && item.text !== undefined)) {
+                    const point = text.mapToItem(card, 0, 0);
+                    root.responseCheck(point.y >= -1 && point.y + text.height <= card.height + 1,
+                        "200 percent audio controls fit inside the scrollable card: " + text.text);
+                }
+                viewport.contentY = viewport.contentHeight - viewport.height;
+                root.responseCheck(viewport.contentY > 0, "Audio popup can scroll to its bottom controls");
+                root.scaleAudioPopup.destroy();
+                for (const row of root.scaleRows) row.destroy();
+                root.scaleBluetoothPane.destroy();
+                settingsModel.close();
+                appearanceModel.personalizationStatusPending = true;
+                appearanceModel.finishPersonalizationAction();
+                root.responseStage++;
+            } else if (root.responseStage === 19) {
+                root.responseCheck(!appearanceModel.settingsVisible
+                    && !appearanceModel.personalizationStatusPending,
+                    "Action completion drains typography refreshes with Settings closed");
+                console.info("Settings responsiveness: PASS");
+                Qt.quit();
             }
         }
     }

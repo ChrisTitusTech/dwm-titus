@@ -314,6 +314,8 @@ Flickable {
         property var capabilityGate: null
         property bool advancedEditor: false
         property string selectedValue: ""
+        readonly property string submissionValue: capability === "font"
+            ? selectedValue.trim() : selectedValue
         property bool selectionDirty: false
         property string lastSavedOption: ""
         readonly property var selection: root.appearanceModel.personalizationSelection(
@@ -409,7 +411,7 @@ Flickable {
                 Accessible.name: "Font family"
                 Accessible.description: "Enter an installed font family or choose a suggestion below"
                 onTextEdited: {
-                    personalizationControl.selectedValue = text.trim();
+                    personalizationControl.selectedValue = text;
                     personalizationControl.selectionDirty = true;
                 }
             }
@@ -468,9 +470,9 @@ Flickable {
                     && root.appearanceModel.personalizationApplyReady(
                         personalizationControl.capability)
                     && personalizationControl.candidateAvailable(
-                        personalizationControl.selectedValue) && !root.appearanceBusy
+                        personalizationControl.submissionValue) && !root.appearanceBusy
                 onActivated: root.appearanceModel.applyPersonalization(
-                    personalizationControl.capability, personalizationControl.selectedValue)
+                    personalizationControl.capability, personalizationControl.submissionValue)
             }
             ShellButton {
                 label: personalizationControl.resetLabel
@@ -1225,7 +1227,7 @@ Flickable {
                 required property var modelData
 
                 Layout.fillWidth: true
-                Layout.preferredHeight: 48
+                Layout.preferredHeight: Theme.scaledSize(48)
                 color: Theme.controlNormalFill
                 border.color: Theme.controlNormalBorder
                 border.width: Theme.controlBorderWidth

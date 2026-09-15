@@ -214,7 +214,7 @@ Flickable {
 
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 42
+            Layout.preferredHeight: Theme.scaledSize(42)
             color: autostartSearch.activeFocus ? Theme.controlFocusFill : Theme.controlNormalFill
             border.color: autostartSearch.activeFocus ? Theme.controlFocusBorder : Theme.controlNormalBorder
             border.width: Theme.controlBorderWidth
