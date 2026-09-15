@@ -1,5 +1,6 @@
     // Runs inside an isolated copy of the production ShellRoot.
     property int responseStage: -4
+    property var scaleNetworkPopup: null
     property var scaleAudioPopup: null
     property var scaleRows: []
     property var scaleBluetoothPane: null
@@ -224,6 +225,13 @@
                     Theme.applyFontPreferences("Noto Sans", 2);
                     const launcher = Qt.createComponent("launcher/LauncherResultDelegate.qml");
                     const wifi = Qt.createComponent("network/NetworkWifiRow.qml");
+                    const network = Qt.createComponent("network/NetworkWindow.qml");
+                    root.scaleNetworkPopup = network.createObject(root, {panelWindow: root.defaultPanelWindow,
+                        networkModel: {visible: true, busy: false, actionsAvailable: true, editorAvailable: false,
+                            wifiPasswordPromptVisible: true, wifiPasswordPromptOrigin: "panel", wifiPassword: "",
+                            statusText: "Online", message: "", activeConnections: [], savedProfiles: [], wifiNetworks: [],
+                            selectedWifiIndex: -1, selectedWifiNetwork: () => ({ssid: "Test network"}),
+                            cancelWifiPasswordPrompt: () => {}, close: () => {}}});
                     const audio = Qt.createComponent("controls/ControlsWindow.qml");
                     root.scaleAudioPopup = audio.createObject(root, {panelWindow: root.defaultPanelWindow,
                         controlsModel: {visible: true, busy: false, volumeMuted: false, volumeDisplayText: "50%",
@@ -279,6 +287,21 @@
                 }
                 viewport.contentY = viewport.contentHeight - viewport.height;
                 root.responseCheck(viewport.contentY > 0, "Audio popup can scroll to its bottom controls");
+                const networkSurface = root.scaleNetworkPopup.popupContent.find(item => item.content !== undefined);
+                const prompt = networkSurface.content.find(item => item.title === "dwm network password");
+                root.responseCheck(prompt && prompt.visible && prompt.height <= prompt.screen.height,
+                    "200 percent Wi-Fi prompt fits the screen");
+                const passwordViewport = root.responseItems(prompt.contentItem,
+                    item => item.objectName === "passwordViewport")[0];
+                const connect = root.responseItems(prompt.contentItem, item => item.label === "Connect")[0];
+                root.responseCheck(passwordViewport && connect,
+                    "Wi-Fi prompt keeps its action controls");
+                passwordViewport.contentY = Math.max(0, passwordViewport.contentHeight - passwordViewport.height);
+                const actionPosition = connect.mapToItem(passwordViewport, 0, 0);
+                root.responseCheck(actionPosition.y >= -1
+                    && actionPosition.y + connect.height <= passwordViewport.height + 1,
+                    "Wi-Fi Connect action is reachable at maximum scale");
+                root.scaleNetworkPopup.destroy();
                 root.scaleAudioPopup.destroy();
                 for (const row of root.scaleRows) row.destroy();
                 root.scaleBluetoothPane.destroy();
