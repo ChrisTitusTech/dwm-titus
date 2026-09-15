@@ -877,33 +877,39 @@ default_monitor_count() {
 }
 
 choose_default_wallpapers() {
-	local executable candidate count=0 monitor_count slot index random_value
+	local executable candidate decoded monitor_count slot index random_value remaining
+	local deadline=$((SECONDS + max_feh_seconds))
+	local -a candidates=()
 	applied_default_paths=()
 	[[ -n ${DISPLAY:-} && -d $wallpaper_dir ]] || return 1
 	executable=$(feh_path) || return 1
 	monitor_count=$(default_monitor_count) || return 1
-	while IFS= read -r candidate; do
+	# Enumerate names without decoding the entire collection. NUL delimiters
+	# keep unusual filenames intact until valid_asset can reject unsafe paths.
+	while IFS= read -r -d '' candidate; do
 		valid_asset "$candidate" || continue
-		((count += 1))
-		if ((${#applied_default_paths[@]} < monitor_count)); then
-			applied_default_paths+=("$candidate")
-		else
-			random_value=$(((RANDOM << 15) | RANDOM))
-			slot=$((random_value % count))
-			((slot >= monitor_count)) || applied_default_paths[slot]=$candidate
-		fi
+		candidates+=("$candidate")
 	done < <(
-		timeout --signal=TERM --kill-after=1 "$max_feh_seconds" "$executable" \
-			--loadable --recursive -- "$wallpaper_dir" 2>/dev/null || true
+		timeout --signal=TERM --kill-after=1 "$max_feh_seconds" \
+			find -L "$wallpaper_dir" -type f -print0 2>/dev/null || true
 	)
-	((${#applied_default_paths[@]} > 0)) || return 1
-	for ((index = ${#applied_default_paths[@]} - 1; index > 0; index--)); do
+	# Draw without replacement, decoding only enough usable images for the
+	# monitors. Corrupt files are skipped within one shared time budget.
+	for ((index = ${#candidates[@]}; index > 0 && ${#applied_default_paths[@]} < monitor_count; index--)); do
+		remaining=$((deadline - SECONDS))
+		((remaining > 0)) || break
 		random_value=$(((RANDOM << 15) | RANDOM))
-		slot=$((random_value % (index + 1)))
-		candidate=${applied_default_paths[index]}
-		applied_default_paths[index]=${applied_default_paths[slot]}
-		applied_default_paths[slot]=$candidate
+		slot=$((random_value % index))
+		candidate=${candidates[slot]}
+		candidates[slot]=${candidates[index - 1]}
+		valid_asset "$candidate" || continue
+		if decoded=$(timeout --signal=TERM --kill-after=1 "$remaining" \
+			"$executable" --loadable -- "$candidate" 2>/dev/null) &&
+			[[ $decoded == "$candidate" ]]; then
+			applied_default_paths+=("$candidate")
+		fi
 	done
+	((${#applied_default_paths[@]} > 0))
 }
 
 apply_default_live() {

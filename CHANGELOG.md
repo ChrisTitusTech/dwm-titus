@@ -27,6 +27,9 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Speed up random wallpaper changes by choosing filenames before decoding,
+  checking only the images needed for each monitor and retrying corrupt files.
+
 - Install Celluloid, mpv, and sxiv in every Fedora installer profile and both
   ISO variants. Seed fresh-account audio/video defaults from Celluloid and
   image defaults from sxiv, preserving existing application preferences (#308).

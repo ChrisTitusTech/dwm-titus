@@ -35,9 +35,17 @@ if [[ $loadable_mode == true ]]; then
 			IFS= read -r loadable_count <"$DWM_TEST_FEH_LOADABLE_COUNT_FILE"
 		[[ $loadable_count =~ ^[0-9]+$ ]] || exit 2
 		printf '%s\n' "$((loadable_count + 1))" >"$DWM_TEST_FEH_LOADABLE_COUNT_FILE"
+		if [[ ${DWM_TEST_FEH_REJECT_FIRST:-false} == true && $loadable_count == 0 ]]; then
+			exit 1
+		fi
 	fi
 	if [[ -n ${DWM_TEST_DEFAULT_SEQUENCE_FILE:-} && -s $DWM_TEST_DEFAULT_SEQUENCE_FILE ]]; then
 		mapfile -t default_candidates <"$DWM_TEST_DEFAULT_SEQUENCE_FILE"
+		matches=false
+		for argument in "$@"; do
+			if [[ -d $argument || $argument == "${default_candidates[0]}" ]]; then matches=true; fi
+		done
+		[[ $matches == true ]] || exit 0
 		printf '%s\n' "${default_candidates[0]}"
 		: >"$DWM_TEST_DEFAULT_SEQUENCE_FILE"
 		for ((index = 1; index < ${#default_candidates[@]}; index++)); do
@@ -46,7 +54,12 @@ if [[ $loadable_mode == true ]]; then
 		exit 0
 	fi
 	if [[ -n ${DWM_TEST_DEFAULT_CANDIDATE:-} ]]; then
-		printf '%s\n' "$DWM_TEST_DEFAULT_CANDIDATE"
+		for argument in "$@"; do
+			if [[ -d $argument || $argument == "$DWM_TEST_DEFAULT_CANDIDATE" ]]; then
+				printf '%s\n' "$DWM_TEST_DEFAULT_CANDIDATE"
+				break
+			fi
+		done
 		exit 0
 	fi
 	if [[ -n ${DWM_TEST_INVALID_BASELINE:-} && -n ${DWM_TEST_VALID_BASELINE:-} ]]; then
@@ -57,6 +70,9 @@ if [[ $loadable_mode == true ]]; then
 	for argument in "$@"; do
 		[[ $argument != -* ]] || continue
 		[[ ${DWM_TEST_FEH_FAIL_PATH:-} != "$argument" ]] || continue
+		if [[ -d ${DWM_TEST_FEH_FAIL_PATH:-} && $argument == "$DWM_TEST_FEH_FAIL_PATH/"* ]]; then
+			continue
+		fi
 		if [[ -f $argument ]]; then
 			printf '%s\n' "$argument"
 		elif [[ -d $argument ]]; then
@@ -109,15 +125,6 @@ fi
 if [[ -n ${DWM_TEST_FEH_FAIL_PATH:-} ]]; then
 	for argument in "$@"; do
 		[[ $argument != "$DWM_TEST_FEH_FAIL_PATH" ]] || exit 1
-	done
-fi
-if [[ -n ${DWM_TEST_FEH_MUTATE_CONFIG:-} ]]; then
-	for argument in "$@"; do
-		[[ $argument != --randomize ]] || {
-			printf 'version=1\npath=%s\nfit=max\n' \
-				"${DWM_TEST_FEH_RANDOM_MUTATE_PATH:-$DWM_TEST_FEH_MUTATE_PATH}" \
-				>"$DWM_TEST_FEH_MUTATE_CONFIG"
-		}
 	done
 fi
 if [[ -n ${DWM_TEST_FEH_MUTATE_SELECTION_PATH:-} ]]; then
@@ -252,6 +259,40 @@ test "$(grep -Fxc 'call' "$log")" -eq 1
 grep -Fqx "arg=$wallpaper_dir/Nord One.png" "$log"
 grep -Fqx "arg=$wallpaper_dir/forest.jpg" "$log"
 rm -f -- "$multi_monitor_preview"
+
+# A large healthy collection only decodes one candidate per monitor. A failed
+# decode retries another candidate instead of decoding the entire directory.
+mkdir "$wallpaper_dir/many"
+for ((index = 0; index < 64; index++)); do
+	printf 'image\n' >"$wallpaper_dir/many/image $index.PNG"
+done
+loadable_count_file=$work/random-decode-count
+export DWM_TEST_FEH_LOADABLE_COUNT_FILE=$loadable_count_file
+export DWM_TEST_WALLPAPER_MONITOR_COUNT=2
+printf '0\n' >"$loadable_count_file"
+run_helper randomize >/dev/null
+test "$(cat "$loadable_count_file")" -eq 2
+test "$(grep -c '^path=' "$state_home/dwm-titus/appearance/wallpaper/session.default")" -eq 2
+printf '0\n' >"$loadable_count_file"
+export DWM_TEST_FEH_REJECT_FIRST=true
+run_helper randomize >/dev/null
+test "$(cat "$loadable_count_file")" -eq 3
+unset DWM_TEST_FEH_REJECT_FIRST
+# A stalled decoder consumes one shared budget, not a fresh timeout per file.
+export DWM_TEST_FEH_LOADABLE_BLOCK_PID_FILE=$work/selection-probe.pid
+printf '0\n' >"$loadable_count_file"
+if DWM_WALLPAPER_FEH_TIMEOUT=1 run_helper randomize >"$work/stalled-selection.out" 2>"$work/stalled-selection.err"; then
+	printf 'Stalled wallpaper decoder unexpectedly succeeded\n' >&2
+	exit 1
+fi
+test "$(cat "$loadable_count_file")" -eq 1
+if process_running "$(cat "$work/selection-probe.pid")"; then
+	printf 'Stalled wallpaper decoder survived its timeout\n' >&2
+	exit 1
+fi
+unset DWM_TEST_FEH_LOADABLE_BLOCK_PID_FILE DWM_TEST_FEH_LOADABLE_COUNT_FILE DWM_TEST_WALLPAPER_MONITOR_COUNT
+rm -r -- "$wallpaper_dir/many"
+run_helper session-apply
 
 status=$(run_helper status)
 grep -Fqx $'wallpaper-protocol\t1\t0' <<<"$status"
@@ -754,7 +795,7 @@ fi
 
 # If the exact baseline becomes undecodable during a preview, rollback falls
 # back to another loadable default instead of leaving the preview live.
-fallback=$work/fallback.png
+fallback=$wallpaper_dir/fallback.png
 printf 'fallback image\n' >"$fallback"
 export DWM_TEST_DEFAULT_CANDIDATE=$first
 run_helper preview unreadable-exact-baseline 20 "$second" fill >/dev/null
@@ -1603,6 +1644,7 @@ DISPLAY=:915 HOME=$home XDG_CONFIG_HOME=$config_home XDG_STATE_HOME=$state_home 
 	DWM_TEST_FEH_LOG=$log DWM_TEST_FIND_LOG=$find_log PATH="$bin_dir:$PATH" \
 	"$helper" status >/dev/null
 test ! -e "$find_log"
+rm -f -- "$bin_dir/find"
 
 export DWM_TEST_FEH_FAIL_ALL=1
 if run_helper session-apply >"$work/session-failure.out" 2>"$work/session-failure.err"; then
