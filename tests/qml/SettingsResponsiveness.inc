@@ -1,5 +1,5 @@
     // Runs inside an isolated copy of the production ShellRoot.
-    property int responseStage: 0
+    property int responseStage: -4
     property int scrollFrames: 0
     property real scrollStartY: 0
     property var scrollPane: null
@@ -22,16 +22,84 @@
     function responsePaneItems() {
         return responseItems(settingsWindow.contentItem, item => /^(Display|Input|Network|Bluetooth|Audio|Power|Defaults|Appearance|System)SettingsPane_QML/.test(String(item)));
     }
+    function setTypographyScale(scale) {
+        const token = scale === 1 ? "1.0" : scale.toString();
+        appearanceModel.personalizationSelections = {
+            "font": {state: "available", value: "Noto Sans 11", option: "Noto Sans"},
+            "text-size": {state: "available", value: token, option: token}
+        };
+        appearanceModel.applySharedTypography();
+    }
+    function checkPanelTypography() {
+        const panel = root.defaultPanelWindow;
+        if (!panel || Math.abs(panel.height - Theme.panelHeight) > 1) return false;
+        const contents = root.responseItems(panel.contentItem, item => item.visible
+            && (item.text !== undefined || /Image/.test(String(item))));
+        root.responseCheck(contents.length > 0, "Panel typography check has visible content");
+        for (const item of contents) {
+            const position = item.mapToItem(panel.contentItem, 0, 0);
+            root.responseCheck(position.y >= -1 && position.y + item.height <= panel.height + 1,
+                "Panel content fits at scale " + Theme.requestedFontScale + ": " + item);
+        }
+        return true;
+    }
     Timer {
         interval: 50
         running: true
         repeat: true
         onTriggered: {
-            if (root.responseStage === 0) {
+            if (root.responseStage === -4) {
+                root.setTypographyScale(0.75);
+                root.responseStage++;
+            } else if (root.responseStage === -3) {
+                if (root.checkPanelTypography()) root.responseStage++;
+            } else if (root.responseStage === -2) {
+                root.setTypographyScale(1.0);
+                root.responseStage++;
+            } else if (root.responseStage === -1) {
+                if (root.checkPanelTypography()) root.responseStage++;
+            } else if (root.responseStage === 0) {
                 console.info("Settings measurement: closed panes=" + root.responsePaneItems().length
                     + " items=" + root.responseItems(settingsWindow.contentItem, () => true).length
                     + " startup_ms=" + (Date.now() - root.responseStarted));
                 root.responseCheck(root.responsePaneItems().length === 0, "Closed startup creates no panes");
+                appearanceModel.personalizationSelections = {
+                    "font": {state: "available", value: "Noto Sans,  11", option: "Noto Sans"},
+                    "text-size": {state: "available", value: "2.0", option: "2.0"}
+                };
+                appearanceModel.applySharedTypography();
+                root.responseCheck(Theme.fontFamily === "Noto Sans" && Math.abs(Theme.fontScale * Theme.nativeScale - 2) < 0.01,
+                    "Shared desktop typography reaches the shell at 200 percent");
+                root.responseCheck(Theme.controlHeight >= Theme.inputFontSize,
+                    "Controls accommodate the shared text size");
+                appearanceModel.personalizationSelections = {};
+                appearanceModel.applySharedTypography();
+                root.responseCheck(Math.abs(Theme.fontScale * Theme.nativeScale - 2) < 0.01,
+                    "A transient provider failure preserves the last valid desktop scale");
+                for (const scale of [0.75, 1.0]) {
+                    appearanceModel.personalizationSelections = {
+                        "font": {state: "available", value: "Noto Sans 11", option: "Noto Sans"},
+                        "text-size": {state: "available", value: scale.toString(), option: scale.toString()}
+                    };
+                    appearanceModel.applySharedTypography();
+                    const expectedPixels = Math.max(10, Math.round(13 * scale));
+                    root.responseCheck(Math.abs(Theme.fontBodySize * Theme.nativeScale - expectedPixels)
+                            <= Theme.nativeScale / 2 + 0.01,
+                        "Font minimums are compensated at " + scale);
+                    root.responseCheck(Theme.pillHeight <= Theme.panelHeight
+                            && Theme.trayItemSize <= Theme.panelHeight
+                            && Theme.scaledSize(25.2) <= Theme.panelHeight
+                            && Theme.scaledFontSize(14 * 1.5, 8) <= Theme.panelHeight,
+                        "Panel contents fit at " + scale);
+                }
+                appearanceModel.personalizationSelections = {
+                    "font": {state: "available", value: "Sans 10", option: "follow-system"},
+                    "text-size": {state: "available", value: "1.0", option: "follow-system"}
+                };
+                appearanceModel.applySharedTypography();
+                root.responseCheck(Theme.fontFamily === "Sans" && Theme.fontScale === 1
+                    && !Theme.desktopTypography,
+                    "Reset follows the same system typography in the shell");
                 settingsModel.openWindow();
                 root.responseStarted = Date.now();
                 root.responseStage = 1;
@@ -88,6 +156,21 @@
                 root.responseCheck(root.scrollPane !== undefined, "Appearance scroll surface is available");
                 root.responseStage = 13;
             } else if (root.responseStage === 13) {
+                const choices = root.responseItems(root.scrollPane,
+                    item => item.capability !== undefined);
+                root.responseCheck(choices.filter(item => item.capability === "font").length === 1
+                    && choices.filter(item => item.capability === "text-size").length === 1,
+                    "Appearance offers exactly one font and one text-size control");
+                const fontChoice = choices.find(item => item.capability === "font");
+                root.responseCheck(fontChoice.candidateAvailable("An installed family outside the suggestions")
+                    && appearanceModel.personalizationCandidateAvailable("font", "An installed family outside the suggestions")
+                    && !fontChoice.candidateAvailable("Invalid\nfont"),
+                    "Manual font entry is preserved without accepting malformed fields");
+                root.responseCheck(!choices.some(item => item.capability === "gtk" || item.capability === "qt"),
+                    "Toolkit overrides are absent from Appearance");
+                root.responseCheck(root.responseItems(root.scrollPane,
+                    item => item.text === "Application status" || item.text === "Keyboard and pointer access").length === 0,
+                    "Diagnostic status summaries are absent from Appearance");
                 root.responseCheck(root.scrollPane.contentHeight > root.scrollPane.height, "Appearance has scrollable content");
                 root.scrollPane.contentY = 0;
                 root.scrollPane.flick(1200, 1600);

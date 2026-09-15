@@ -19,8 +19,6 @@ Flickable {
     property string selectedThemeId: ""
     property string selectedWallpaperPath: ""
     property string selectedWallpaperFit: "fill"
-    property string selectedFontFamily: "MesloLGS Nerd Font Mono"
-    property real selectedFontScale: 1.0
     readonly property var selectedTheme: root.appearanceModel.themeById(root.selectedThemeId)
     readonly property bool appearanceBusy: root.appearanceModel.busy
         || root.appearanceModel.wallpaperBusy || root.appearanceModel.fontBusy
@@ -42,6 +40,7 @@ Flickable {
         && root.appearanceModel.recoveryState === "none"
     readonly property var accessibilityCapabilities: root.capabilities.filter(function(capability) {
         return capability.id.indexOf("accessibility-") === 0
+            && capability.id !== "accessibility-input"
             && capability.id !== "accessibility-text-scale"
             && capability.id !== "accessibility-contrast"
             && capability.id !== "accessibility-reduced-motion"
@@ -135,13 +134,6 @@ Flickable {
         root.ensureWallpaperSelection();
     }
 
-    function syncFontSelection() {
-        if (root.appearanceModel.fontFamily.length > 0)
-            root.selectedFontFamily = root.appearanceModel.fontFamily;
-        if (root.appearanceModel.fontScale >= 0.8 && root.appearanceModel.fontScale <= 1.5)
-            root.selectedFontScale = root.appearanceModel.fontScale;
-    }
-
     function followLabel(capability, option) {
         if (option === "follow-theme") return "Following the selected DWM theme";
         if (option === "follow-system") return "Following the system setting";
@@ -152,12 +144,10 @@ Flickable {
     onVisibleChanged: if (visible) {
         root.ensureSelection();
         root.ensureWallpaperSelection();
-        root.syncFontSelection();
     }
     Component.onCompleted: {
         root.ensureSelection();
         root.ensureWallpaperSelection();
-        root.syncFontSelection();
     }
 
     Connections {
@@ -170,8 +160,6 @@ Flickable {
                     && root.appearanceModel.validWallpaperFit(root.appearanceModel.wallpaperFit))
                 root.selectedWallpaperFit = root.appearanceModel.wallpaperFit;
         }
-        function onFontFamilyChanged() { root.syncFontSelection(); }
-        function onFontScaleChanged() { root.syncFontSelection(); }
     }
 
     component StatusCard: Rectangle {
@@ -351,6 +339,8 @@ Flickable {
         spacing: Theme.spacingSm
 
         function candidateAvailable(value) {
+            if (personalizationControl.capability === "font")
+                return root.appearanceModel.validInventoryField(value, false);
             for (const candidate of personalizationControl.candidates) {
                 if (candidate.token === value && candidate.state === "available") return true;
             }
@@ -367,7 +357,8 @@ Flickable {
             personalizationControl.selectionDirty = false;
             let preferred = personalizationControl.selection.option;
             if (personalizationControl.capability === "font" && preferred === "follow-system")
-                preferred = personalizationControl.inventorySelection.value;
+                preferred = root.appearanceModel.fontDescriptionFamily(
+                    personalizationControl.selection.value);
             if (preferred === "follow-system" || preferred === "follow-theme"
                     || preferred === "unknown") preferred = personalizationControl.selection.value;
             if (personalizationControl.candidateAvailable(preferred)) {
@@ -393,6 +384,35 @@ Flickable {
             detail: personalizationControl.effectiveDetail + " / "
                 + root.followLabel(personalizationControl.capability,
                     personalizationControl.selection.option)
+        }
+
+        Rectangle {
+            visible: personalizationControl.capability === "font"
+            Layout.fillWidth: true
+            Layout.preferredHeight: Math.max(Theme.controlHeight, fontInput.implicitHeight + Theme.scaledSize(14))
+            color: Theme.controlNormalFill
+            border.color: fontInput.activeFocus ? Theme.controlFocusBorder : Theme.controlNormalBorder
+            border.width: Theme.controlBorderWidth
+            radius: Theme.controlRadius
+
+            TextInput {
+                id: fontInput
+                anchors.fill: parent
+                anchors.margins: Theme.scaledSize(7)
+                text: personalizationControl.selectedValue
+                color: Theme.textStrong
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontBodySize
+                activeFocusOnTab: true
+                selectByMouse: true
+                verticalAlignment: TextInput.AlignVCenter
+                Accessible.name: "Font family"
+                Accessible.description: "Enter an installed font family or choose a suggestion below"
+                onTextEdited: {
+                    personalizationControl.selectedValue = text.trim();
+                    personalizationControl.selectionDirty = true;
+                }
+            }
         }
 
         Flow {
@@ -850,90 +870,26 @@ Flickable {
 
         SectionLabel { label: "Font and text size" }
 
-        StatusCard {
-            label: "Managed shell font"
-            statusState: root.appearanceModel.fontState
-            value: Math.round(root.appearanceModel.fontScale * 100) + "%"
-            detail: root.appearanceModel.fontDetail + " / " + root.appearanceModel.fontFamily
-        }
-
-        StatusCard {
-            visible: root.appearanceModel.fontProviderState !== "available"
-                || !root.appearanceModel.fontMutationReady
-            label: "Font changes unavailable"
-            statusState: root.appearanceModel.fontProviderState === "available"
-                ? "restricted" : root.appearanceModel.fontProviderState
-            value: "Protected"
-            detail: root.appearanceModel.fontProviderState !== "available"
-                ? root.appearanceModel.fontProviderDetail
-                : "The installed font helper cannot safely update user state"
-        }
-
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredHeight: Math.max(Theme.controlHeight, fontInput.implicitHeight + 14)
-            color: Theme.controlNormalFill
-            border.color: fontInput.activeFocus ? Theme.controlFocusBorder : Theme.controlNormalBorder
-            border.width: fontInput.activeFocus ? Theme.controlFocusBorderWidth : Theme.controlBorderWidth
-            radius: Theme.controlRadius
-
-            TextInput {
-                id: fontInput
-                anchors.fill: parent
-                anchors.margins: 7
-                text: root.selectedFontFamily
-                color: Theme.textStrong
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontBodySize
-                activeFocusOnTab: true
-                selectByMouse: true
-                verticalAlignment: TextInput.AlignVCenter
-                onTextEdited: root.selectedFontFamily = text
-            }
-        }
-
         UiText {
             Layout.fillWidth: true
-            text: "Enter an exact installed Fontconfig family. Suggestions are bounded to the first 24 discovered families."
+            text: "Choose one font and scale for the shell and desktop applications. Some applications need to be reopened to pick up changes."
             color: Theme.menuMutedText
             wrapMode: Text.WordWrap
         }
 
-        Flow {
-            Layout.fillWidth: true
-            spacing: Theme.spacingSm
-
-            Repeater {
-                model: root.appearanceModel.fontCandidates.slice(0, 24)
-                delegate: ShellButton {
-                    id: fontButton
-                    required property var modelData
-                    label: fontButton.modelData.label
-                        + (fontButton.modelData.token === root.selectedFontFamily ? " / Selected" : "")
-                    enabled: !root.fontControlsBusy && fontButton.modelData.state === "available"
-                    onActivated: root.selectedFontFamily = fontButton.modelData.token
-                }
-            }
+        PersonalizationControl {
+            capability: "font"
+            title: "Font"
+            resetLabel: "Follow system font"
+            candidates: root.appearanceModel.personalizationCandidates("font", 24)
         }
 
-        SectionLabel { label: "Text scale" }
-
-        Flow {
-            Layout.fillWidth: true
-            spacing: Theme.spacingSm
-
-            Repeater {
-                model: [0.8, 0.9, 1.0, 1.1, 1.25, 1.5]
-                delegate: ShellButton {
-                    id: scaleButton
-                    required property real modelData
-                    label: Math.round(scaleButton.modelData * 100) + "%"
-                        + (Math.abs(scaleButton.modelData - root.selectedFontScale) < 0.001
-                            ? " / Selected" : "")
-                    enabled: !root.fontControlsBusy
-                    onActivated: root.selectedFontScale = scaleButton.modelData
-                }
-            }
+        PersonalizationControl {
+            capability: "text-size"
+            title: "Text size"
+            resetLabel: "Follow system scale"
+            candidates: root.appearanceModel.desktopTextScaleCandidates
+            capabilityGate: root.textScaleCapability
         }
 
         Rectangle {
@@ -993,33 +949,6 @@ Flickable {
             }
         }
 
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: Theme.spacingSm
-            ShellButton {
-                label: "Preview font for 30 seconds"
-                enabled: root.appearanceModel.fontMutationReady
-                    && root.selectedFontFamily.trim().length > 0 && !root.fontControlsBusy
-                    && root.appearanceModel.fontPreviewState === "none"
-                onActivated: root.appearanceModel.previewFont(
-                    root.selectedFontFamily.trim(), root.selectedFontScale)
-            }
-            ShellButton {
-                label: "Apply font"
-                enabled: root.appearanceModel.fontMutationReady
-                    && root.selectedFontFamily.trim().length > 0 && !root.fontControlsBusy
-                    && root.appearanceModel.fontPreviewState === "none"
-                onActivated: root.appearanceModel.applyFont(
-                    root.selectedFontFamily.trim(), root.selectedFontScale)
-            }
-            ShellButton {
-                label: "Reset font"
-                enabled: root.appearanceModel.fontMutationReady && !root.fontControlsBusy
-                    && root.appearanceModel.fontPreviewState === "none"
-                onActivated: root.appearanceModel.resetFont()
-            }
-        }
-
         SectionLabel { label: "Desktop applications" }
 
         StatusCard {
@@ -1057,20 +986,6 @@ Flickable {
             }
         }
 
-        UiText {
-            Layout.fillWidth: true
-            text: "These choices affect GTK, Qt, and other desktop applications. The managed shell font above remains independent so icon glyphs and panel geometry stay stable."
-            color: Theme.menuMutedText
-            wrapMode: Text.WordWrap
-        }
-
-        PersonalizationControl {
-            capability: "font"
-            title: "Application font"
-            resetLabel: "Follow system font"
-            candidates: root.appearanceModel.personalizationCandidates("font", 24)
-        }
-
         PersonalizationControl {
             capability: "cursor"
             title: "Cursor theme"
@@ -1085,27 +1000,11 @@ Flickable {
             candidates: root.appearanceModel.personalizationCandidates("icon", 24)
         }
 
-        PersonalizationControl {
-            capability: "gtk"
-            title: "GTK theme"
-            resetLabel: "Follow DWM theme"
-            candidates: root.appearanceModel.personalizationCandidates("gtk", 24)
-            advancedEditor: true
-        }
-
-        PersonalizationControl {
-            capability: "qt"
-            title: "Qt platform theme"
-            resetLabel: "Follow DWM theme"
-            candidates: root.appearanceModel.personalizationCandidates("qt", 24)
-            advancedEditor: true
-        }
-
         SectionLabel { label: "Accessibility" }
 
         UiText {
             Layout.fillWidth: true
-            text: "Managed-shell contrast and motion choices apply immediately and persist for future sessions. Application text scaling remains independently owned by the desktop personalization provider."
+            text: "Contrast and motion choices apply immediately and are saved for future sessions."
             color: Theme.menuMutedText
             wrapMode: Text.WordWrap
         }
@@ -1166,14 +1065,6 @@ Flickable {
                     && !root.accessibilityModel.busy
                 onActivated: root.accessibilityModel.reset()
             }
-        }
-
-        PersonalizationControl {
-            capability: "text-size"
-            title: "Application text scale"
-            resetLabel: "Follow system scale"
-            candidates: root.appearanceModel.desktopTextScaleCandidates
-            capabilityGate: root.textScaleCapability
         }
 
         SectionLabel { label: "Notifications" }
@@ -1389,22 +1280,6 @@ Flickable {
         }
 
         PicomSettingsPane { model: root.appearanceModel.picom }
-
-        SectionLabel { label: "Application status" }
-
-        Repeater {
-            model: root.appearanceModel.integrations
-            delegate: StatusCard {
-                id: integrationCard
-                required property var modelData
-                label: root.displayName(integrationCard.modelData.id)
-                statusState: integrationCard.modelData.state
-                value: integrationCard.modelData.state
-                detail: integrationCard.modelData.detail
-                    + (integrationCard.modelData.value.length > 0
-                        ? " / " + integrationCard.modelData.value : "")
-            }
-        }
 
         SectionLabel {
             visible: root.additionalCapabilities.length > 0

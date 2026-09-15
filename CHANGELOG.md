@@ -8,6 +8,10 @@ versions from `config.mk`.
 
 ### Changed
 
+- Simplify Appearance to one desktop font and text-size control shared with the
+  shell. Hide duplicate GTK/Qt selectors, the keyboard/pointer access summary,
+  and application status cards. Keep errors and recovery actions visible.
+
 - Reduce hosted CI to one Fedora build and desktop smoke job. Check managed
   Quickshell startup, its panel, launcher keyboard interaction, and application
   launch. Skip documentation-only changes and keep extended validation local.

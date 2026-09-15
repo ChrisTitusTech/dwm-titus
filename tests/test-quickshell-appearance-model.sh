@@ -96,7 +96,7 @@ for mutation_function in startPreview applyTheme resetTheme; do
 done
 grep -Fq 'Theme.applyAppearanceColors(colors, darkMode)' "$model"
 grep -Fq 'watchChanges: true' "$model"
-test "$(grep -Fc 'watchChanges: true' "$model")" -eq 5
+test "$(grep -Fc 'watchChanges: true' "$model")" -eq 6
 grep -Fq 'model: root.integrationWatchPaths' "$model"
 grep -Fq 'Commands.settingsAppearanceCommand("inventory", [])' "$model"
 if grep -Fq 'Commands.checkedCommand(Commands.settingsAppearanceCommand("inventory", []))' \
@@ -192,7 +192,7 @@ fi
 grep -Fq 'function repairPersonalization()' "$model"
 grep -Fq 'root.personalizationActionKind === "repair")' "$model"
 grep -Fq 'Commands.settingsPersonalizationCommand("repair", [])' "$model"
-grep -Fq 'preferred = personalizationControl.inventorySelection.value;' "$pane"
+grep -Fq 'preferred = root.appearanceModel.fontDescriptionFamily(' "$pane"
 grep -Fq 'personalizationControl.selectedValue = "";' "$pane"
 grep -Fq 'property bool selectionDirty: false' "$pane"
 grep -Fq 'personalizationControl.selectionDirty && !savedOptionChanged' "$pane"
@@ -205,9 +205,8 @@ if grep -Fq 'personalizationControl.candidates[0].token' "$pane"; then
 fi
 grep -Fq 'statusState: personalizationControl.effectiveState' "$pane"
 grep -Fq 'detail: personalizationControl.effectiveDetail + " / "' "$pane"
-test "$(grep -Fc 'personalizationCandidates(' "$pane")" -eq 5
-if grep -Eq '(cursor|icon|gtk|qt)Candidates[.]slice[(]0, 24[)]' "$pane" ||
-	[ "$(grep -Fc 'fontCandidates.slice(0, 24)' "$pane")" -ne 1 ]; then
+test "$(grep -Fc 'personalizationCandidates(' "$pane")" -eq 3
+if grep -Eq '(font|cursor|icon|gtk|qt)Candidates[.]slice[(]0, 24[)]' "$pane"; then
 	printf 'Desktop personalization still truncates active choices before selection\n' >&2
 	exit 1
 fi
@@ -224,7 +223,6 @@ if printf '%s\n' "$application_state" | grep -Fq 'personalizationMutationState';
 fi
 grep -Fq 'root.personalizationActionKind === "delegate")' "$model"
 grep -Fq 'if (!root.settingsVisible) return;' "$model"
-grep -Fq 'personalizationStatusProcess.running = false;' "$model"
 grep -Fq 'root.configHome + "/dwm-titus/personalization.conf"' "$model"
 grep -Fq 'root.personalizationMutationState !== "available"' "$model"
 grep -Fq 'action === "apply" && !root.personalizationApplyReady(capability)' "$model"
@@ -252,7 +250,7 @@ grep -Fq 'Commands.checkedCommand(Commands.settingsFontCommand(action, args))' "
 grep -Fq 'function previewFont(family, scale)' "$model"
 grep -Fq 'function applyFont(family, scale)' "$model"
 grep -Fq 'function resetFont()' "$model"
-grep -Fq 'Theme.applyFontPreferences(root.fontFamily, root.fontScale)' "$model"
+grep -Fq 'root.applySharedTypography();' "$model"
 grep -Fq 'root.fontStatusRetryAttempts = 0;' "$model"
 grep -Fq 'root.fontStatusRetryAttempts < 3' "$model"
 grep -Fq 'fontStatusRetryTimer.restart();' "$model"
@@ -387,10 +385,10 @@ grep -Fq 'Theme preview completed outside Settings' "$model"
 grep -Fq 'function applyAppearanceColors(colors, darkMode)' "$theme"
 grep -Fq 'function applyFontPreferences(family, scale)' "$theme"
 grep -Fq 'readonly property string iconFontFamily: "MesloLGS Nerd Font Mono"' "$theme"
-grep -Fq 'readonly property int panelIconFontSize: 13' "$theme"
-grep -Fq 'font.pixelSize: Theme.panelIconFontSize + 1' "$icon_text"
-test "$(grep -Fc 'Theme.panelIconFontSize' "$panel")" -eq 5
-grep -Fq 'Math.round(13 * fontScale)' "$theme"
+grep -Fq 'readonly property int panelIconFontSize: scaledFontSize(14, 8)' "$theme"
+grep -Fq 'font.pixelSize: Theme.panelIconFontSize' "$icon_text"
+test "$(grep -Fc 'Theme.scaledFontSize(14 *' "$panel")" -eq 5
+grep -Fq 'scaledFontSize(13, 10)' "$theme"
 test "$(grep -Ec 'font\.pixelSize: Theme\.(bodyFontSize|inputFontSize)' "$display_pane")" -eq 14
 test "$(grep -Ec 'font\.pixelSize: Theme\.(bodyFontSize|inputFontSize)' "$input_pane")" -eq 5
 grep -Fq 'font.pixelSize: Theme.inputFontSize' "$network_pane"
@@ -418,14 +416,11 @@ grep -Fq '|| root.appearanceModel.wallpaperPreviewActionBusy' "$pane"
 grep -Fq 'enabled: !root.wallpaperPreviewControlsBusy' "$pane"
 grep -Fq '? !root.wallpaperPreviewControlsBusy : !root.wallpaperControlsBusy' "$pane"
 grep -Fq 'label: "Reset wallpaper"' "$pane"
-grep -Fq 'label: "Managed shell font"' "$pane"
 grep -Fq 'label: "Desktop applications"' "$pane"
 grep -Fq 'component PersonalizationControl: ColumnLayout' "$pane"
 grep -Fq 'capability: "text-size"' "$pane"
 grep -Fq 'capability: "cursor"' "$pane"
 grep -Fq 'capability: "icon"' "$pane"
-grep -Fq 'capability: "gtk"' "$pane"
-grep -Fq 'capability: "qt"' "$pane"
 grep -Fq 'root.appearanceModel.applyPersonalization(' "$pane"
 grep -Fq 'root.appearanceModel.resetPersonalization(' "$pane"
 grep -Fq 'root.appearanceModel.delegatePersonalization(' "$pane"
@@ -437,12 +432,9 @@ grep -Fq '&& !root.appearanceModel.personalizationStatusBusy' "$pane"
 test "$(grep -Fc 'enabled: root.personalizationActionsReady' "$pane")" -eq 2
 grep -Fq 'readonly property bool personalizationDelegatesReady:' "$pane"
 grep -Fq 'enabled: root.personalizationDelegatesReady && !root.appearanceBusy' "$pane"
-grep -Fq 'The managed shell font above remains independent' "$pane"
-grep -Fq 'Preview font for 30 seconds' "$pane"
 grep -Fq 'onActivated: root.appearanceModel.keepFontPreview()' "$pane"
 grep -Fq 'onActivated: root.appearanceModel.revertFontPreview()' "$pane"
 grep -Fq 'onActivated: root.appearanceModel.abandonFontPreview()' "$pane"
-grep -Fq 'label: "Reset font"' "$pane"
 grep -Fq 'label: "Repair wallpaper state"' "$pane"
 test "$(grep -Fc 'root.appearanceModel.wallpaperPreviewToken.length > 0' "$pane")" -eq 2
 grep -Fq 'root.appearanceModel.wallpaperResetReady' "$pane"
@@ -475,7 +467,6 @@ test "$(grep -Fc '&& personalizationControl.gateAllowsActions' "$pane")" -eq 2
 grep -Fq 'enabled: personalizationControl.gateAllowsActions && !root.appearanceBusy' "$pane"
 grep -Fq 'model: root.accessibilityCapabilities' "$pane"
 grep -Fq 'model: root.additionalCapabilities' "$pane"
-grep -Fq 'text: "Managed-shell contrast and motion choices apply immediately' "$pane"
 grep -Fq '|| !root.accessibilityModel.mutationReady' "$pane"
 grep -Fq ': root.accessibilityModel.mutationState' "$pane"
 grep -Fq ': root.accessibilityModel.mutationDetail' "$pane"
@@ -495,7 +486,6 @@ grep -Fq 'onActivated: root.appearanceModel.revertPreview()' "$pane"
 grep -Fq 'onActivated: root.appearanceModel.abandonPreview()' "$pane"
 grep -Fq 'onActivated: root.appearanceModel.recover()' "$pane"
 grep -Fq 'Selected appearance is only partially applied' "$pane"
-grep -Fq 'root.appearanceModel.integrations' "$pane"
 grep -Fq 'root.appearanceModel.errors' "$pane"
 grep -Fq 'function appearanceIntegrationState(integrationId: string): string' "$shell_qml"
 grep -Fq 'function appearanceWallpaperReconcile(): void' "$shell_qml"
