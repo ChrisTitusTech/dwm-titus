@@ -8,6 +8,9 @@ versions from `config.mk`.
 
 ### Changed
 
+- Load Appearance wallpaper choices using filenames and metadata, without
+  decoding the image collection during status or readiness checks.
+
 - Simplify Appearance to one desktop font and text-size control shared with the
   shell. Hide duplicate GTK/Qt selectors, the keyboard/pointer access summary,
   and application status cards. Keep errors and recovery actions visible.

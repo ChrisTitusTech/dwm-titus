@@ -301,44 +301,13 @@ grep -Fqx $'selection\tpartial\t\tfill\tNo managed wallpaper selection; session 
 grep -Fqx $'mutation\tavailable\tWallpaper preview and user-session changes are available' <<<"$status"
 run_helper mutation-ready
 
-# The readiness probe consumes its bounded Feh scan before returning so a
-# decoder that emits one candidate and then stalls cannot survive the probe.
+# Opening Appearance must never start a decoder, even one that would stall.
 loadable_block_pid_file=$work/loadable-block.pid
 export DWM_TEST_FEH_LOADABLE_BLOCK_PID_FILE=$loadable_block_pid_file
 run_helper mutation-ready
+run_helper status --read-only >/dev/null
 unset DWM_TEST_FEH_LOADABLE_BLOCK_PID_FILE
-loadable_block_pid=$(cat "$loadable_block_pid_file")
-if process_running "$loadable_block_pid"; then
-	printf 'Wallpaper readiness probe leaked its bounded Feh scan\n' >&2
-	exit 1
-fi
-
-# Terminating a read-only status request also terminates its decoder scan so
-# closing the Appearance pane cannot leave recursive wallpaper work behind.
-loadable_cancel_pid_file=$work/loadable-cancel.pid
-export DWM_TEST_FEH_LOADABLE_BLOCK_PID_FILE=$loadable_cancel_pid_file
-DISPLAY=:915 HOME=$home XDG_CONFIG_HOME=$config_home XDG_STATE_HOME=$state_home \
-	XDG_RUNTIME_DIR=$runtime DWM_APPEARANCE_WALLPAPER_DIR=$wallpaper_dir \
-	DWM_TEST_FEH_LOG=$log PATH="$bin_dir:$PATH" "$helper" status --read-only \
-	>"$work/cancelled-status.out" 2>"$work/cancelled-status.err" &
-cancelled_status_pid=$!
-for _ in {1..100}; do
-	[[ ! -s $loadable_cancel_pid_file ]] || break
-	sleep 0.01
-done
-[[ -s $loadable_cancel_pid_file ]]
-loadable_cancel_pid=$(cat "$loadable_cancel_pid_file")
-kill -TERM "$cancelled_status_pid"
-wait "$cancelled_status_pid" || [[ $? -eq 143 ]]
-unset DWM_TEST_FEH_LOADABLE_BLOCK_PID_FILE
-for _ in {1..100}; do
-	process_running "$loadable_cancel_pid" || break
-	sleep 0.01
-done
-if process_running "$loadable_cancel_pid"; then
-	printf 'Terminated wallpaper status left its Feh scan running\n' >&2
-	exit 1
-fi
+test ! -e "$loadable_block_pid_file"
 
 # Rollback readiness must continue past an invalid extension-matching entry to
 # a later usable default image.
@@ -374,14 +343,14 @@ grep -Fqx 'arg=--' "$log"
 grep -Fqx "arg=$first" "$log"
 test ! -e "$home/.fehbg"
 
-# Read-only status probes the configured selection and fallback inventory in a
-# single bounded Feh call, leaving headroom for the outer Appearance provider.
+# Read-only status lists file metadata without decoding the configured image
+# or any of the fallback inventory.
 loadable_count_file=$work/loadable-count
 printf '0\n' >"$loadable_count_file"
 export DWM_TEST_FEH_LOADABLE_COUNT_FILE=$loadable_count_file
 run_helper status --read-only >/dev/null
 unset DWM_TEST_FEH_LOADABLE_COUNT_FILE
-grep -Fqx '1' "$loadable_count_file"
+grep -Fqx '0' "$loadable_count_file"
 
 : >"$log"
 run_helper session-apply
@@ -525,7 +494,7 @@ done
 test -f "$state_home/dwm-titus/appearance/wallpaper/selection.owner"
 run_helper session-apply
 ready_status=$(run_helper status --read-only)
-grep -Fqx $'selection\tavailable\t'"$second"$'\ttile\tManaged wallpaper selection is ready for this and future sessions' \
+grep -Fqx $'selection\tavailable\t'"$second"$'\ttile\tManaged wallpaper file is readable; image decoding is checked when applied' \
 	<<<"$ready_status"
 test ! -e "$state_home/dwm-titus/appearance/wallpaper/selection.failed"
 test ! -e "$state_home/dwm-titus/appearance/wallpaper/selection.owner"
@@ -544,12 +513,12 @@ run_helper keep recovered-keep >/dev/null
 test ! -e "$state_home/dwm-titus/appearance/wallpaper/selection.failed"
 test ! -e "$state_home/dwm-titus/appearance/wallpaper/selection.owner"
 
-# Read-only state verifies Feh loadability rather than treating a readable file
-# with a supported suffix as a usable saved selection.
+# Read-only state reports metadata availability; apply and preview validate
+# decoding before committing a selection or replacing the rollback baseline.
 export DWM_TEST_FEH_FAIL_PATH=$second
 undecodable_status=$(run_helper status --read-only)
 unset DWM_TEST_FEH_FAIL_PATH
-grep -Fqx $'selection\tpartial\t'"$second"$'\ttile\tConfigured wallpaper is missing or undecodable; session startup falls back to the legacy random wallpaper' \
+grep -Fqx $'selection\tavailable\t'"$second"$'\ttile\tManaged wallpaper file is readable; image decoding is checked when applied' \
 	<<<"$undecodable_status"
 test ! -e "$state_home/dwm-titus/appearance/wallpaper/preview.current"
 for _ in {1..40}; do
@@ -719,7 +688,7 @@ printf 'second image\n' >"$second"
 
 rm -f "$second"
 missing_status=$(run_helper status)
-grep -Fqx $'selection\tpartial\t'"$second"$'\tcenter\tConfigured wallpaper is missing or undecodable; session startup falls back to the legacy random wallpaper' \
+grep -Fqx $'selection\tpartial\t'"$second"$'\tcenter\tConfigured wallpaper is missing or unreadable; session startup falls back to the legacy random wallpaper' \
 	<<<"$missing_status"
 : >"$log"
 mkdir -p "$wallpaper_dir/nested"
