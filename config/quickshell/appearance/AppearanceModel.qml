@@ -837,6 +837,7 @@ Scope {
         if (font && font.state === "available" && font.value.length > 0)
             root.desktopFontFamily = root.fontDescriptionFamily(font.value);
         if (scale && (scale.state === "available" || scale.state === "partial")
+                && (scale.option === "follow-system" || root.validDesktopTextScale(scale.option))
                 && isFinite(Number(scale.value)) && Number(scale.value) >= 0.75
                 && Number(scale.value) <= 2.0) {
             root.desktopFontScale = Number(scale.value);

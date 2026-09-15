@@ -1,5 +1,7 @@
     // Runs inside an isolated copy of the production ShellRoot.
     property int responseStage: -4
+    property var scaleNotificationPopup: null
+    property int scaleNotificationDismissed: -1
     property var scaleNetworkPopup: null
     property var scaleAudioPopup: null
     property var scaleRows: []
@@ -83,7 +85,7 @@
                 for (const scale of [0.75, 1.0]) {
                     appearanceModel.personalizationSelections = {
                         "font": {state: "available", value: "Noto Sans 11", option: "Noto Sans"},
-                        "text-size": {state: "available", value: scale.toString(), option: scale.toString()}
+                        "text-size": {state: "available", value: scale.toString(), option: scale === 1 ? "1.0" : scale.toString()}
                     };
                     appearanceModel.applySharedTypography();
                     const expectedPixels = Math.max(10, Math.round(13 * scale));
@@ -111,7 +113,13 @@
                 appearanceModel.applySharedTypography();
                 root.responseCheck(Theme.fontScale === 1.5 && !Theme.desktopTypography,
                     "System-follow honors non-default text size while preserving native DPI");
-                appearanceModel.personalizationSelections["text-size"].value = "1.0";
+                appearanceModel.personalizationSelections["text-size"] = {
+                    state: "partial", value: "1.0", option: "unknown"};
+                appearanceModel.applySharedTypography();
+                root.responseCheck(Theme.fontScale === 1.5 && !Theme.desktopTypography,
+                    "Unknown scale ownership preserves the last valid system DPI mode");
+                appearanceModel.personalizationSelections["text-size"] = {
+                    state: "available", value: "1.0", option: "follow-system"};
                 appearanceModel.applySharedTypography();
                 settingsModel.openWindow();
                 root.responseStarted = Date.now();
@@ -225,6 +233,13 @@
                     Theme.applyFontPreferences("Noto Sans", 2);
                     const launcher = Qt.createComponent("launcher/LauncherResultDelegate.qml");
                     const wifi = Qt.createComponent("network/NetworkWifiRow.qml");
+                    const notifications = Qt.createComponent("notifications/NotificationPopupWindow.qml");
+                    root.scaleNotificationPopup = notifications.createObject(root,
+                        {panelWindow: root.defaultPanelWindow, notificationModel: {
+                            notifications: [0, 1, 2, 3].map(key => ({key: key, appName: "Test application",
+                                summary: "Notification " + key, body: "A long notification body that wraps across several lines so the complete stack needs scrolling at large text sizes.",
+                                urgency: 1, urgencyName: "Normal", timeoutMs: 100000})),
+                            dismiss: key => { root.scaleNotificationDismissed = key; }, expire: () => {}}});
                     const network = Qt.createComponent("network/NetworkWindow.qml");
                     root.scaleNetworkPopup = network.createObject(root, {panelWindow: root.defaultPanelWindow,
                         networkModel: {visible: true, busy: false, actionsAvailable: true, editorAvailable: false,
@@ -301,6 +316,22 @@
                 root.responseCheck(actionPosition.y >= -1
                     && actionPosition.y + connect.height <= passwordViewport.height + 1,
                     "Wi-Fi Connect action is reachable at maximum scale");
+                const notificationViewport = root.responseItems(root.scaleNotificationPopup.contentItem,
+                    item => item.objectName === "notificationViewport")[0];
+                root.responseCheck(root.scaleNotificationPopup.height + Theme.panelHeight
+                    <= root.defaultPanelWindow.screen.height && notificationViewport.contentHeight > notificationViewport.height,
+                    "Four large notifications stay within the screen and scroll");
+                notificationViewport.contentY = notificationViewport.contentHeight - notificationViewport.height;
+                const lastCard = root.responseItems(root.scaleNotificationPopup.contentItem,
+                    item => item.item !== undefined && item.item.key === 3)[0];
+                const dismissText = root.responseItems(lastCard, item => item.text === "x")[0];
+                const dismissPosition = dismissText.mapToItem(notificationViewport, 0, 0);
+                root.responseCheck(dismissPosition.y >= -1
+                    && dismissPosition.y + dismissText.height <= notificationViewport.height + 1,
+                    "The final notification dismiss control is reachable");
+                lastCard.dismiss();
+                root.responseCheck(root.scaleNotificationDismissed === 3, "Final notification dismiss reaches its model");
+                root.scaleNotificationPopup.destroy();
                 root.scaleNetworkPopup.destroy();
                 root.scaleAudioPopup.destroy();
                 for (const row of root.scaleRows) row.destroy();
