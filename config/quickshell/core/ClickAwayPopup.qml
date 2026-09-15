@@ -33,18 +33,32 @@ PopupWindow {
         onClicked: root.dismissed()
     }
 
-    Item {
-        id: popupHost
+    Flickable {
+        id: viewport
+        objectName: "popupViewport"
 
-        x: root.popupX
-        y: root.popupY - root.panelOffset
-        width: root.popupWidth
-        height: root.popupHeight
-        opacity: 1.0
+        x: Math.max(0, Math.min(root.popupX, root.width - width))
+        y: Math.max(0, Math.min(root.popupY - root.panelOffset, root.height - height))
+        width: Math.min(root.popupWidth, root.width)
+        height: Math.min(root.popupHeight, root.height)
+        contentWidth: root.popupWidth
+        contentHeight: root.popupHeight
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+        flickableDirection: Flickable.AutoFlickIfNeeded
         z: 1
+        onVisibleChanged: if (visible) { contentX = 0; contentY = 0; }
 
-        MouseArea {
-            anchors.fill: parent
+        Item {
+            id: popupHost
+
+            width: root.popupWidth
+            height: root.popupHeight
+            opacity: 1.0
+
+            MouseArea {
+                anchors.fill: parent
+            }
         }
     }
 }

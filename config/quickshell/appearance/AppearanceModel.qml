@@ -104,6 +104,9 @@ Scope {
     property string personalizationMutationDetail: "Desktop personalization changes have not been checked"
     property string personalizationRepairState: "unavailable"
     property string personalizationRepairDetail: "Personalization state does not need repair"
+    property string desktopFontFamily: ""
+    property real desktopFontScale: 0
+    property bool desktopFollowsSystemScale: false
     property var personalizationSelections: ({})
     property var personalizationActionReadiness: ({})
     property var personalizationDelegates: ({})
@@ -797,6 +800,7 @@ Scope {
         root.personalizationRepairState = repair.state;
         root.personalizationRepairDetail = repair.detail;
         root.personalizationSelections = selections;
+        root.applySharedTypography();
         root.personalizationActionReadiness = actionReadiness;
         root.personalizationDelegates = delegates;
         root.xsettingsWatchReady = xsettingsWatch.state === "available"
@@ -808,8 +812,45 @@ Scope {
         }
     }
 
+    // The desktop provider owns typography. Legacy font.conf is a startup
+    // fallback; transient failures retain the last valid desktop typography.
+    function fontDescriptionFamily(description) {
+        const family = description.replace(/,?\s+\d+(?:\.\d+)?$/, "").trim();
+        if (family === description.trim()) return family;
+        // Prefer the longest installed family so names containing style words
+        // remain intact while Pango suffixes such as "Bold Italic" are removed.
+        let matched = "";
+        for (const installed of Qt.fontFamilies()) {
+            if (family.toLowerCase() === installed.toLowerCase()) return installed;
+            if (family.toLowerCase().startsWith(installed.toLowerCase() + " ")
+                    && installed.length > matched.length
+                    && /^(?:(?:thin|ultra-?light|extra-?light|light|semi-?light|book|regular|normal|medium|semi-?bold|demi-?bold|bold|ultra-?bold|extra-?bold|heavy|black|italic|oblique|condensed|expanded)\s*)+$/i.test(
+                        family.slice(installed.length).trim()))
+                matched = installed;
+        }
+        return matched || family;
+    }
+
+    function applySharedTypography() {
+        const font = root.personalizationSelections.font;
+        const scale = root.personalizationSelections["text-size"];
+        if (font && font.state === "available" && font.value.length > 0)
+            root.desktopFontFamily = root.fontDescriptionFamily(font.value);
+        if (scale && (scale.state === "available" || scale.state === "partial")
+                && (scale.option === "follow-system" || root.validDesktopTextScale(scale.option))
+                && isFinite(Number(scale.value)) && Number(scale.value) >= 0.75
+                && Number(scale.value) <= 2.0) {
+            root.desktopFontScale = Number(scale.value);
+            root.desktopFollowsSystemScale = scale.option === "follow-system";
+        }
+        // System-follow leaves native DPI intact, including an existing Xft.dpi
+        // resource. Explicit choices supply an absolute desktop scale instead.
+        Theme.desktopTypography = root.desktopFontScale > 0 && !root.desktopFollowsSystemScale;
+        Theme.applyFontPreferences(root.desktopFontFamily || root.fontFamily,
+            root.desktopFontScale > 0 ? root.desktopFontScale : root.fontScale);
+    }
+
     function refreshPersonalizationStatus() {
-        if (!root.settingsVisible) return;
         if (personalizationStatusProcess.running || personalizationActionProcess.running) {
             root.personalizationStatusPending = true;
             return;
@@ -922,8 +963,6 @@ Scope {
         root.xsettingsWatchFailed = false;
         inventoryProcess.running = false;
         wallpaperStatusProcess.running = false;
-        personalizationStatusProcess.running = false;
-        root.personalizationStatusPending = false;
         root.wallpaperStatusPending = false;
         root.inventoryPending = false;
         root.inventoryPendingAllowUnwatched = false;
@@ -1073,7 +1112,7 @@ Scope {
         root.fontPreviewScale = preview.scale;
         root.fontPreviewRemaining = preview.remaining;
         root.fontPreviewDetail = preview.detail;
-        Theme.applyFontPreferences(root.fontFamily, root.fontScale);
+        root.applySharedTypography();
         if (!previewWasActive && preview.state === "active") {
             root.message = "Font preview active; keep it within " + preview.remaining
                 + (preview.remaining === 1 ? " second" : " seconds") + " or it will revert";
@@ -1158,6 +1197,9 @@ Scope {
     }
 
     function personalizationCandidateAvailable(capability, value) {
+        // Manual font entry is not limited to the bounded suggestion list.
+        // The transactional helper validates that the exact family is installed.
+        if (capability === "font") return root.validInventoryField(value, false);
         if (capability === "text-size") return root.validDesktopTextScale(value);
         const candidates = root.personalizationCandidates(capability, 24);
         for (const candidate of candidates) {
@@ -1285,8 +1327,8 @@ Scope {
                 : "Personalization helper did not confirm the requested change";
             root.messageSeverity = "danger";
         }
+        Qt.callLater(root.refreshPersonalizationStatus);
         if (root.settingsVisible) {
-            Qt.callLater(root.refreshPersonalizationStatus);
             root.refreshInventory(true);
             root.refreshSnapshot();
         }
@@ -1681,6 +1723,34 @@ Scope {
     }
 
     FileView {
+        path: root.configHome + "/dwm-titus/personalization.conf"
+        watchChanges: true
+        printErrors: false
+        onLoaded: typographySettleTimer.restart()
+        onLoadFailed: typographySettleTimer.restart()
+        onFileChanged: reload()
+    }
+
+    // GSettings emits changes; no timer polls the desktop while Settings is closed.
+    Process {
+        command: ["gsettings", "monitor", "org.gnome.desktop.interface"]
+        running: true
+        stdout: SplitParser {
+            onRead: line => {
+                if (line.indexOf("font-name:") === 0
+                        || line.indexOf("text-scaling-factor:") === 0)
+                    typographySettleTimer.restart();
+            }
+        }
+    }
+
+    Timer {
+        id: typographySettleTimer
+        interval: 150
+        onTriggered: root.refreshPersonalizationStatus()
+    }
+
+    FileView {
         id: fontConfigWatch
         path: root.fontConfigPath
         watchChanges: true
@@ -1807,21 +1877,20 @@ Scope {
 
     Process {
         id: personalizationStatusProcess
-        // Own the helper process directly so pane close terminates the actual
-        // bounded probe rather than an output-capturing wrapper. The required
-        // final completion record rejects partial output from failed probes.
+        // Typography is shared with the shell, so an in-flight bounded read
+        // survives pane close. The completion record rejects partial output.
         command: Commands.settingsPersonalizationCommand("status", [])
         running: false
         stdout: StdioCollector { onStreamFinished: root.parsePersonalizationStatus(this.text) }
         stderr: StdioCollector { id: personalizationStatusError }
         onRunningChanged: {
             if (running) return;
-            if (!root.personalizationStatusParsed && root.settingsVisible) {
+            if (!root.personalizationStatusParsed) {
                 const error = personalizationStatusError.text.trim();
                 root.clearPersonalizationStatus(error.length > 0 ? error
                     : "Personalization helper failed before returning a valid status");
             }
-            if (root.personalizationStatusPending && root.settingsVisible)
+            if (root.personalizationStatusPending)
                 Qt.callLater(root.refreshPersonalizationStatus);
         }
     }

@@ -99,6 +99,14 @@ make_mock_command() {
 	cat >"$work/bin/$name" <<'EOF'
 #!/bin/sh
 name=$(basename "$0")
+# The wallpaper helper probes a candidate before applying it. Probes are not
+# launches and must return the loadable filename like real feh does.
+if [ "$name" = feh ] && [ "${1:-}" = --loadable ]; then
+    for candidate in "$@"; do
+        [ ! -f "$candidate" ] || printf '%s\n' "$candidate"
+    done
+    exit 0
+fi
 count_file="${TEST_STATE:?}/$name.count"
 count=0
 [ ! -f "$count_file" ] || count=$(cat "$count_file")
@@ -117,6 +125,19 @@ wait_for_marker() {
 		i=$((i + 1))
 		sleep 0.02
 	done
+	return 1
+}
+
+wait_for_count() {
+	count_path=$1
+	expected_count=$2
+	attempt=0
+	while [ "$attempt" -lt 100 ]; do
+		[ "$(cat "$count_path" 2>/dev/null || :)" != "$expected_count" ] || return 0
+		attempt=$((attempt + 1))
+		sleep 0.02
+	done
+	printf 'Timed out waiting for %s to reach %s\n' "$count_path" "$expected_count" >&2
 	return 1
 }
 
@@ -442,7 +463,7 @@ run_duplicate_case() {
 	runtime="$work/$mode/runtime"
 	mkdir -p "$home/Pictures/backgrounds" "$home/.config/quickshell" "$state" "$runtime"
 	chmod 700 "$runtime"
-	: >"$home/Pictures/backgrounds/wallpaper"
+	: >"$home/Pictures/backgrounds/wallpaper.png"
 	: >"$home/.config/quickshell/shell.qml"
 
 	# Prevent this isolated test from starting a host polkit agent.
@@ -480,7 +501,8 @@ run_duplicate_case() {
 				DWM_AUTOSTART_NO_SETSID=1 \
 				sh "$repo_dir/scripts/autostart.sh"
 		fi
-		wait_for_marker "$state/feh.running"
+		# Each startup applies wallpaper asynchronously, unlike resident services.
+		wait_for_count "$state/feh.count" "$iteration"
 		wait_for_marker "$state/picom.running"
 		wait_for_marker "$state/dwm-status.running"
 		wait_for_marker "$state/dwm-lock-watch.running"

@@ -213,28 +213,29 @@ cancel_status_scan() {
 	status_scan_pid=
 }
 
+# Listing and readiness inspect names and metadata only. Apply/preview establish
+# a decoded rollback baseline before changing the desktop.
 probe_status_assets() {
-	local candidate executable scan_fd
+	local candidate scan_fd
 	local -a targets=()
-	status_configured_loadable=false
+	status_configured_available=false
 	status_rollback_available=false
 	if [[ $configured == true ]] && valid_asset "$configured_path"; then
-		targets+=("$configured_path")
+		status_configured_available=true
+		status_rollback_available=true
+		return 0
 	fi
 	[[ ! -d $wallpaper_dir ]] || targets+=("$wallpaper_dir")
 	((${#targets[@]} > 0)) || return 0
-	executable=$(feh_path) || return 0
 	exec {scan_fd}< <(
-		exec setsid timeout --signal=TERM --kill-after=1 2 "$executable" \
-			--loadable --recursive -- "${targets[@]}" 2>/dev/null
+		exec setsid timeout --signal=TERM --kill-after=1 2 \
+			find -L "${targets[@]}" -type f -print0 2>/dev/null
 	)
 	status_scan_pid=$!
 	trap 'cancel_status_scan; exit 143' HUP INT TERM
-	while IFS= read -r candidate <&"$scan_fd"; do
+	while IFS= read -r -d '' candidate <&"$scan_fd"; do
 		valid_asset "$candidate" || continue
 		status_rollback_available=true
-		[[ $configured != true || $candidate != "$configured_path" ]] ||
-			status_configured_loadable=true
 	done
 	exec {scan_fd}<&-
 	wait "$status_scan_pid" 2>/dev/null || true
@@ -1064,24 +1065,10 @@ prepare_preview_baseline() {
 }
 
 rollback_baseline_available() {
-	local candidate executable found=false
-	local -a targets=()
-	if read_config && [[ $configured == true ]] && valid_asset "$configured_path"; then
-		targets+=("$configured_path")
-	fi
-	[[ ! -d $wallpaper_dir ]] || targets+=("$wallpaper_dir")
-	((${#targets[@]} > 0)) || return 1
-	executable=$(feh_path) || return 1
-	while IFS= read -r -d '' candidate; do
-		valid_asset "$candidate" && found=true
-	done < <(
-		timeout --signal=TERM --kill-after=1 2 "$executable" \
-			--loadable --recursive -- "${targets[@]}" 2>/dev/null |
-			while IFS= read -r candidate; do
-				printf '%s\0' "$candidate"
-			done
-	)
-	[[ $found == true ]]
+	local status_configured_available=false status_rollback_available=false
+	read_config || return 1
+	probe_status_assets
+	[[ $status_rollback_available == true ]]
 }
 
 converge_preview_owner_config() {
@@ -1885,7 +1872,7 @@ status() {
 	local reset_state=restricted reset_detail='Wallpaper reset is unavailable in this session'
 	local token='' remaining=0 now failed_detail='' preview_valid=false preview_invalid=false
 	local preview_watchdog_alive=false
-	local status_configured_loadable=false status_rollback_available=false
+	local status_configured_available=false status_rollback_available=false
 
 	if mutation_ready "$read_only"; then
 		reset_state=available
@@ -1938,12 +1925,12 @@ status() {
 		if selection_failure_pending; then
 			selection_state=partial
 			selection_detail='Configured wallpaper could not be applied; the legacy random wallpaper fallback is required'
-		elif [[ $status_configured_loadable == true ]]; then
+		elif [[ $status_configured_available == true ]]; then
 			selection_state=available
-			selection_detail='Managed wallpaper selection is ready for this and future sessions'
+			selection_detail='Managed wallpaper file is readable; image decoding is checked when applied'
 		else
 			selection_state=partial
-			selection_detail='Configured wallpaper is missing or undecodable; session startup falls back to the legacy random wallpaper'
+			selection_detail='Configured wallpaper is missing or unreadable; session startup falls back to the legacy random wallpaper'
 		fi
 	fi
 	if [[ $mutation_state == available && $status_rollback_available != true ]]; then

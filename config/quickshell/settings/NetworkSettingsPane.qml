@@ -73,7 +73,7 @@ ColumnLayout {
     ListView {
         id: wifiList
         Layout.fillWidth: true
-        Layout.preferredHeight: 142
+        Layout.preferredHeight: Theme.scaledSize(142)
         clip: true
         spacing: Theme.spacingSm
         model: root.networkModel.wifiNetworks
@@ -162,7 +162,7 @@ ColumnLayout {
             id: profileRow
             required property var modelData
             width: savedList.width
-            height: 48
+            height: Theme.scaledSize(48)
             color: Theme.controlNormalFill
             border.color: Theme.controlNormalBorder
             border.width: Theme.controlBorderWidth

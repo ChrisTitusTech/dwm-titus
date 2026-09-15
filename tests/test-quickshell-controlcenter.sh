@@ -507,8 +507,8 @@ rm "$work/config/dwm-titus/self-heal.path"
 mv "$work/bin/dwm-terminal.saved" "$work/bin/dwm-terminal"
 
 grep -Fq 'watchChanges: true' "$repo/config/quickshell/appearance/AppearanceModel.qml"
-[ "$(grep -Fc 'watchChanges: true' "$repo/config/quickshell/appearance/AppearanceModel.qml")" -eq 5 ]
-[ "$(grep -Fc 'onFileChanged: reload()' "$repo/config/quickshell/appearance/AppearanceModel.qml")" -eq 6 ]
+[ "$(grep -Fc 'watchChanges: true' "$repo/config/quickshell/appearance/AppearanceModel.qml")" -eq 6 ]
+[ "$(grep -Fc 'onFileChanged: reload()' "$repo/config/quickshell/appearance/AppearanceModel.qml")" -eq 7 ]
 grep -Fq 'themes.toml' "$repo/config/quickshell/appearance/AppearanceModel.qml"
 grep -Fq 'ClickAwayPopup {' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
 grep -Fq 'onDismissed: controlCenterModel.close()' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"

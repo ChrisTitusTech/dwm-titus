@@ -10,8 +10,8 @@ ClickAwayPopup {
     required property var bluetoothModel
     required property var panelWindow
 
-    readonly property int cardWidth: 360
-    readonly property int cardHeight: 420
+    readonly property int cardWidth: Theme.scaledSize(360)
+    readonly property int cardHeight: Theme.scaledSize(420)
 
     visible: panelWindow !== null && panelWindow.screen !== null && bluetoothModel.visible
     targetWindow: panelWindow
@@ -88,7 +88,7 @@ ClickAwayPopup {
 
                     required property var modelData
                     width: ListView.view.width
-                    height: 58
+                    height: Theme.scaledSize(58)
                     radius: Theme.smallRadius
                     color: deviceMouse.containsMouse ? Theme.controlHoverFill : Theme.controlNormalFill
                     border.color: deviceMouse.containsMouse ? Theme.controlHoverBorder : Theme.controlNormalBorder

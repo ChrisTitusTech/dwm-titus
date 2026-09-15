@@ -102,7 +102,7 @@ FloatingWindow {
                             readonly property color accentColor: root.stateColor(modelData.status)
 
                             Layout.preferredWidth: 145
-                            Layout.preferredHeight: 48
+                            Layout.preferredHeight: Theme.scaledSize(48)
                             color: Theme.controlNormalFill
                             border.color: Theme.controlNormalBorder
                             border.width: Theme.controlBorderWidth
@@ -183,7 +183,7 @@ FloatingWindow {
                                     readonly property bool selected: root.healthModel.selectedCategory === modelData.id
 
                                     Layout.fillWidth: true
-                                    Layout.preferredHeight: 46
+                                    Layout.preferredHeight: Theme.scaledSize(46)
                                     color: selected ? Theme.menuSelectedBackground
                                         : categoryMouse.containsMouse ? Theme.menuHoverBackground : Theme.transparent
                                     border.color: selected ? Theme.controlSelectedBorder : Theme.transparent

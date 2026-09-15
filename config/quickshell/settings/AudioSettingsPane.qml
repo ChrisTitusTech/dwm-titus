@@ -53,7 +53,7 @@ Flickable {
                 id: outputRow
                 required property var modelData
                 Layout.fillWidth: true
-                Layout.preferredHeight: 46
+                Layout.preferredHeight: Theme.scaledSize(46)
                 color: Theme.controlNormalFill
                 border.color: outputRow.modelData.isDefault ? Theme.controlSelectedBorder : Theme.controlNormalBorder
                 border.width: Theme.controlBorderWidth
@@ -79,7 +79,7 @@ Flickable {
                 id: inputRow
                 required property var modelData
                 Layout.fillWidth: true
-                Layout.preferredHeight: 72
+                Layout.preferredHeight: Theme.scaledSize(72)
                 color: Theme.controlNormalFill
                 border.color: inputRow.modelData.isDefault ? Theme.controlSelectedBorder : Theme.controlNormalBorder
                 border.width: Theme.controlBorderWidth
@@ -126,7 +126,7 @@ Flickable {
                 id: streamRow
                 required property var modelData
                 Layout.fillWidth: true
-                Layout.preferredHeight: 72
+                Layout.preferredHeight: Theme.scaledSize(72)
                 color: Theme.controlNormalFill
                 border.color: Theme.controlNormalBorder
                 border.width: Theme.controlBorderWidth
