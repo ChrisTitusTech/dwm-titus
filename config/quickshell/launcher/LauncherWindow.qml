@@ -138,7 +138,7 @@ FloatingWindow {
 
             LauncherCategoryRow {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 34
+                Layout.preferredHeight: Theme.scaledSize(34)
                 launcherModel: root.launcherModel
             }
 

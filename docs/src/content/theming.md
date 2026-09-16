@@ -157,13 +157,33 @@ that default until another image is selected or the setting is reset.
 ---
 ## Fonts and Text Size
 
-Open **Settings -> Appearance** to select an installed Fontconfig family and a
-managed shell text scale from 80, 90, 100, 110, 125, or 150 percent. The icon
-font remains the shipped Meslo Nerd Font even when ordinary interface text uses
-another family, so changing fonts cannot remove panel or menu glyphs.
+Open **Settings -> Appearance -> Font and text size** to choose one font and
+text scale for the shell and desktop applications. Type an installed font family
+or choose one of the suggestions. Available scales are 75,
+87.5, 100, 112.5, 125, 150, 175, and 200 percent. Use **Apply font** or
+**Apply text size**, or return to **Follow system font/scale**. Applications
+that cache toolkit settings may need reopening.
 
-Preview changes for 30 seconds before keeping them, or apply and reset from a
-terminal:
+The shell observes desktop font and scale changes even while Settings is
+closed. Qt's native DPI scale is counted once, so 200 percent does not become
+400 percent in the shell. **Follow system scale** preserves the native display
+DPI instead of forcing a 100 percent display. External system text scales outside
+75-200 percent are clamped to that range in the shell. The icon font remains the shipped Meslo Nerd Font,
+so changing the text family cannot remove panel or menu glyphs.
+
+The same shared settings are available from a terminal:
+
+```bash
+dwm-settings-personalization apply font "Noto Sans"
+dwm-settings-personalization apply text-size 1.25
+dwm-settings-personalization reset font
+dwm-settings-personalization reset text-size
+```
+
+Existing `font.conf` files are preserved as a startup fallback when desktop
+typography cannot be read. A later read failure keeps the last valid choice. The legacy shell-only helper remains available for recovery
+and compatibility; its settings no longer take precedence over readable
+desktop typography:
 
 ```bash
 token="font-$$"
@@ -180,17 +200,15 @@ percent without preventing shell startup.
 
 ### Desktop Application Appearance
 
-The **Desktop applications** area in **Settings -> Appearance** separately
-controls application font and text scale, cursor and icon themes, GTK theme,
-and Qt platform theme. Choices come from the bounded inventory collected only
-while Appearance is open. Desktop font changes do not replace the fixed Nerd
-Font used for shell icons.
+The **Desktop applications** area provides cursor and icon choices. Font and
+text size live in the single section above. GTK and Qt styling is normally
+set by the selected theme, so their separate selectors are hidden. Existing
+saved toolkit overrides remain preserved and can still be reset from a
+terminal. Application status cards and the keyboard/pointer access summary
+are hidden; actionable errors and recovery controls remain visible.
 
-Use **Follow system** for application font, text scale, and icons, or **Follow
-DWM theme** for cursor, GTK, and Qt. Those modes are persisted explicitly, so a
-later theme change cannot silently replace an override. Advanced GTK and Qt
-buttons appear only when a supported external editor such as `nwg-look`,
-`qt6ct`, or `qt5ct` is installed.
+Use **Follow system icons** or **Follow DWM theme** for the cursor to remove a
+saved override. Asset discovery runs only while Appearance is open.
 
 The same fixed actions are available from a terminal:
 
@@ -199,6 +217,8 @@ dwm-settings-personalization apply cursor Adwaita
 dwm-settings-personalization apply gtk Adwaita-dark
 dwm-settings-personalization apply qt gtk3
 dwm-settings-personalization reset cursor
+dwm-settings-personalization reset gtk
+dwm-settings-personalization reset qt
 dwm-settings-personalization status
 ```
 

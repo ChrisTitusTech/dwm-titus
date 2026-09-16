@@ -207,7 +207,7 @@ FloatingWindow {
                                     readonly property bool selected: root.settingsModel.selectedSectionId === modelData.id
 
                                     width: sectionList.width
-                                    height: 44
+                                    height: Theme.scaledSize(44)
                                     color: selected ? Theme.menuSelectedBackground
                                         : sectionMouse.containsMouse ? Theme.menuHoverBackground : Theme.transparent
                                     border.color: selected ? Theme.controlSelectedBorder : Theme.transparent

@@ -13,7 +13,7 @@ Rectangle {
     signal selectedRequested
     signal connectRequested(var network)
 
-    height: 54
+    height: Theme.scaledSize(54)
     color: root.selected ? Theme.controlSelectedFill
         : rowMouse.containsMouse ? Theme.controlHoverFill : Theme.controlNormalFill
     border.color: root.selected ? Theme.controlSelectedBorder

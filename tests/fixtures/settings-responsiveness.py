@@ -29,6 +29,13 @@ text = replace_once(
     'return ["true"];\n        const argv = args || [];',
 )
 commands.write_text(text)
+appearance = qml / "appearance/AppearanceModel.qml"
+text = replace_once(appearance.read_text(), 'id: root',
+                    'id: root\n    property alias testTypographyMonitor: typographyMonitor')
+# Isolate the subscription lifecycle from the host's GSettings backend.
+text = replace_once(text, '["gsettings", "monitor", "org.gnome.desktop.interface"]',
+                    '["sleep", "60"]')
+appearance.write_text(text)
 shell = qml / "shell.qml"
 text = shell.read_text()
 if not text.rstrip().endswith("}"):

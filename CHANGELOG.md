@@ -8,6 +8,13 @@ versions from `config.mk`.
 
 ### Changed
 
+- Load Appearance wallpaper choices using filenames and metadata, without
+  decoding the image collection during status or readiness checks.
+
+- Simplify Appearance to one desktop font and text-size control shared with the
+  shell. Hide duplicate GTK/Qt selectors, the keyboard/pointer access summary,
+  and application status cards. Keep errors and recovery actions visible.
+
 - Reduce hosted CI to one Fedora build and desktop smoke job. Check managed
   Quickshell startup, its panel, launcher keyboard interaction, and application
   launch. Skip documentation-only changes and keep extended validation local.
@@ -26,6 +33,10 @@ versions from `config.mk`.
   manage user files and restore only root-trusted system hashes.
 
 ### Fixed
+
+- Recover the desktop typography subscription after it exits, clamp external
+  system text scales without retaining stale ownership, and wrap health summary
+  tiles to fit scaled labels and the available screen width.
 
 - Speed up random wallpaper changes by choosing filenames before decoding,
   checking only the images needed for each monitor and retrying corrupt files.
