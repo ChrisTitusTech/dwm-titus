@@ -34,6 +34,9 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Prevent the XSETTINGS daemon from retaining installation locks after theme
+  convergence, which blocked subsequent local desktop updates.
+
 - Recover the desktop typography subscription after it exits, clamp external
   system text scales without retaining stale ownership, and wrap health summary
   tiles to fit scaled labels and the available screen width.
