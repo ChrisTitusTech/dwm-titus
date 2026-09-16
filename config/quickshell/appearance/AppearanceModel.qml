@@ -838,9 +838,12 @@ Scope {
             root.desktopFontFamily = root.fontDescriptionFamily(font.value);
         if (scale && (scale.state === "available" || scale.state === "partial")
                 && (scale.option === "follow-system" || root.validDesktopTextScale(scale.option))
-                && isFinite(Number(scale.value)) && Number(scale.value) >= 0.75
-                && Number(scale.value) <= 2.0) {
-            root.desktopFontScale = Number(scale.value);
+                && isFinite(Number(scale.value)) && Number(scale.value) > 0
+                && (scale.option === "follow-system"
+                    || (Number(scale.value) >= 0.75 && Number(scale.value) <= 2.0))) {
+            // External system scales may exceed the shell's supported range.
+            // Clamp deterministically, but always update the ownership mode.
+            root.desktopFontScale = Math.max(0.75, Math.min(2.0, Number(scale.value)));
             root.desktopFollowsSystemScale = scale.option === "follow-system";
         }
         // System-follow leaves native DPI intact, including an existing Xft.dpi
@@ -1733,6 +1736,8 @@ Scope {
 
     // GSettings emits changes; no timer polls the desktop while Settings is closed.
     Process {
+        id: typographyMonitor
+        property int retryDelay: 1000
         command: ["gsettings", "monitor", "org.gnome.desktop.interface"]
         running: true
         stdout: SplitParser {
@@ -1740,7 +1745,23 @@ Scope {
                 if (line.indexOf("font-name:") === 0
                         || line.indexOf("text-scaling-factor:") === 0)
                     typographySettleTimer.restart();
+                typographyMonitor.retryDelay = 1000;
             }
+        }
+        onRunningChanged: {
+            if (running) typographySettleTimer.restart();
+            else typographyMonitorRestartTimer.restart();
+        }
+    }
+
+    // Retry subscriptions with capped backoff; never poll a healthy monitor.
+    // Refresh on reconnect to cover changes made while the stream was down.
+    Timer {
+        id: typographyMonitorRestartTimer
+        interval: typographyMonitor.retryDelay
+        onTriggered: {
+            typographyMonitor.retryDelay = Math.min(30000, typographyMonitor.retryDelay * 2);
+            if (!typographyMonitor.running) typographyMonitor.running = true;
         }
     }
 

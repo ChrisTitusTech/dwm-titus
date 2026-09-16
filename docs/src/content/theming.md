@@ -167,7 +167,8 @@ that cache toolkit settings may need reopening.
 The shell observes desktop font and scale changes even while Settings is
 closed. Qt's native DPI scale is counted once, so 200 percent does not become
 400 percent in the shell. **Follow system scale** preserves the native display
-DPI instead of forcing a 100 percent display. The icon font remains the shipped Meslo Nerd Font,
+DPI instead of forcing a 100 percent display. External system text scales outside
+75-200 percent are clamped to that range in the shell. The icon font remains the shipped Meslo Nerd Font,
 so changing the text family cannot remove panel or menu glyphs.
 
 The same shared settings are available from a terminal:

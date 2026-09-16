@@ -34,6 +34,10 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Recover the desktop typography subscription after it exits, clamp external
+  system text scales without retaining stale ownership, and wrap health summary
+  tiles to fit scaled labels and the available screen width.
+
 - Speed up random wallpaper changes by choosing filenames before decoding,
   checking only the images needed for each monitor and retrying corrupt files.
 

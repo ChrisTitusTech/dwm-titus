@@ -1,5 +1,6 @@
     // Runs inside an isolated copy of the production ShellRoot.
     property int responseStage: -4
+    property var scaleHealthWindow: null
     property var scaleNotificationPopup: null
     property int scaleNotificationDismissed: -1
     property var scaleNetworkPopup: null
@@ -113,6 +114,18 @@
                 appearanceModel.applySharedTypography();
                 root.responseCheck(Theme.fontScale === 1.5 && !Theme.desktopTypography,
                     "System-follow honors non-default text size while preserving native DPI");
+                for (const value of [0.5, 3.0]) {
+                    root.setTypographyScale(1.0);
+                    appearanceModel.personalizationSelections["text-size"] = {
+                        state: "available", value: value.toString(), option: "follow-system"};
+                    appearanceModel.applySharedTypography();
+                    root.responseCheck(Theme.fontScale === Math.max(0.75, Math.min(2.0, value))
+                        && !Theme.desktopTypography,
+                        "External system scale clamps deterministically and clears explicit ownership");
+                }
+                appearanceModel.personalizationSelections["text-size"] = {
+                    state: "available", value: "1.5", option: "follow-system"};
+                appearanceModel.applySharedTypography();
                 appearanceModel.personalizationSelections["text-size"] = {
                     state: "partial", value: "1.0", option: "unknown"};
                 appearanceModel.applySharedTypography();
@@ -231,6 +244,9 @@
                     root.responseCheck(pane.contentY < root.scrollStartY - 1, "An inward flick from the bottom must scroll up");
                     Theme.desktopTypography = false;
                     Theme.applyFontPreferences("Noto Sans", 2);
+                    const health = Qt.createComponent("health/SystemHealthWindow.qml");
+                    root.scaleHealthWindow = health.createObject(root, {healthModel: systemHealthModel});
+                    root.scaleHealthWindow.visible = true;
                     const launcher = Qt.createComponent("launcher/LauncherResultDelegate.qml");
                     const wifi = Qt.createComponent("network/NetworkWifiRow.qml");
                     const notifications = Qt.createComponent("notifications/NotificationPopupWindow.qml");
@@ -271,6 +287,25 @@
                 root.scrollFrames = 0;
                 root.responseStage++;
             } else if (root.responseStage === 18) {
+                const tiles = root.responseItems(root.scaleHealthWindow.contentItem,
+                    item => item.objectName === "healthSummaryTile");
+                root.responseCheck(tiles.length === 4, "Health summary renders four tiles");
+                for (const tile of tiles) {
+                    root.responseCheck(tile.x >= 0 && tile.x + tile.width <= tile.parent.width + 1,
+                        "Health tiles wrap within the available width");
+                    const labels = root.responseItems(tile, item => item.text !== undefined);
+                    for (const label of labels) {
+                        const point = label.mapToItem(tile, 0, 0);
+                        root.responseCheck(point.x >= 0 && point.x + label.width <= tile.width
+                            && label.contentWidth <= label.width + 1,
+                            "Health summary label fits at 200 percent: " + label.text);
+                    }
+                    const caption = labels[0].mapToItem(tile, 0, 0);
+                    const count = labels[1].mapToItem(tile, 0, 0);
+                    root.responseCheck(caption.x + labels[0].width <= count.x,
+                        "Health caption and count do not overlap");
+                }
+                root.scaleHealthWindow.destroy();
                 const sections = root.responseItems(settingsWindow.contentItem,
                     item => item.selected !== undefined && item.modelData !== undefined
                         && item.modelData.id !== undefined);
@@ -344,6 +379,19 @@
                 root.responseCheck(!appearanceModel.settingsVisible
                     && !appearanceModel.personalizationStatusPending,
                     "Action completion drains typography refreshes with Settings closed");
+                root.responseCheck(appearanceModel.testTypographyMonitor.running,
+                    "Typography monitor initially runs");
+                appearanceModel.testTypographyMonitor.running = false;
+                root.responseStarted = Date.now();
+                root.responseStage++;
+            } else if (root.responseStage === 20) {
+                if (!appearanceModel.testTypographyMonitor.running) {
+                    root.responseCheck(Date.now() - root.responseStarted < 5000,
+                        "Typography monitor restarts after exit with Settings closed");
+                    return;
+                }
+                root.responseCheck(!appearanceModel.settingsVisible,
+                    "Typography monitor recovers while Settings stays closed");
                 console.info("Settings responsiveness: PASS");
                 Qt.quit();
             }

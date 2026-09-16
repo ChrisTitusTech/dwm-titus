@@ -83,8 +83,10 @@ FloatingWindow {
                     }
                 }
 
-                RowLayout {
+                Flow {
+                    id: summaryTiles
                     Layout.fillWidth: true
+                    Layout.preferredHeight: implicitHeight
                     spacing: Theme.spacingLg
 
                     Repeater {
@@ -101,8 +103,9 @@ FloatingWindow {
                             required property var modelData
                             readonly property color accentColor: root.stateColor(modelData.status)
 
-                            Layout.preferredWidth: 145
-                            Layout.preferredHeight: Theme.scaledSize(48)
+                            objectName: "healthSummaryTile"
+                            width: Math.min(summaryTiles.width, Math.max(Theme.scaledSize(145), summaryContent.implicitWidth + 26))
+                            height: Theme.scaledSize(48)
                             color: Theme.controlNormalFill
                             border.color: Theme.controlNormalBorder
                             border.width: Theme.controlBorderWidth
@@ -118,12 +121,14 @@ FloatingWindow {
                             }
 
                             RowLayout {
+                                id: summaryContent
                                 anchors.fill: parent
                                 anchors.leftMargin: 14
                                 anchors.rightMargin: 12
 
                                 UiText {
                                     Layout.fillWidth: true
+                                    elide: Text.ElideRight
                                     text: statusTile.modelData.label.toUpperCase()
                                     color: Theme.menuMutedText
                                     font.pixelSize: Theme.fontCaptionSize
@@ -141,9 +146,8 @@ FloatingWindow {
                         }
                     }
 
-                    Item { Layout.fillWidth: true }
-
                     UiText {
+                        width: parent.width
                         visible: root.healthModel.repairMessage.length > 0
                         text: root.healthModel.repairMessage
                         color: root.healthModel.repairError.length > 0 ? Theme.danger : Theme.menuMutedText
