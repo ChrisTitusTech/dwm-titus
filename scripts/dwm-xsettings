@@ -283,13 +283,12 @@ start_or_reload() {
 		if xsettings_owner_present; then
 			die 'another XSETTINGS manager already owns this display'
 		fi
-		if command -v setsid >/dev/null 2>&1; then
-			setsid -f xsettingsd --config "$config_file" 8>&- 9>&- \
-				>/dev/null 2>>"$reload_log"
-		else
-			xsettingsd --config "$config_file" 8>&- 9>&- </dev/null \
-				>/dev/null 2>>"$reload_log" &
-		fi
+		# Install guards pass lock descriptors through make and theme convergence.
+		# Close every inherited descriptor before starting the session daemon.
+		python3 -c 'import subprocess, sys
+subprocess.Popen(sys.argv[1:], stdin=subprocess.DEVNULL,
+                 close_fds=True, start_new_session=True)' \
+			xsettingsd --config "$config_file" >/dev/null 2>>"$reload_log"
 	fi
 	if [[ -n $identities ]]; then
 		wait_for_reload_ack "$identities" ||
