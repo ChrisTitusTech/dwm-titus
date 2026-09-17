@@ -1076,8 +1076,6 @@ def worker(operation):
                 candidate = read_json(stage / str(prefix / "share/dwm-titus/desktop-install.json").lstrip("/"))
                 if (set(candidate["files"]) != set(installed["files"]) or candidate["layout"] != installed["layout"]):
                     raise RuntimeError("Desktop file layout changed; use the documented source installer for this update")
-                if candidate["files"] != installed["files"]:
-                    raise RuntimeError("System file contents changed; use the documented source installer for this update")
                 make_bundle(stage, candidate, directory / "bundle.tar")
                 bundle_digest = digest(directory / "bundle.tar")
                 save_status(state, value, state="backing-up", detail="Preparing managed files and recovery copies...", percent=-1)

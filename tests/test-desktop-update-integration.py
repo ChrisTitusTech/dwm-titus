@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 """Real source build, user worker, and polkit install in a disposable container."""
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -21,6 +22,12 @@ with tempfile.TemporaryDirectory(prefix="desktop-integration-", dir="/opt") as t
     source.mkdir()
     subprocess.run(["useradd", "-m", "desktop-test"], check=True)
     uid = int(subprocess.check_output(["id", "-u", "desktop-test"], text=True))
+    # The managed runner's root-owned TMPDIR is not writable after dropping
+    # privileges. Keep installer temporaries in this fixture's cleanup scope.
+    user_tmp = base / "tmp"
+    user_tmp.mkdir(mode=0o700)
+    os.chown(user_tmp, uid, uid)
+    os.environ["TMPDIR"] = str(user_tmp)
     for name in (".gitignore", "Makefile", "config.mk", "config.def.h", "dwm.c", "drw.c", "util.c", "tomlparser.c",
                  "drw.h", "util.h", "tomlparser.h", "dwm.1", "dwm.desktop", "scripts", "config", "assets"):
         if (repo / name).is_dir():
@@ -90,7 +97,15 @@ with tempfile.TemporaryDirectory(prefix="desktop-integration-", dir="/opt") as t
         finally:
             os.chown(target, uid, uid)
     user("python3", source / "scripts/dwm-desktop-update", "record-user", source)
-    # A real new commit changes managed QML without changing the privileged layout.
+    # A real new commit changes managed QML, the session binary, commands, and
+    # the privileged helper itself without changing the installed layout.
+    before_manifest = json.loads((prefix / "share/dwm-titus/desktop-install.json").read_text())
+    changed_commands = ("dwm-settings-wallpaper", "dwm-xsettings", "dwm-desktop-update")
+    for name in (*changed_commands, "dwm-desktop-update-root"):
+        path = source / "scripts" / name
+        path.write_text(path.read_text() + "\n# Desktop integration update marker\n")
+    core = source / "dwm.c"
+    core.write_text(core.read_text().replace('die("dwm-"VERSION);', 'die("dwm-integration-"VERSION);'))
     marker = source / "config/quickshell/update-integration-marker"
     marker.write_text("updated desktop\n")
     os.chown(marker, uid, uid)
@@ -98,8 +113,8 @@ with tempfile.TemporaryDirectory(prefix="desktop-integration-", dir="/opt") as t
     directory_link = marker.parent / "update-integration-dir-link"
     file_link.symlink_to(marker.name)
     directory_link.symlink_to("settings")
-    user("git", "add", "config/quickshell")
-    user("git", "commit", "-m", "Update managed shell")
+    user("git", "add", "config/quickshell", "scripts", "dwm.c")
+    user("git", "commit", "-m", "Update managed shell and system executables")
     revision = subprocess.check_output(["git", "-c", "safe.directory=" + str(source), "-C", source, "rev-parse", "HEAD"], text=True).strip()
     rule = Path("/etc/polkit-1/rules.d/00-desktop-update-test.rules")
     helper = str(prefix / "libexec/dwm-titus/dwm-desktop-update-root")
@@ -155,7 +170,15 @@ sys.exit(result)
             raise
         status = json.loads((state / "status.json").read_text())
         assert status["state"] == "restart-required", status
-        assert json.loads((prefix / "share/dwm-titus/desktop-install.json").read_text())["revision"] == revision
+        after_manifest = json.loads((prefix / "share/dwm-titus/desktop-install.json").read_text())
+        assert after_manifest["revision"] == revision
+        changed_system = [prefix / "bin" / name for name in ("dwm", *changed_commands)]
+        changed_system.append(Path(helper))
+        for path in changed_system:
+            record = after_manifest["files"][str(path)]
+            assert record["sha256"] != before_manifest["files"][str(path)]["sha256"], path
+            assert record["sha256"] == hashlib.sha256(path.read_bytes()).hexdigest(), path
+            assert path.stat().st_uid == 0 and path.stat().st_mode & 0o7777 == 0o755, path
         assert (config / "quickshell/update-integration-marker").read_text() == "updated desktop\n"
         assert (config / "dwm-titus/themes.toml").read_text() == "personal-theme-marker"
         assert (config / "quickshell" / file_link.name).read_text() == marker.read_text()

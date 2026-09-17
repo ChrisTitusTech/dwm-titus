@@ -427,26 +427,34 @@ raise SystemExit(17)
         self.assertIn("layout changed", result.stderr)
         self.assertEqual(self.binary.read_bytes(), b"original")
 
-    def assert_helper_payload_rejected(self, target):
+    def assert_changed_payload_installed_and_restored(self, target):
         original = target.read_bytes()
         self.binary = target
         self.manifest["files"] = {str(target): {"mode": 0o755, "sha256": hashlib.sha256(original).hexdigest()}}
         self.manifest_path.write_text(json.dumps(self.manifest))
-        self.archive(payload=b"arbitrary privileged code")
+        original_manifest = self.manifest_path.read_bytes()
+        # Keep the helper executable so a separate invocation of its new
+        # contents can perform recovery after it replaces itself.
+        updated = original + b"\n# Updated desktop contents\n"
+        self.archive(payload=updated)
         result = self.apply()
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("System file contents changed", result.stderr)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(target.read_bytes(), updated)
+        self.assertEqual(target.stat().st_uid, 0)
+        self.assertEqual(target.stat().st_mode & 0o7777, 0o755)
+        installed = json.loads(self.manifest_path.read_text())
+        self.assertEqual(installed["revision"], "b" * 40)
+        self.assertEqual(installed["files"][str(target)]["sha256"], hashlib.sha256(updated).hexdigest())
+        result = self.command("rollback", self.operation)
+        self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(target.read_bytes(), original)
+        self.assertEqual(self.manifest_path.read_bytes(), original_manifest)
 
-    def test_self_replacement_with_matching_payload_hash_is_rejected(self):
-        self.assert_helper_payload_rejected(self.helper)
+    def test_self_replacement_and_rollback(self):
+        self.assert_changed_payload_installed_and_restored(self.helper)
 
-    def test_session_binary_with_matching_payload_hash_is_rejected(self):
-        self.archive(payload=b"malicious session binary")
-        result = self.apply()
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("System file contents changed", result.stderr)
-        self.assertEqual(self.binary.read_bytes(), b"original")
+    def test_session_binary_replacement_and_rollback(self):
+        self.assert_changed_payload_installed_and_restored(self.binary)
 
     def test_later_administrator_edit_blocks_rollback(self):
         self.archive()
@@ -457,29 +465,29 @@ raise SystemExit(17)
         self.assertIn("changed after this update", result.stderr)
         self.assertEqual(self.binary.read_bytes(), b"administrator edit after update")
 
-    def test_other_privileged_helper_payload_is_rejected(self):
+    def test_other_privileged_helper_replacement_and_rollback(self):
         target = self.helper.parent / "dwm-settings-display-root"
         target.write_bytes(b"original display helper")
         target.chmod(0o755)
-        self.assert_helper_payload_rejected(target)
+        self.assert_changed_payload_installed_and_restored(target)
 
-    def test_root_executed_display_setup_payload_is_rejected(self):
+    def test_root_executed_display_setup_replacement_and_rollback(self):
         target = self.prefix / "bin/dwm-display-setup"
         target.write_bytes(b"original root-executed display setup")
         target.chmod(0o755)
-        self.assert_helper_payload_rejected(target)
+        self.assert_changed_payload_installed_and_restored(target)
 
-    def test_root_executed_system_health_payload_is_rejected(self):
+    def test_root_executed_system_health_replacement_and_rollback(self):
         target = self.prefix / "bin/dwm-system-health"
         target.write_bytes(b"original root-executed system health")
         target.chmod(0o755)
-        self.assert_helper_payload_rejected(target)
+        self.assert_changed_payload_installed_and_restored(target)
 
-    def test_root_executed_power_management_payload_is_rejected(self):
+    def test_root_executed_power_management_replacement_and_rollback(self):
         target = self.prefix / "bin/power-management.sh"
         target.write_bytes(b"original root-executed power management")
         target.chmod(0o755)
-        self.assert_helper_payload_rejected(target)
+        self.assert_changed_payload_installed_and_restored(target)
 
     def test_unsafe_original_cannot_be_promoted_through_recovery(self):
         for mode in (0o4755, 0o2755, 0o775, 0o755):
@@ -542,6 +550,14 @@ raise SystemExit(17)
         result = self.apply()
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("confirmed revision", result.stderr)
+
+    def test_new_contents_must_match_candidate_hash(self):
+        self.archive(lambda value: value["files"][str(self.binary)].update(sha256="c" * 64),
+                     payload=b"new contents with incorrect candidate checksum")
+        result = self.apply()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Update bundle checksum mismatch", result.stderr)
+        self.assertEqual(self.binary.read_bytes(), b"original")
 
     def test_untrusted_helper_and_bundle_symlinks_are_rejected(self):
         self.archive()

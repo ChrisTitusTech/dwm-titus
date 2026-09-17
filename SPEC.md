@@ -565,11 +565,13 @@ linked worktrees require the documented source update procedure.
 
 A root-owned installed helper accepts only the destinations, file types, modes,
 link targets, and dependency capabilities recorded by the installed manifest.
-All system-file contents must match the hashes in that root-trusted manifest.
-The button updates managed user files and repairs system-file drift; changes
-to system executables or other system-file contents require the source installer.
-Caller-built files cannot establish new trusted hashes. Each authorized apply is bound to its prepared archive digest
-and confirmed revision; substitutions during authorization are rejected.
+Administrator approval authorizes replacement contents at those destinations,
+including the dwm binary, commands, and privileged helpers. Candidate hashes
+verify the new payload; they do not have to match the previous installation.
+The helper records the new hashes after installation and verification, retaining
+the previous files and manifest for rollback. Each authorized apply is bound to
+its prepared archive digest and confirmed revision; substitutions during
+authorization are rejected.
 It never executes a staged Makefile or repository helper as root. Changes to
 that installation layout or dependency allowlist require the source installer
 to establish the new contract. Authorization uses polkit and requires one visible approval per update or

@@ -56,11 +56,14 @@ with instructions to use the source workflow.
 The installed manifest fixes the authorized system-file destinations, file
 types and modes, cursor link targets, and package capability list. An update
 that changes that contract stops before installation and asks for the source
-installer. This avoids turning Settings into a general-purpose root installer.
-Every system file must match its existing root-trusted hash, including the dwm
-session binary, commands, helpers, and shared assets. The button updates managed
-user files and repairs system-file drift. New system-file contents require the
-source installer; a user-built bundle cannot establish new trusted hashes.
+installer. This limits replacement to the existing managed installation.
+Administrator approval permits new contents at those destinations, including
+the dwm session binary, commands, privileged helpers, and shared assets. The
+button replaces changed system files and records their new hashes after
+verification. The old files and manifest are retained for rollback. Candidate
+hashes verify the prepared payload rather than requiring it to match the old
+installation. Approval therefore trusts the built replacement contents for
+these managed paths; the helper does not independently attest their source.
 Authorization carries the prepared archive's digest and
 confirmed revision; the root-owned copy must match both before installation,
 preventing archive substitution while the authorization prompt is open.
@@ -220,9 +223,10 @@ selected revision, and all existing root-owned manifest checks still apply.
 The helper exits on completion or when the worker closes its pipe, with a
 one-hour maximum lifetime. Slow builds do not cause repeated password prompts;
 if the session ends or expires, the update stops for explicit recovery instead
-of silently elevating again. Installing this helper change requires the source
-update procedure once; the older installed worker cannot replace its own
-root-trusted executable through the update button.
+of silently elevating again. Installations with the older hash-restricted updater
+require the source update procedure once to install this worker and helper.
+After that migration, the button can update its own installed executables as
+well as other managed system files.
 
 The progress window is a normal GTK window in its own unprivileged user service,
 using the existing GTK portal and Python GObject dependencies. It never requests

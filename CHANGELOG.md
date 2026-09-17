@@ -8,6 +8,11 @@ versions from `config.mk`.
 
 ### Changed
 
+- Let authorized Desktop updates replace changed system-file contents, including
+  dwm, commands, and privileged helpers. Keep destination validation, payload
+  verification, backups, and rollback. Older hash-restricted updaters need one
+  source installation to adopt this behavior.
+
 - Load Appearance wallpaper choices using filenames and metadata, without
   decoding the image collection during status or readiness checks.
 
@@ -29,8 +34,7 @@ versions from `config.mk`.
   Build source updates without elevation and restrict authorized system-file
   replacement to the installed manifest. Preserve personal configuration and
   distinguish installed updates from changes requiring a new desktop session.
-  Require the source installer for new system-file contents; button updates
-  manage user files and restore only root-trusted system hashes.
+  Permit approved replacement contents at the installed system destinations.
 
 ### Fixed
 
