@@ -626,6 +626,12 @@ class DesktopUpdate(unittest.TestCase):
         self.assertFalse(value["canUpdate"])
         ancestry.assert_any_call(external, "a" * 40)
 
+    def test_root_candidate_accepts_new_contents_at_installed_destinations(self):
+        candidate = copy.deepcopy(self.manifest)
+        candidate["revision"] = "b" * 40
+        candidate["files"][str(self.binary)]["sha256"] = "c" * 64
+        privileged.validate_candidate(candidate, self.manifest)
+
     def test_root_candidate_rejects_changed_destinations_modes_and_links(self):
         privileged.validate_candidate(self.manifest, self.manifest)
         for mutation in ("destination", "mode", "hash", "revision", "packages"):
