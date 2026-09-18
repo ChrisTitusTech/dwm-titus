@@ -80,6 +80,7 @@ not edit customized hotkey files.
 | Keys | Action |
 |------|--------|
 | `Super` + `T` | Tiling layout |
+| `Super` + `F` | Floating layout |
 | `Super` + `M` | Fullscreen (monocle) |
 | `Super` + `Space` | Toggle floating for window |
 | `Super` + `Shift` + `M` | Toggle floating for window |
@@ -88,7 +89,10 @@ not edit customized hotkey files.
 
 Entering floating mode with a toggle shrinks a tiled window by 15% around its
 current center, subject to the application's minimum size and resize increments.
-Toggle again to return it to the tiling layout. Mouse dragging and resizing keep
+Toggle again to return it to the tiling layout. `Super` + `F` applies the same
+shrink to each visible tiled window when entering floating layout; `Super` + `T`
+retiles them. Pressing `Super` + `F` again leaves their sizes unchanged. Windows
+already floated individually keep their size and position. Mouse dragging and resizing keep
 their existing behavior. Existing hotkey configuration needs no changes; restart
 the dwm session after updating to activate this behavior.
 

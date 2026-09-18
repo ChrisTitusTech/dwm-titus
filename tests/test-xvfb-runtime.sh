@@ -13,6 +13,27 @@ require_cmd() {
 	done
 }
 
+assert_shrunk_centered() {
+	printf '%s\n---\n%s\n' "$1" "$2" | awk -F= '
+		$0 == "---" { popped = 1; next }
+		!popped { before[$1] = $2; next }
+		{ after[$1] = $2 }
+		END {
+			if (after["WIDTH"] >= before["WIDTH"] * 0.9 ||
+			    after["HEIGHT"] >= before["HEIGHT"] * 0.9 ||
+			    after["WIDTH"] < before["WIDTH"] * 0.8 ||
+			    after["HEIGHT"] < before["HEIGHT"] * 0.8)
+				exit 1
+			dx = 2 * (after["X"] - before["X"]) + after["WIDTH"] - before["WIDTH"]
+			dy = 2 * (after["Y"] - before["Y"]) + after["HEIGHT"] - before["HEIGHT"]
+			if (dx < -8 || dx > 8 || dy < -8 || dy > 8)
+				exit 1
+		}' || {
+		printf '%s\n' "floating toggle did not shrink and center the tile" >&2
+		exit 1
+	}
+}
+
 wait_for_display() {
 	i=0
 	while [ "$i" -lt 100 ]; do
@@ -612,24 +633,7 @@ for toggle_cycle in 1 2; do
 	DISPLAY=$display xdotool key Super+space
 	sleep 0.2
 	popped_geometry=$(DISPLAY=$display xdotool getwindowgeometry --shell "$floating_win")
-	printf '%s\n---\n%s\n' "$tiled_geometry" "$popped_geometry" | awk -F= '
-		$0 == "---" { popped = 1; next }
-		!popped { before[$1] = $2; next }
-		{ after[$1] = $2 }
-		END {
-			if (after["WIDTH"] >= before["WIDTH"] * 0.9 ||
-			    after["HEIGHT"] >= before["HEIGHT"] * 0.9 ||
-			    after["WIDTH"] < before["WIDTH"] * 0.8 ||
-			    after["HEIGHT"] < before["HEIGHT"] * 0.8)
-				exit 1
-			dx = 2 * (after["X"] - before["X"]) + after["WIDTH"] - before["WIDTH"]
-			dy = 2 * (after["Y"] - before["Y"]) + after["HEIGHT"] - before["HEIGHT"]
-			if (dx < -8 || dx > 8 || dy < -8 || dy > 8)
-				exit 1
-		}' || {
-		printf '%s\n' "floating toggle did not shrink and center the tile" >&2
-		exit 1
-	}
+	assert_shrunk_centered "$tiled_geometry" "$popped_geometry"
 	DISPLAY=$display xdotool key Super+space
 	sleep 0.2
 	restored_geometry=$(DISPLAY=$display xdotool getwindowgeometry --shell "$floating_win")
@@ -638,6 +642,44 @@ for toggle_cycle in 1 2; do
 		exit 1
 	fi
 done
+# Entering floating layout shrinks all visible tiled clients once, including
+# transitions from monocle. Super+T restores the original tile geometry.
+first_tiled_geometry=$(DISPLAY=$display xdotool getwindowgeometry --shell "$win")
+for layout_key in t m; do
+	DISPLAY=$display xdotool key "Super+$layout_key"
+	sleep 0.2
+	first_tile=$(DISPLAY=$display xdotool getwindowgeometry --shell "$win")
+	second_tile=$(DISPLAY=$display xdotool getwindowgeometry --shell "$floating_win")
+	DISPLAY=$display xdotool key Super+f
+	sleep 0.2
+	first_float=$(DISPLAY=$display xdotool getwindowgeometry --shell "$win")
+	second_float=$(DISPLAY=$display xdotool getwindowgeometry --shell "$floating_win")
+	assert_shrunk_centered "$first_tile" "$first_float"
+	assert_shrunk_centered "$second_tile" "$second_float"
+	DISPLAY=$display xdotool key Super+f
+	sleep 0.2
+	[ "$(DISPLAY=$display xdotool getwindowgeometry --shell "$win")" = "$first_float" ]
+	[ "$(DISPLAY=$display xdotool getwindowgeometry --shell "$floating_win")" = "$second_float" ]
+	# Super+M is a monocle/bar toggle, so use Super+T to explicitly retile.
+	DISPLAY=$display xdotool key Super+t
+	sleep 0.2
+	[ "$(DISPLAY=$display xdotool getwindowgeometry --shell "$win")" = "$first_tiled_geometry" ]
+	[ "$(DISPLAY=$display xdotool getwindowgeometry --shell "$floating_win")" = "$tiled_geometry" ]
+done
+DISPLAY=$display xdotool key Super+t
+sleep 0.2
+# A window floated individually must retain its geometry across layout changes.
+DISPLAY=$display xdotool key Super+space
+sleep 0.2
+individual_float=$(DISPLAY=$display xdotool getwindowgeometry --shell "$floating_win")
+DISPLAY=$display xdotool key Super+f
+sleep 0.2
+[ "$(DISPLAY=$display xdotool getwindowgeometry --shell "$floating_win")" = "$individual_float" ]
+DISPLAY=$display xdotool key Super+t
+sleep 0.2
+[ "$(DISPLAY=$display xdotool getwindowgeometry --shell "$floating_win")" = "$individual_float" ]
+DISPLAY=$display xdotool key Super+space
+sleep 0.2
 # A new minimum-size hint can exceed the current tile, or the entire work area.
 tile_top=$(printf '%s\n' "$tiled_geometry" | awk -F= '$1 == "Y" { print $2 }')
 for min_dimensions in '900 700' '1200 900'; do
