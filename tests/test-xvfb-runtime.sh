@@ -592,6 +592,38 @@ floating_win=$(cat "$work/floating-window-id")
 [ -n "$floating_win" ]
 wait_for_active_window "$floating_win"
 
+# Explicit floating toggles shrink around the tile center and retile without drift.
+tiled_geometry=$(DISPLAY=$display xdotool getwindowgeometry --shell "$floating_win")
+for toggle_cycle in 1 2; do
+	DISPLAY=$display xdotool key Super+space
+	sleep 0.2
+	popped_geometry=$(DISPLAY=$display xdotool getwindowgeometry --shell "$floating_win")
+	printf '%s\n---\n%s\n' "$tiled_geometry" "$popped_geometry" | awk -F= '
+		$0 == "---" { popped = 1; next }
+		!popped { before[$1] = $2; next }
+		{ after[$1] = $2 }
+		END {
+			if (after["WIDTH"] >= before["WIDTH"] * 0.9 ||
+			    after["HEIGHT"] >= before["HEIGHT"] * 0.9 ||
+			    after["WIDTH"] < before["WIDTH"] * 0.8 ||
+			    after["HEIGHT"] < before["HEIGHT"] * 0.8)
+				exit 1
+			dx = 2 * (after["X"] - before["X"]) + after["WIDTH"] - before["WIDTH"]
+			dy = 2 * (after["Y"] - before["Y"]) + after["HEIGHT"] - before["HEIGHT"]
+			if (dx < -8 || dx > 8 || dy < -8 || dy > 8)
+				exit 1
+		}' || {
+		printf '%s\n' "floating toggle did not shrink and center the tile" >&2
+		exit 1
+	}
+	DISPLAY=$display xdotool key Super+space
+	sleep 0.2
+	restored_geometry=$(DISPLAY=$display xdotool getwindowgeometry --shell "$floating_win")
+	if [ "$restored_geometry" != "$tiled_geometry" ]; then
+		printf '%s\n' "floating toggle did not restore tiled geometry (cycle $toggle_cycle)" >&2
+		exit 1
+	fi
+done
 DISPLAY=$display xdotool key Super+space
 DISPLAY=$display xdotool key Super+k
 wait_for_active_window "$win"

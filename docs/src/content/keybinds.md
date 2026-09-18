@@ -86,6 +86,12 @@ not edit customized hotkey files.
 | `Super` + `Shift` + `Y` | Fake fullscreen (bar stays) |
 | `Super` + `Shift` + `B` | Toggle bar visibility |
 
+Entering floating mode with a toggle shrinks a tiled window by 15% around its
+current center, subject to the application's minimum size and resize increments.
+Toggle again to return it to the tiling layout. Mouse dragging and resizing keep
+their existing behavior. Existing hotkey configuration needs no changes; restart
+the dwm session after updating to activate this behavior.
+
 ## Tags (Workspaces)
 
 | Keys | Action |
