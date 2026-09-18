@@ -4586,6 +4586,8 @@ togglefloating(const Arg *arg)
 			applysizehints(c, &x, &y, &w, &h, 0);
 			x = c->x + (c->w - w) / 2;
 			y = c->y + (c->h - h) / 2;
+			x = MAX(c->mon->wx, MIN(x, c->mon->wx + c->mon->ww - w - 2 * c->bw));
+			y = MAX(c->mon->wy, MIN(y, c->mon->wy + c->mon->wh - h - 2 * c->bw));
 			resizeclient(c, x, y, w, h);
 		} else {
 			resize(c, c->x, c->y, c->w, c->h, 0);
