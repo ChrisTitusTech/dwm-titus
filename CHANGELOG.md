@@ -8,6 +8,10 @@ versions from `config.mk`.
 
 ### Changed
 
+- Shrink explicitly toggled tiled windows by 15% around their current center
+  when entering floating mode, respecting application size hints. Toggle again
+  to retile; mouse dragging and resizing retain their existing behavior.
+
 - Let authorized Desktop updates replace changed system-file contents, including
   dwm, commands, and privileged helpers. Keep destination validation, payload
   verification, backups, and rollback. Older hash-restricted updaters need one

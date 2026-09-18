@@ -264,7 +264,7 @@ main(int argc, char **argv)
 	dpy = XOpenDisplay(NULL);
 	if (!dpy)
 		return 2;
-	if (argc == 3 && strcmp(argv[1], "attributes") == 0) {
+	if (argc == 3 && (strcmp(argv[1], "attributes") == 0 || strcmp(argv[1], "border") == 0)) {
 		XWindowAttributes attributes;
 
 		win = strtoul(argv[2], NULL, 0);
@@ -272,7 +272,21 @@ main(int argc, char **argv)
 			XCloseDisplay(dpy);
 			return 3;
 		}
-		printf("override_redirect=%d\n", attributes.override_redirect);
+		if (strcmp(argv[1], "border") == 0)
+			printf("border_width=%d\n", attributes.border_width);
+		else
+			printf("override_redirect=%d\n", attributes.override_redirect);
+		XCloseDisplay(dpy);
+		return 0;
+	}
+	if (argc == 5 && strcmp(argv[1], "min-size") == 0) {
+		XSizeHints hints = {0};
+
+		win = strtoul(argv[2], NULL, 0);
+		hints.flags = PMinSize;
+		hints.min_width = atoi(argv[3]);
+		hints.min_height = atoi(argv[4]);
+		XSetWMNormalHints(dpy, win, &hints);
 		XCloseDisplay(dpy);
 		return 0;
 	}
@@ -592,6 +606,71 @@ floating_win=$(cat "$work/floating-window-id")
 [ -n "$floating_win" ]
 wait_for_active_window "$floating_win"
 
+# Explicit floating toggles shrink around the tile center and retile without drift.
+tiled_geometry=$(DISPLAY=$display xdotool getwindowgeometry --shell "$floating_win")
+for toggle_cycle in 1 2; do
+	DISPLAY=$display xdotool key Super+space
+	sleep 0.2
+	popped_geometry=$(DISPLAY=$display xdotool getwindowgeometry --shell "$floating_win")
+	printf '%s\n---\n%s\n' "$tiled_geometry" "$popped_geometry" | awk -F= '
+		$0 == "---" { popped = 1; next }
+		!popped { before[$1] = $2; next }
+		{ after[$1] = $2 }
+		END {
+			if (after["WIDTH"] >= before["WIDTH"] * 0.9 ||
+			    after["HEIGHT"] >= before["HEIGHT"] * 0.9 ||
+			    after["WIDTH"] < before["WIDTH"] * 0.8 ||
+			    after["HEIGHT"] < before["HEIGHT"] * 0.8)
+				exit 1
+			dx = 2 * (after["X"] - before["X"]) + after["WIDTH"] - before["WIDTH"]
+			dy = 2 * (after["Y"] - before["Y"]) + after["HEIGHT"] - before["HEIGHT"]
+			if (dx < -8 || dx > 8 || dy < -8 || dy > 8)
+				exit 1
+		}' || {
+		printf '%s\n' "floating toggle did not shrink and center the tile" >&2
+		exit 1
+	}
+	DISPLAY=$display xdotool key Super+space
+	sleep 0.2
+	restored_geometry=$(DISPLAY=$display xdotool getwindowgeometry --shell "$floating_win")
+	if [ "$restored_geometry" != "$tiled_geometry" ]; then
+		printf '%s\n' "floating toggle did not restore tiled geometry (cycle $toggle_cycle)" >&2
+		exit 1
+	fi
+done
+# A new minimum-size hint can exceed the current tile, or the entire work area.
+tile_top=$(printf '%s\n' "$tiled_geometry" | awk -F= '$1 == "Y" { print $2 }')
+for min_dimensions in '900 700' '1200 900'; do
+	min_width=${min_dimensions% *}
+	min_height=${min_dimensions#* }
+	DISPLAY=$display "$work/xclient" min-size "$floating_win" "$min_width" "$min_height"
+	sleep 0.2
+	DISPLAY=$display xdotool key Super+space
+	sleep 0.2
+	hinted_geometry=$(DISPLAY=$display xdotool getwindowgeometry --shell "$floating_win")
+	hinted_attributes=$(DISPLAY=$display "$work/xclient" border "$floating_win")
+	printf '%s\n%s\n' "$hinted_geometry" "$hinted_attributes" |
+		awk -F= -v minw="$min_width" -v minh="$min_height" -v tile_top="$tile_top" '
+			{ geometry[$1] = $2 }
+			END {
+				x = geometry["X"]; y = geometry["Y"]
+				w = geometry["WIDTH"]; h = geometry["HEIGHT"]
+				bw = geometry["border_width"]
+				if (x < 0 || y < 0 || w < minw || h < minh)
+					exit 1
+				if (minw < 1024 && (x + w + 2 * bw > 1024 || y + h + 2 * bw > 768))
+					exit 1
+				if (minw > 1024 && (x != 0 || y > tile_top))
+					exit 1
+			}' || {
+		printf '%s\n' "floating size hints left the window outside the work area" >&2
+		exit 1
+	}
+	DISPLAY=$display "$work/xclient" min-size "$floating_win" 0 0
+	sleep 0.2
+	DISPLAY=$display xdotool key Super+space
+	sleep 0.2
+done
 DISPLAY=$display xdotool key Super+space
 DISPLAY=$display xdotool key Super+k
 wait_for_active_window "$win"

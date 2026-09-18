@@ -4567,14 +4567,32 @@ togglefakefullscreen(const Arg *arg)
 void
 togglefloating(const Arg *arg)
 {
-	if (!selmon->sel)
+	Client *c = selmon->sel;
+	int wasfloating, x, y, w, h;
+
+	if (!c)
 		return;
-	if (selmon->sel->isfullscreen && selmon->sel->fakefullscreen != 1) /* no support for fullscreen windows */
+	if (c->isfullscreen && c->fakefullscreen != 1) /* no support for fullscreen windows */
 		return;
-	selmon->sel->isfloating = !selmon->sel->isfloating || selmon->sel->isfixed;
-	if (selmon->sel->isfloating)
-		resize(selmon->sel, selmon->sel->x, selmon->sel->y,
-			selmon->sel->w, selmon->sel->h, 0);
+	wasfloating = c->isfloating;
+	c->isfloating = !wasfloating || c->isfixed;
+	if (c->isfloating) {
+		if (arg && !wasfloating && !c->isfixed && c->mon->lt[c->mon->sellt]->arrange) {
+			/* Explicit toggles pop out of the tile; mouse drags keep their geometry. */
+			x = c->x;
+			y = c->y;
+			w = MAX(1, c->w * 85 / 100);
+			h = MAX(1, c->h * 85 / 100);
+			applysizehints(c, &x, &y, &w, &h, 0);
+			x = c->x + (c->w - w) / 2;
+			y = c->y + (c->h - h) / 2;
+			x = MAX(c->mon->wx, MIN(x, c->mon->wx + c->mon->ww - w - 2 * c->bw));
+			y = MAX(c->mon->wy, MIN(y, c->mon->wy + c->mon->wh - h - 2 * c->bw));
+			resizeclient(c, x, y, w, h);
+		} else {
+			resize(c, c->x, c->y, c->w, c->h, 0);
+		}
+	}
 	arrange(selmon);
 }
 
