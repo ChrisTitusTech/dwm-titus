@@ -12,24 +12,24 @@ eyebrow: Start here
 
 ## Fedora ISO (Recommended for a New Installation)
 
-The v0.7.0 offline images updated 2026-09-14 install a complete Fedora 44 x86_64
+The current offline images install a complete Fedora 44 x86_64
 desktop from a compressed system image. Packages are included, so installation
 works without an Internet connection or software selection.
 
-| Image | Size | Download |
-| --- | --- | --- |
-| Standard | 3.69 GiB | [Download standard ISO](https://downloads.christitus.com/iso/2026-09-11/dwm-titus-fedora44-x86_64-20260911.iso) |
-| NVIDIA | 4.29 GiB | [Download NVIDIA ISO](https://downloads.christitus.com/iso/2026-09-11/dwm-titus-fedora44-x86_64-20260911-nvidia.iso) |
-| Checksums | | [Download SHA256SUMS](https://downloads.christitus.com/iso/2026-09-11/SHA256SUMS) |
+| Image | Download |
+| --- | --- |
+| Standard | [Download standard ISO](https://downloads.christitus.com/iso/dwm-titus.iso) |
+| NVIDIA | [Download NVIDIA ISO](https://downloads.christitus.com/iso/dwm-titus-nvidia.iso) |
+| Checksums | [Download SHA256SUMS](https://downloads.christitus.com/iso/SHA256SUMS) |
 
-The download URLs and filenames retain their original September 11 date; their
-contents and checksums now identify the September 14 builds. Download a fresh
-checksum file with the replacement ISO. If you have a partial download of the
-older build, start a new download instead of resuming it.
+The download URLs always serve the current builds. Download a fresh checksum
+file with your selected ISO. If a build changes while you have a partial
+download, start again instead of resuming the older file. The build manifest
+records the version, size and SHA-256 of each current image.
 
 Use the standard image unless you need the proprietary NVIDIA driver packages.
 Both include LightDM, dwm, Quickshell, Brave Origin, Celluloid, mpv, sxiv, Thunar,
-Alacritty, Starship, Herdr, fonts, Gear Lever, and `maim` with region capture and
+Alacritty, Starship, Herdr, fonts, Papirus icons, Gear Lever, and `maim` with region capture and
 clipboard dependencies. Fresh accounts use Brave Origin for web browsing,
 Celluloid for its supported audio/video formats, sxiv for its supported image
 formats, Thunar for folders, and Alacritty for the terminal. Existing application
@@ -49,9 +49,9 @@ resumable standard-image download from the command line:
 
 ```sh
 curl --fail --location --continue-at - --remote-name \
-  https://downloads.christitus.com/iso/2026-09-11/dwm-titus-fedora44-x86_64-20260911.iso
+  https://downloads.christitus.com/iso/dwm-titus.iso
 curl --fail --location --remote-name \
-  https://downloads.christitus.com/iso/2026-09-11/SHA256SUMS
+  https://downloads.christitus.com/iso/SHA256SUMS
 sha256sum --ignore-missing -c SHA256SUMS
 ```
 
@@ -78,21 +78,11 @@ with `Super+X`, take a full
 screenshot with `Super+P`, select a region with `Super+Shift+P`, or copy a region
 to the clipboard with `Super+Ctrl+P`.
 
-Both September 14 images passed fresh offline UEFI installation, first desktop
-login, and reboot checks in VMs. Application defaults for 130 audio/video/image
-MIME types, browser/file-manager/terminal defaults, `Super+E` opening Thunar, and
-file activation in sxiv, Celluloid, and Brave Origin were verified. Defaults
-remained unchanged after reboot. Complete public downloads matched the tested
-ISOs by SHA-256, and resumable downloads were verified.
-
-For VM video playback, enable virtual 3D acceleration. Celluloid rendered video
-correctly with accelerated virtio graphics; the non-3D headless virtio setup
-showed black video. **Physical NVIDIA acceleration remains untested**; the NVIDIA
-image was tested with virtual graphics. Physical audio, Secure Boot, and a new
-BIOS installation were not qualified for these replacement images. See the
-[build notes and qualification limits](https://downloads.christitus.com/iso/2026-09-11/BUILD-NOTES.md),
-[package/build manifest](https://downloads.christitus.com/iso/2026-09-11/BUILD-MANIFEST.json), and
-[v0.7.0 release notes](https://github.com/ChrisTitusTech/dwm-titus/releases/tag/v0.7.0).
+For the current version, checksums, build validation and hardware qualification
+limits, see the [build notes](https://downloads.christitus.com/iso/BUILD-NOTES.md)
+and [build manifest](https://downloads.christitus.com/iso/BUILD-MANIFEST.json).
+Check those notes before installing, especially for NVIDIA hardware, Secure Boot
+and firmware combinations that may not have been qualified.
 
 ## Existing Fedora System: Quick Install
 

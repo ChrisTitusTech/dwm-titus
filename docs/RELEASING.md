@@ -48,7 +48,8 @@ of `config.h` and object files.
 ## Fedora installer ISOs
 
 For the compressed filesystem build and offline qualification workflow, see
-[COMPRESSED-IMAGES.md](COMPRESSED-IMAGES.md). The v0.7.0 release now links the verified Cloudflare-hosted offline images.
+[COMPRESSED-IMAGES.md](COMPRESSED-IMAGES.md). The install guide links the current Cloudflare-hosted offline images and their
+qualification notes.
 The original GitHub-attached ISO assets use the network package installation
 path described below.
 
@@ -150,3 +151,17 @@ the managed Quickshell shell. Record the source ISO checksum, firmware mode,
 architecture, package-resolution result, first-boot result, and untested
 hardware. A container can validate package availability and ISO contents, but
 it cannot replace the required boot and first-session VM qualification.
+
+## Stable Cloudflare download names
+
+Publish the standard and NVIDIA images at `iso/dwm-titus.iso` and
+`iso/dwm-titus-nvidia.iso`, with matching `iso/SHA256SUMS`,
+`iso/BUILD-MANIFEST.json` and `iso/BUILD-NOTES.md`. Keep versions, sizes, hashes
+and qualification evidence in the manifest and build notes instead of renaming
+the public URLs. The checksum entries must use these same universal filenames.
+
+Stage and verify both replacement images before updating the canonical objects.
+Verify complete public downloads against SHA-256 and test byte-range requests
+before deleting superseded ISOs. Refresh or purge cached canonical objects so
+clients receive matching images and metadata. Use short cache lifetimes for
+these mutable URLs; users must restart partial downloads after a build changes.
