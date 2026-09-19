@@ -7,6 +7,9 @@ import "SystemInformationProtocol.js" as Information
 Scope {
     id: root
 
+    readonly property bool initialLoading: root.settingsVisible && (!root.discoveryReady()
+        || root.snapshotOwned || root.snapshotPending)
+
     signal confirmationInvalidated()
     signal healthOpened()
     property var healthModel: null

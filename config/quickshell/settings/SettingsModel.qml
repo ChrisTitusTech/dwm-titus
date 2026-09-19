@@ -45,12 +45,14 @@ Scope {
     property string displayMessage: ""
     property string displayBaseline: ""
     property bool displayRefreshPending: false
+    readonly property bool displayActionBusy: displayActionProcess.running
     property var inputDevices: []
     property var inputSettings: []
     property var inputUnsupported: []
     property string inputState: "idle"
     property string inputMessage: ""
     property bool inputRefreshPending: false
+    readonly property bool inputActionBusy: inputActionProcess.running
     property string previewKind: ""
     property string previewToken: ""
     property int previewSeconds: 0
@@ -562,8 +564,8 @@ Scope {
     function refreshAutomaticDisplays() {
         if (!root.visible) return;
         if (automaticDisplayStatusProcess.running) { root.automaticDisplayRefreshPending = true; return; }
-        root.automaticDisplayRefreshPending = false;
         automaticDisplayStatusProcess.running = true;
+        root.automaticDisplayRefreshPending = false;
     }
 
     function installDisplayProfile(name) {
@@ -644,9 +646,9 @@ Scope {
             root.displayRefreshPending = true;
             return;
         }
-        root.displayRefreshPending = false;
         root.displayState = "loading";
         displayDiscoverProcess.running = true;
+        root.displayRefreshPending = false;
     }
 
     function refreshInput() {
@@ -655,9 +657,9 @@ Scope {
             root.inputRefreshPending = true;
             return;
         }
-        root.inputRefreshPending = false;
         root.inputState = "loading";
         inputDiscoverProcess.running = true;
+        root.inputRefreshPending = false;
     }
 
     function setSearch(value) {
@@ -763,11 +765,11 @@ Scope {
             root.capabilityRefreshPending = true;
             return;
         }
-        root.capabilityRefreshPending = false;
         root.busy = true;
         root.discoveryState = "loading";
         root.message = "Discovering capabilities...";
         providerProcess.running = true;
+        root.capabilityRefreshPending = false;
     }
 
     function openWindow() {
@@ -855,7 +857,6 @@ Scope {
 
         onRunningChanged: {
             if (!running && root.capabilityRefreshPending && root.visible) {
-                root.capabilityRefreshPending = false;
                 Qt.callLater(function() {
                     if (!providerProcess.running) root.refreshCapabilities();
                 });
@@ -923,7 +924,6 @@ Scope {
         stderr: StdioCollector { onStreamFinished: { const error = this.text.trim(); if (error) { root.displayState = "failure"; root.displayMessage = error; } } }
         onRunningChanged: {
             if (!running && root.displayRefreshPending && root.visible) {
-                root.displayRefreshPending = false;
                 Qt.callLater(function() {
                     if (root.visible && !displayDiscoverProcess.running)
                         root.refreshDisplays();
@@ -940,7 +940,6 @@ Scope {
         stderr: StdioCollector { onStreamFinished: { const error = this.text.trim(); if (error) { root.inputState = "failure"; root.inputMessage = error; } } }
         onRunningChanged: {
             if (!running && root.inputRefreshPending && root.visible) {
-                root.inputRefreshPending = false;
                 Qt.callLater(function() {
                     if (root.visible && !inputDiscoverProcess.running)
                         root.refreshInput();

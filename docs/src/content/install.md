@@ -502,6 +502,22 @@ The default binding opens Alacritty directly. A plain `dwm-terminal` also opens
 the selected emulator directly unless `DWM_HERDR=1` explicitly enables Herdr.
 Commands such as `dwm-terminal -e sh -c 'command'` always bypass Herdr.
 
+### Flatpak prerequisites
+
+Recommended and full installs install the Fedora Flatpak package before
+configuring the official Flathub remote for the target user. Gear Lever
+setup verifies the remote matching an existing app, or prepares the user remote
+before a new installation. Preinstalled system apps use the existing system
+remote so fresh image account setup remains offline. Factory images
+perform the same checks in system scope before installing Flatpak apps. Repeated
+setup preserves existing apps and remotes; an unreadable, disabled, or conflicting
+Flathub remote stops dependent installs with an error.
+
+After resolving a setup failure, retry `scripts/install-gearlever` from the
+source checkout. To prepare the user remote independently, run
+`scripts/dwm-flatpak-setup --user`. If Flatpak is missing, rerun
+`./install.sh --profile recommended` first.
+
 ### Default image storage layout
 
 Both Fedora image variants default to regular partitions with `/home` as an

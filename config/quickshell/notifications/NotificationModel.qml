@@ -15,6 +15,7 @@ Scope {
     property bool doNotDisturb: false
     property int popupTimeoutMs: 6000
     property string policyState: "loading"
+    readonly property bool initialLoading: policyState === "loading" || policyState === "defaults" || policySaving
     property string policyDetail: "Loading notification policy"
     property bool policySaving: false
     property bool policyReloadPending: false

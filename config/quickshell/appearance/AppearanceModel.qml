@@ -9,6 +9,13 @@ Scope {
     id: root
 
     property bool settingsVisible: false
+    // Only finite initial reads belong here, never resident subscriptions.
+    readonly property bool initialLoading: snapshotProcess.running || root.snapshotPending
+        || readinessProcess.running || root.mutationReadinessPending
+        || previewStatusProcess.running || recoveryStatusProcess.running
+        || root.wallpaperStatusBusy || root.fontStatusBusy
+        || root.personalizationStatusBusy || root.personalizationStatusPending
+        || root.fontStatusPending || picomModel.statusBusy
     property bool busy: false
     property bool mutationReady: false
     property bool mutationReadinessPending: false
@@ -634,10 +641,10 @@ Scope {
             root.snapshotPending = true;
             return;
         }
-        root.snapshotPending = false;
         root.snapshotRunGeneration = root.snapshotGeneration;
         root.snapshotParsed = false;
         snapshotProcess.running = true;
+        root.snapshotPending = false;
     }
 
     function refreshPreviewStatus(force) {
@@ -659,8 +666,8 @@ Scope {
             root.mutationReadinessPending = true;
             return;
         }
-        root.mutationReadinessPending = false;
         readinessProcess.running = true;
+        root.mutationReadinessPending = false;
     }
 
     function refreshWallpaperStatus() {
@@ -670,9 +677,9 @@ Scope {
             root.wallpaperStatusPending = true;
             return;
         }
-        root.wallpaperStatusPending = false;
         root.wallpaperStatusParsed = false;
         wallpaperStatusProcess.running = true;
+        root.wallpaperStatusPending = false;
     }
 
     function refreshFontStatus() {
@@ -883,11 +890,11 @@ Scope {
                 || allowUnwatched === true;
             return;
         }
-        root.inventoryPending = false;
-        root.inventoryPendingAllowUnwatched = false;
         root.inventoryRunGeneration = root.inventoryGeneration;
         root.inventoryParsed = false;
         inventoryProcess.running = true;
+        root.inventoryPending = false;
+        root.inventoryPendingAllowUnwatched = false;
     }
 
     function refreshAll(forcePreviewStatus) {
@@ -1837,7 +1844,6 @@ Scope {
                     : "Appearance provider failed before returning a valid snapshot");
             }
             if (!running && root.snapshotPending) {
-                root.snapshotPending = false;
                 Qt.callLater(root.refreshSnapshot);
             }
         }
@@ -1854,7 +1860,6 @@ Scope {
         onRunningChanged: {
             if (!running && root.mutationReadinessPending && !actionProcess.running) {
                 root.mutationReady = false;
-                root.mutationReadinessPending = false;
                 Qt.callLater(root.refreshMutationReadiness);
             }
         }
@@ -1930,11 +1935,8 @@ Scope {
             }
             if (!running && root.settingsVisible && root.inventoryPending) {
                 const allowUnwatched = root.inventoryPendingAllowUnwatched;
-                root.inventoryPending = false;
-                root.inventoryPendingAllowUnwatched = false;
                 Qt.callLater(function() { root.refreshInventory(allowUnwatched); });
             } else if (!running && root.settingsVisible && root.wallpaperStatusPending) {
-                root.wallpaperStatusPending = false;
                 Qt.callLater(root.refreshWallpaperStatus);
             }
         }
@@ -1962,8 +1964,6 @@ Scope {
             }
             if (!running && root.inventoryPending && root.settingsVisible) {
                 const allowUnwatched = root.inventoryPendingAllowUnwatched;
-                root.inventoryPending = false;
-                root.inventoryPendingAllowUnwatched = false;
                 Qt.callLater(function() { root.refreshInventory(allowUnwatched); });
             } else if (!running && root.wallpaperStatusPending && root.settingsVisible) {
                 Qt.callLater(root.refreshWallpaperStatus);
@@ -2167,7 +2167,6 @@ Scope {
                 return;
             }
             if (root.mutationReadinessPending) {
-                root.mutationReadinessPending = false;
                 Qt.callLater(root.refreshMutationReadiness);
             }
         }
