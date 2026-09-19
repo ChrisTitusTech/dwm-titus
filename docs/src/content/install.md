@@ -517,3 +517,16 @@ After resolving a setup failure, retry `scripts/install-gearlever` from the
 source checkout. To prepare the user remote independently, run
 `scripts/dwm-flatpak-setup --user`. If Flatpak is missing, rerun
 `./install.sh --profile recommended` first.
+
+### Default image storage layout
+
+Both Fedora image variants default to regular partitions with `/home` as an
+ordinary directory on the root (`/`) filesystem, sharing its free space. The XFS root partition grows to use the selected
+drive's available capacity after boot partitions, without the Fedora Server
+automatic-layout size cap. Anaconda
+creates the boot partitions required by BIOS or UEFI. Select the intended
+installation drive in Anaconda and review any destructive storage changes before
+confirming. Fedora Anaconda may initially select every attached disk when
+loading Kickstart: deselect all drives you do not intend to install onto. The
+public profiles do not authorize disk erasure or bypass storage review. Custom
+partitioning remains available for a different layout.

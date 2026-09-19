@@ -260,6 +260,10 @@ for grub_path in /EFI/BOOT/grub.cfg /boot/grub2/grub.cfg; do
 done
 
 branding_dir="$repo_dir/branding/anaconda"
+if [[ ! -f $branding_dir/etc/anaconda/conf.d/90-dwm-storage.conf ]]; then
+	err "missing required Anaconda storage defaults in branding/anaconda"
+	exit 1
+fi
 product_img="$work_dir/product.img"
 extra_xorriso_args=()
 

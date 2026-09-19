@@ -2,10 +2,15 @@
 #
 # Build an installer ISO with scripts/build-dwm-fedora-installer-iso.sh so the
 # local checkout is available at /run/install/repo/dwm-titus during install.
-# Storage, locale, keyboard layout, timezone, hostname, root password, and user
-# creation are intentionally left to the Anaconda UI.
+# Drive selection, erasure confirmation, locale, keyboard layout, timezone,
+# hostname, root password, and user creation remain in the Anaconda UI.
 
 network --bootproto=dhcp --activate
+
+# Use regular partitions with /home inside the root filesystem. Anaconda
+# supplies firmware-specific boot partitions. The ISO builder sets uncapped
+# layout defaults through product.img. Leave partitioning commands out so
+# installation still requires the user to review and confirm selected disks.
 
 firstboot --disable
 selinux --disabled

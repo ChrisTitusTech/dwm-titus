@@ -4,7 +4,18 @@ The compressed-image path prepares the complete desktop once in a disposable
 Fedora 44 virtual machine. Anaconda installs its local filesystem archive,
 then creates configuration for the account selected by the user. Package
 selection and repository downloads happen at image-build time. Disk selection,
-partitioning, locale and account creation remain interactive.
+partitioning, locale and account creation remain interactive. The default layout
+uses regular partitions, with `/home` sharing the root (`/`) filesystem and
+firmware-required boot partitions kept separate. The XFS root partition grows
+to use the available capacity without Fedora Server's automatic-layout size cap. Select only the intended
+installation drive and review storage changes before confirming installation.
+Fedora Anaconda may preselect all attached disks when loading Kickstart;
+explicitly deselect every drive you want to leave untouched.
+Custom partitioning can override this default. The builder packs
+`branding/anaconda/etc/anaconda/conf.d/90-dwm-storage.conf` into `product.img`,
+which Anaconda loads before parsing Kickstart. This keeps the Automatic layout
+consistent after interactive drive selection; the Kickstarts alone on an
+unmodified Fedora ISO do not carry these interactive defaults.
 
 The [2026-09-11 qualification record](COMPRESSED-QUALIFICATION.md) covers offline
 installation and desktop tests for these compressed builds, with explicit hardware

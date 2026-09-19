@@ -102,6 +102,26 @@ fi
 dwm_packages fedora full | grep -Fx gvfs-smb >/dev/null
 dwm_packages fedora full | grep -Fx gnome-keyring-pam >/dev/null
 
+# Interactive defaults must remove the Server root cap as well as /home.
+python3 - "$repo/branding/anaconda/etc/anaconda/conf.d/90-dwm-storage.conf" <<'PYCONFIG'
+import configparser
+import sys
+config = configparser.ConfigParser()
+assert config.read(sys.argv[1])
+assert config['Storage']['file_system_type'] == 'xfs'
+assert config['Storage']['default_scheme'] == 'PLAIN'
+assert config['Storage']['default_partitioning'].strip() == '/ (min 2 GiB)'
+PYCONFIG
+
+# Public profiles require interactive storage review. Only the private
+# factory may configure partitioning and authorize disposable-disk erasure.
+for ks in "$standard_ks" "$nvidia_ks" "$repo/dwm-fedora-image.ks"; do
+	if grep -Eq '^(autopart|clearpart|zerombr|ignoredisk|part|partition|logvol|volgroup|reqpart)([[:space:]]|$)' "$ks"; then
+		printf 'Public Kickstart overrides interactive disk selection or shared root layout: %s\n' "$ks" >&2
+		exit 1
+	fi
+done
+
 for ks in "$standard_ks" "$nvidia_ks"; do
 	if grep -Fxq nwg-look "$ks"; then
 		printf 'Unavailable Fedora package found in %s: nwg-look\n' "$ks" >&2
