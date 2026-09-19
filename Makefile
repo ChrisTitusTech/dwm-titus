@@ -68,6 +68,7 @@ INSTALL_COMMANDS = \
 	scripts/dwm-terminal \
 	scripts/dwm-utils.sh \
 	scripts/dwm-xdg-autostart \
+	scripts/dwm-flatpak-setup \
 	scripts/install-gearlever \
 	scripts/install-herdr \
 	scripts/nvidia-gpu \
