@@ -55,7 +55,7 @@ def main():
             ks = ('text\nlang en_US.UTF-8\nkeyboard us\ntimezone UTC --utc\n'
                   'rootpw --lock\nuser --name=imagebuilder --groups=wheel --lock\n'
                   'ignoredisk --only-use=vda\nzerombr\nclearpart --all --initlabel --drives=vda\n'
-                  'autopart --type=plain --nohome\npoweroff\n' + profile.read_text())
+                  'poweroff\n' + profile.read_text())
             ks = ks.replace('set -eu\n', 'set -eu\nexec > /dev/ttyS0 2>&1\n')
             boot_packages = run('bash', repo / 'scripts/dwm-packages.sh', 'fedora',
                                 'image-boot', capture_output=True, text=True).stdout

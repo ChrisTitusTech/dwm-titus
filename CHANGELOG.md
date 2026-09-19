@@ -6,6 +6,12 @@ versions from `config.mk`.
 
 ## [Unreleased]
 
+### Fixed
+
+- Default both Fedora image variants to regular partitions with `/home` sharing
+  the root filesystem, retaining firmware-specific boot partitions and explicit
+  installation-drive selection and storage confirmation (issue #330).
+
 ### Changed
 
 - Shrink visible tiled windows by 15% when `Super+F` enters floating layout.

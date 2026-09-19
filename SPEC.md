@@ -59,6 +59,13 @@ Fedora aarch64 is not currently a supported release target. Architecture-aware
 package filtering may remain in shared helpers, but it does not constitute an
 aarch64 support claim without native installer and desktop runtime evidence.
 
+Both image variants default to regular partitions with `/home` as an ordinary
+directory on a growing XFS root filesystem that uses available space on the
+selected drive without the Fedora Server autopart root-size cap. Anaconda creates the boot partitions needed
+for BIOS or UEFI. Drive selection and confirmation of destructive storage
+changes remain explicit in Anaconda; the public Kickstarts must not preselect
+or erase disks. Custom partitioning remains available.
+
 The existing-system installer supports Fedora and uses `dnf`/RPM. It must
 report the detected distribution and accept only `ID=fedora` before package
 installation or system changes. Every other operating-system identity must be

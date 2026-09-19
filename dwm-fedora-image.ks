@@ -1,5 +1,11 @@
 # Offline compressed-system installation. Rendered by the ISO builder.
 # Disk, locale, keyboard, timezone and account selection remain interactive.
+# Use regular partitions with /home inside the root filesystem. Anaconda
+# supplies firmware-specific boot partitions; never preselect or erase disks.
+# The ISO builder includes matching uncapped defaults in product.img so
+# selecting a drive in the UI preserves this layout.
+autopart --type=plain --nohome
+
 firstboot --disable
 selinux --disabled
 liveimg --url="file:///run/install/repo/images/dwm-rootfs.tar" --checksum="@IMAGE_SHA256@"

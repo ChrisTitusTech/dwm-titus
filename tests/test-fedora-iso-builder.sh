@@ -43,6 +43,8 @@ cmp "$staging/usr/share/anaconda/pixmaps/sidebar-logo.png" \
 	"$staging/usr/share/anaconda/pixmaps/server/sidebar-logo.png"
 cp "$staging/usr/share/anaconda/pixmaps/sidebar-logo.png" "$DWM_TEST_PACKED_LOGO"
 [[ -s $staging/usr/share/anaconda/ui/spokes/installation_progress.glade ]]
+cmp "$staging/etc/anaconda/conf.d/90-dwm-storage.conf" \
+	"$DWM_TEST_BRANDING/etc/anaconda/conf.d/90-dwm-storage.conf"
 printf 'mock product image\n' >"$4"
 SH
 chmod +x "$work/bin/gensquashfs"

@@ -501,3 +501,14 @@ minimal profile as ready. Optional degraded features can remain unresolved.
 The default binding opens Alacritty directly. A plain `dwm-terminal` also opens
 the selected emulator directly unless `DWM_HERDR=1` explicitly enables Herdr.
 Commands such as `dwm-terminal -e sh -c 'command'` always bypass Herdr.
+
+### Default image storage layout
+
+Both Fedora image variants default to regular partitions with `/home` as an
+ordinary directory on the root (`/`) filesystem, sharing its free space. The XFS root partition grows to use the selected
+drive's available capacity after boot partitions, without the Fedora Server
+automatic-layout size cap. Anaconda
+creates the boot partitions required by BIOS or UEFI. Select the intended
+installation drive in Anaconda and review any destructive storage changes before
+confirming. The public installer does not preselect or clear drives; custom
+partitioning remains available for a different layout.
