@@ -17,13 +17,12 @@ which Anaconda loads before parsing Kickstart. This keeps the Automatic layout
 consistent after interactive drive selection; the Kickstarts alone on an
 unmodified Fedora ISO do not carry these interactive defaults.
 
-The [2026-09-11 qualification record](COMPRESSED-QUALIFICATION.md) covers offline
-installation and desktop tests for these compressed builds, with explicit hardware
-limits. Download the qualified images from the Cloudflare links in the
-[README](../README.md#fedora-iso). The original GitHub-attached v0.7.0 ISOs still
-use network installation. Phase 8 changes below are release-candidate build
-behavior; the existing download links remain on the qualified September 11
-images until replacement qualification and publication are complete.
+Download current offline images from the stable Cloudflare links in the
+[README](../README.md#fedora-iso). The [current build notes](https://downloads.christitus.com/iso/BUILD-NOTES.md)
+and [build manifest](https://downloads.christitus.com/iso/BUILD-MANIFEST.json)
+record their version, hashes and qualification limits. The
+[2026-09-11 qualification record](COMPRESSED-QUALIFICATION.md) documents older
+builds; its filenames, hashes and test results do not describe the current downloads.
 
 ## Build
 
