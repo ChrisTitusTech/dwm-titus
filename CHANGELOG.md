@@ -8,6 +8,10 @@ versions from `config.mk`.
 
 ### Changed
 
+- Shrink visible tiled windows by 15% when `Super+F` enters floating layout.
+  Repeated presses and individually floated windows keep their geometry;
+  `Super+T` retiles the layout.
+
 - Shrink explicitly toggled tiled windows by 15% around their current center
   when entering floating mode, respecting application size hints. Toggle again
   to retile; mouse dragging and resizing retain their existing behavior.

@@ -252,6 +252,7 @@ static void setfocus(Client *c);
 static void setfullscreen(Client *c, int fullscreen);
 static void fullscreen(const Arg *arg);
 static void setlayout(const Arg *arg);
+static void shrinkfloating(Client *c);
 static void setcfact(const Arg *arg);
 static void setmfact(const Arg *arg);
 static void seturgent(Client *c, int urg);
@@ -3302,6 +3303,9 @@ fullscreen(const Arg *arg)
 void
 setlayout(const Arg *arg)
 {
+	Client *c;
+	int wasarranged = selmon->lt[selmon->sellt]->arrange != NULL;
+
 	if (!arg || !arg->v || arg->v != selmon->lt[selmon->sellt]) {
 		selmon->pertag->sellts[selmon->pertag->curtag] ^= 1;
 		selmon->sellt = selmon->pertag->sellts[selmon->pertag->curtag];
@@ -3309,6 +3313,12 @@ setlayout(const Arg *arg)
 	if (arg && arg->v)
 		selmon->pertag->ltidxs[selmon->pertag->curtag][selmon->sellt] = (Layout *)arg->v;
 	selmon->lt[selmon->sellt] = selmon->pertag->ltidxs[selmon->pertag->curtag][selmon->sellt];
+
+	if (wasarranged && !selmon->lt[selmon->sellt]->arrange)
+		for (c = selmon->clients; c; c = c->next)
+			if (ISVISIBLE(c) && !c->isfloating && !c->isfixed
+			    && (!c->isfullscreen || c->fakefullscreen == 1))
+				shrinkfloating(c);
 
 	copystr(selmon->ltsymbol, sizeof selmon->ltsymbol,
 	        selmon->lt[selmon->sellt]->symbol);
@@ -4565,10 +4575,27 @@ togglefakefullscreen(const Arg *arg)
 }
 
 void
+shrinkfloating(Client *c)
+{
+	int x, y, w, h;
+
+	x = c->x;
+	y = c->y;
+	w = MAX(1, c->w * 85 / 100);
+	h = MAX(1, c->h * 85 / 100);
+	applysizehints(c, &x, &y, &w, &h, 0);
+	x = c->x + (c->w - w) / 2;
+	y = c->y + (c->h - h) / 2;
+	x = MAX(c->mon->wx, MIN(x, c->mon->wx + c->mon->ww - w - 2 * c->bw));
+	y = MAX(c->mon->wy, MIN(y, c->mon->wy + c->mon->wh - h - 2 * c->bw));
+	resizeclient(c, x, y, w, h);
+}
+
+void
 togglefloating(const Arg *arg)
 {
 	Client *c = selmon->sel;
-	int wasfloating, x, y, w, h;
+	int wasfloating;
 
 	if (!c)
 		return;
@@ -4579,16 +4606,7 @@ togglefloating(const Arg *arg)
 	if (c->isfloating) {
 		if (arg && !wasfloating && !c->isfixed && c->mon->lt[c->mon->sellt]->arrange) {
 			/* Explicit toggles pop out of the tile; mouse drags keep their geometry. */
-			x = c->x;
-			y = c->y;
-			w = MAX(1, c->w * 85 / 100);
-			h = MAX(1, c->h * 85 / 100);
-			applysizehints(c, &x, &y, &w, &h, 0);
-			x = c->x + (c->w - w) / 2;
-			y = c->y + (c->h - h) / 2;
-			x = MAX(c->mon->wx, MIN(x, c->mon->wx + c->mon->ww - w - 2 * c->bw));
-			y = MAX(c->mon->wy, MIN(y, c->mon->wy + c->mon->wh - h - 2 * c->bw));
-			resizeclient(c, x, y, w, h);
+			shrinkfloating(c);
 		} else {
 			resize(c, c->x, c->y, c->w, c->h, 0);
 		}
