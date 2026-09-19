@@ -4,8 +4,6 @@ set -euo pipefail
 readonly APP_ID=it.mijorus.gearlever
 readonly DESKTOP_ID=it.mijorus.gearlever.desktop
 readonly FLATHUB_REMOTE=flathub
-readonly FLATHUB_REPOSITORY=https://dl.flathub.org/repo/flathub.flatpakrepo
-readonly FLATHUB_URL=https://dl.flathub.org/repo/
 readonly APPIMAGE_MIME=application/vnd.appimage
 
 configure_appimage_default() {
@@ -19,40 +17,28 @@ configure_appimage_default() {
 	fi
 }
 
+helper_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 if ! command -v flatpak >/dev/null 2>&1; then
-	printf 'Gear Lever setup requires the Fedora flatpak package.\n' >&2
+	"$helper_dir/dwm-flatpak-setup" --user
 	exit 1
 fi
 
 if flatpak info --user "$APP_ID" >/dev/null 2>&1; then
+	"$helper_dir/dwm-flatpak-setup" --user
 	configure_appimage_default
 	printf 'Gear Lever is already installed for %s.\n' "$(id -un)"
 	exit 0
 fi
 
 if flatpak info --system "$APP_ID" >/dev/null 2>&1; then
+	# Factory images already contain this app and remote. Keep account setup offline.
+	"$helper_dir/dwm-flatpak-setup" --system
 	configure_appimage_default
 	printf 'Gear Lever is already installed system-wide.\n'
 	exit 0
 fi
 
-remote_present=false
-while IFS=$'\t' read -r remote remote_url; do
-	if [[ $remote == "$FLATHUB_REMOTE" ]]; then
-		if [[ ${remote_url%/} != "${FLATHUB_URL%/}" ]]; then
-			printf 'Refusing non-official user Flathub remote URL: %s\n' "$remote_url" >&2
-			exit 1
-		fi
-		remote_present=true
-		break
-	fi
-done < <(flatpak remotes --user --columns=name,url)
-
-if [[ $remote_present != true ]]; then
-	printf 'Adding the user-scoped Flathub remote for Gear Lever...\n'
-	flatpak remote-add --user --if-not-exists \
-		"$FLATHUB_REMOTE" "$FLATHUB_REPOSITORY"
-fi
+"$helper_dir/dwm-flatpak-setup" --user
 
 printf 'Installing Gear Lever from Flathub for %s...\n' "$(id -un)"
 flatpak install --user --noninteractive "$FLATHUB_REMOTE" "$APP_ID"

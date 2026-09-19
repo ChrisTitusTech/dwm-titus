@@ -28,14 +28,14 @@ cp -a /home/imagebuilder/.local/share/fonts/. /usr/local/share/fonts/dwm-titus/
 # Install the Flatpak system-wide so it is not tied to the factory account.
 # Expanded by the private child shell.
 # shellcheck disable=SC2016
-if ! flatpak --system info it.mijorus.gearlever >/dev/null 2>&1; then
-	dbus-run-session -- sh -ec '
+dbus-run-session -- sh -ec '
 export DBUS_SYSTEM_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS
-flatpak --system remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+/usr/share/dwm-titus-image/scripts/dwm-flatpak-setup --system
+if ! flatpak --system info it.mijorus.gearlever >/dev/null 2>&1; then
 flatpak --system install --noninteractive -y flathub it.mijorus.gearlever
 flatpak --system info it.mijorus.gearlever
-'
 fi
+'
 fc-cache -f
 rpm -qa --qf '%{NAME}-%{EPOCHNUM}:%{VERSION}-%{RELEASE}.%{ARCH}\n' | sort >/usr/share/dwm-titus-image/rpm-manifest.txt
 flatpak --system list --columns=ref:full,active:full >/usr/share/dwm-titus-image/flatpak-manifest.txt
