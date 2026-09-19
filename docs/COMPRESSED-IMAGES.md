@@ -9,6 +9,8 @@ uses regular partitions, with `/home` sharing the root (`/`) filesystem and
 firmware-required boot partitions kept separate. The XFS root partition grows
 to use the available capacity without Fedora Server's automatic-layout size cap. Select only the intended
 installation drive and review storage changes before confirming installation.
+Fedora Anaconda may preselect all attached disks when loading Kickstart;
+explicitly deselect every drive you want to leave untouched.
 Custom partitioning can override this default. The builder packs
 `branding/anaconda/etc/anaconda/conf.d/90-dwm-storage.conf` into `product.img`,
 which Anaconda loads before parsing Kickstart. This keeps the Automatic layout

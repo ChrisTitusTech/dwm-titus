@@ -113,8 +113,8 @@ assert config['Storage']['default_scheme'] == 'PLAIN'
 assert config['Storage']['default_partitioning'].strip() == '/ (min 2 GiB)'
 PYCONFIG
 
-# Public profiles leave drive selection entirely to the user. Kickstart
-# autopart preselects every disk, so only the private factory may use it.
+# Public profiles require interactive storage review. Only the private
+# factory may configure partitioning and authorize disposable-disk erasure.
 for ks in "$standard_ks" "$nvidia_ks" "$repo/dwm-fedora-image.ks"; do
 	if grep -Eq '^(autopart|clearpart|zerombr|ignoredisk|part|partition|logvol|volgroup|reqpart)([[:space:]]|$)' "$ks"; then
 		printf 'Public Kickstart overrides interactive disk selection or shared root layout: %s\n' "$ks" >&2

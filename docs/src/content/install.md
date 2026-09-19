@@ -510,5 +510,7 @@ drive's available capacity after boot partitions, without the Fedora Server
 automatic-layout size cap. Anaconda
 creates the boot partitions required by BIOS or UEFI. Select the intended
 installation drive in Anaconda and review any destructive storage changes before
-confirming. The public installer does not preselect or clear drives; custom
+confirming. Fedora Anaconda may initially select every attached disk when
+loading Kickstart: deselect all drives you do not intend to install onto. The
+public profiles do not authorize disk erasure or bypass storage review. Custom
 partitioning remains available for a different layout.
