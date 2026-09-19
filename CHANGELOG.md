@@ -8,6 +8,9 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Keep Settings panes in a stable loading surface while their initial reads
+  complete, including Appearance capabilities and personalization state. Reveal
+  populated controls together and preserve them during later refreshes (#315).
 - Prepare Flatpak and verify the official Flathub remote before installing
   Flatpak applications, using the target user for existing-system installs and
   the system scope for factory images. Stop app installation on setup failures,

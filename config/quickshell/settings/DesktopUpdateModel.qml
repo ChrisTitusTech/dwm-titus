@@ -12,6 +12,8 @@ Scope {
     property bool confirming: false
     property bool dispatching: false
     property bool commandPending: false
+    property bool initialCheckQueued: false
+    readonly property bool initialLoading: commandPending || command.running || terminating || initialCheckQueued
     property bool terminating: false
     property string confirmedRevision: ""
     property string commandError: ""
@@ -217,11 +219,15 @@ Scope {
             }
             if (root.dispatching && exitCode === 0 && exitStatus === 0) root.showProgress();
             root.dispatching = false;
+            root.initialCheckQueued = command.command[root.updaterCommand.length] === "status" && root.discoverAfterStatus
+                && exitCode === 0 && root.settingsVisible
+                && !root.active && root.status.state !== "interrupted";
             root.commandPending = false;
             stateFile.reload();
-            if (command.command[root.updaterCommand.length] === "status" && root.discoverAfterStatus
-                && exitCode === 0 && root.settingsVisible
-                && !root.active && root.status.state !== "interrupted") Qt.callLater(() => root.check(false));
+            if (root.initialCheckQueued) Qt.callLater(() => {
+                root.check(false);
+                root.initialCheckQueued = false;
+            });
         }
     }
 }

@@ -6,6 +6,8 @@ import qs.core
 Scope {
     id: root
 
+    readonly property bool initialLoading: statusProcess.running || root.refreshPending
+
     property string providerState: "idle"
     property string providerDetail: "Loading accessibility policy"
     property bool highContrast: false

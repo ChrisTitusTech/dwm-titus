@@ -6,6 +6,8 @@ import qs.core
 Scope {
     id: root
 
+    readonly property bool initialLoading: snapshotProcess.running || root.snapshotPending
+
     property bool settingsVisible: false
     property bool busy: false
     property string providerState: "idle"
@@ -152,9 +154,9 @@ Scope {
             root.snapshotPending = true;
             return;
         }
-        root.snapshotPending = false;
         root.snapshotGeneration = root.mutationGeneration;
         snapshotProcess.running = true;
+        root.snapshotPending = false;
     }
 
     function runAction(action, scope, desktopId, origin) {
@@ -204,7 +206,6 @@ Scope {
         }
         onRunningChanged: {
             if (!running && root.snapshotPending && root.settingsVisible) {
-                root.snapshotPending = false;
                 Qt.callLater(root.refresh);
             }
         }

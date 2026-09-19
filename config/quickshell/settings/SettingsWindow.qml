@@ -335,6 +335,7 @@ FloatingWindow {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 selected: root.settingsModel.selectedSectionId === "displays"
+                                dataLoading: root.settingsModel.displayState === "loading" || root.settingsModel.displayRefreshPending || root.settingsModel.automaticDisplayBusy || root.settingsModel.automaticDisplayRefreshPending || root.settingsModel.displayActionBusy
                                 windowVisible: root.visible
                                 sourceComponent: DisplaySettingsPane {
                                     settingsModel: root.settingsModel
@@ -345,6 +346,7 @@ FloatingWindow {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 selected: root.settingsModel.selectedSectionId === "input"
+                                dataLoading: root.settingsModel.inputState === "loading" || root.settingsModel.inputRefreshPending || root.settingsModel.inputActionBusy
                                 windowVisible: root.visible
                                 sourceComponent: InputSettingsPane {
                                     settingsModel: root.settingsModel
@@ -355,6 +357,7 @@ FloatingWindow {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 selected: root.settingsModel.selectedSectionId === "network"
+                                dataLoading: root.networkModel.initialLoading
                                 windowVisible: root.visible
                                 sourceComponent: NetworkSettingsPane {
                                     networkModel: root.networkModel
@@ -365,6 +368,7 @@ FloatingWindow {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 selected: root.settingsModel.selectedSectionId === "bluetooth"
+                                dataLoading: root.bluetoothModel.initialLoading
                                 windowVisible: root.visible
                                 sourceComponent: BluetoothSettingsPane {
                                     bluetoothModel: root.bluetoothModel
@@ -375,6 +379,7 @@ FloatingWindow {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 selected: root.settingsModel.selectedSectionId === "audio"
+                                dataLoading: root.controlsModel.initialLoading
                                 windowVisible: root.visible
                                 sourceComponent: AudioSettingsPane {
                                     controlsModel: root.controlsModel
@@ -385,6 +390,7 @@ FloatingWindow {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 selected: root.settingsModel.selectedSectionId === "power"
+                                dataLoading: root.powerModel.initialLoading
                                 windowVisible: root.visible
                                 sourceComponent: PowerSettingsPane {
                                     powerModel: root.powerModel
@@ -396,6 +402,7 @@ FloatingWindow {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 selected: root.settingsModel.selectedSectionId === "defaults"
+                                dataLoading: root.defaultsModel.initialLoading || root.autostartModel.initialLoading
                                 windowVisible: root.visible
                                 sourceComponent: DefaultsSettingsPane {
                                     defaultsModel: root.defaultsModel
@@ -407,6 +414,9 @@ FloatingWindow {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 selected: root.settingsModel.selectedSectionId === "appearance"
+                                dataLoading: root.appearanceModel.initialLoading || root.accessibilityModel.initialLoading
+                                    || root.panelSettingsModel.initialLoading || root.notificationModel.initialLoading || root.settingsModel.busy
+                                    || root.settingsModel.capabilityRefreshPending
                                 windowVisible: root.visible
                                 sourceComponent: AppearanceSettingsPane {
                                     appearanceModel: root.appearanceModel
@@ -428,6 +438,7 @@ FloatingWindow {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 selected: root.settingsModel.selectedSectionId === "system"
+                                dataLoading: root.systemManagementModel.initialLoading || (root.desktopUpdateModel && root.desktopUpdateModel.initialLoading)
                                 windowVisible: root.visible
                                 sourceComponent: SystemSettingsPane {
                                     desktopUpdateModel: root.desktopUpdateModel
@@ -558,6 +569,7 @@ FloatingWindow {
 
                             UiText {
                                 Layout.fillWidth: true
+                                Layout.preferredHeight: Math.ceil(Theme.fontBodySmallSize * 1.5)
                                 text: root.settingsModel.message
                                 color: root.settingsModel.discoveryState === "failure" ? Theme.danger : Theme.menuMutedText
                                 font.pixelSize: Theme.fontBodySmallSize

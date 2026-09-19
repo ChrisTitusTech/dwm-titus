@@ -1,4 +1,13 @@
     // Runs inside an isolated copy of the production ShellRoot.
+    property bool checkedAppearanceStatusDelay: false
+    property bool checkedDisplayRecovery: false
+    property bool checkedInputRecovery: false
+    property string delayedSection: ""
+    property int delayedFrames: 0
+    property bool checkedPolicyRead: false
+    property bool checkedUpdaterRead: false
+    property int loadingFrames: 0
+    property var loadingBounds: []
     property int responseStage: -4
     property var scaleHealthWindow: null
     property var scaleNotificationPopup: null
@@ -134,12 +143,42 @@
                 appearanceModel.personalizationSelections["text-size"] = {
                     state: "available", value: "1.0", option: "follow-system"};
                 appearanceModel.applySharedTypography();
+                settingsModel.testInitialLoading = true;
                 settingsModel.openWindow();
+                settingsModel.refreshDisplays();
+                settingsModel.refreshCapabilities();
                 root.responseStarted = Date.now();
                 root.responseStage = 1;
             } else if (root.responseStage === 1) {
                 const panes = root.responsePaneItems();
                 if (!panes.some(item => String(item).startsWith("DisplaySettingsPane"))) return;
+                const initialPane = panes.find(item => String(item).startsWith("DisplaySettingsPane"));
+                const viewport = initialPane.parent;
+                if (settingsModel.testInitialLoading) {
+                    root.responseCheck(initialPane.opacity === 0 && !initialPane.enabled,
+                        "Initial controls stay hidden and disabled while data is delayed");
+                    const bounds = [viewport.x, viewport.y, viewport.width, viewport.height];
+                    if (root.loadingFrames === 0) root.loadingBounds = bounds;
+                    else root.responseCheck(JSON.stringify(bounds) === JSON.stringify(root.loadingBounds),
+                        "Loading viewport stays fixed while initial data is delayed");
+                    root.loadingFrames++;
+                    if (root.loadingFrames >= 6) settingsModel.testInitialLoading = false;
+                    return;
+                }
+                if (settingsModel.displayActionBusy) {
+                    root.responseCheck(initialPane.opacity === 0 && !initialPane.enabled,
+                        "Display preview recovery keeps initial controls hidden");
+                    root.checkedDisplayRecovery = true;
+                    return;
+                }
+                if (initialPane.opacity !== 1) return;
+                root.responseCheck(initialPane.enabled, "Settled controls become usable");
+                root.responseCheck(JSON.stringify([viewport.x, viewport.y, viewport.width, viewport.height])
+                    === JSON.stringify(root.loadingBounds), "Loaded viewport matches loading viewport");
+                settingsModel.testInitialLoading = true;
+                root.responseCheck(initialPane.opacity === 1 && initialPane.enabled,
+                    "Later refresh does not hide existing controls");
+                settingsModel.testInitialLoading = false;
                 console.info("Settings measurement: first pane ready_ms=" + (Date.now() - root.responseStarted));
                 const before = settingsModel.testActivations;
                 settingsModel.setSearch("dis");
@@ -162,11 +201,58 @@
             } else if (root.responseStage >= 2 && root.responseStage <= 10) {
                 const index = root.responseStage - 2;
                 const section = settingsModel.sections[index];
-                settingsModel.selectSection(section.id);
+                if (root.delayedSection !== section.id) {
+                    root.delayedSection = section.id;
+                    root.delayedFrames = 0;
+                    if (section.id === "input") settingsModel.recoverInputPreview();
+                    if (section.id === "appearance") notificationModel.policyState = "loading";
+                    if (section.id === "system") desktopUpdateModel.commandPending = true;
+                    settingsModel.selectSection(section.id);
+                    if (section.id === "defaults") {
+                        defaultsModel.refresh();
+                        autostartModel.refresh();
+                    }
+                    if (section.id === "power") powerModel.refresh();
+                }
                 const expected = ["Display", "Input", "Network", "Bluetooth", "Audio", "Power", "Defaults", "Appearance", "System"][index];
                 const pane = root.responsePaneItems().find(item => String(item).startsWith(expected + "SettingsPane"));
-                if (!pane || !pane.visible || pane.width <= 0 || pane.height <= 0) return;
+                if (pane && !pane.parent.presented && section.id === "input" && settingsModel.inputActionBusy) {
+                    root.responseCheck(pane.opacity === 0 && !pane.enabled,
+                        "Input preview recovery keeps initial controls hidden");
+                    root.checkedInputRecovery = true;
+                }
+                if (pane && section.id === "appearance" && root.delayedFrames < 6) {
+                    root.responseCheck(pane.opacity === 0 && !pane.enabled,
+                        "Notification policy read and first save keep Appearance hidden");
+                    root.checkedPolicyRead = true;
+                    if (++root.delayedFrames === 3) notificationModel.policyState = "defaults";
+                    if (root.delayedFrames === 6) {
+                        notificationModel.popupTimeoutMs = notificationModel.popupTimeoutMs === 4000 ? 10000 : 4000;
+                        notificationModel.savePolicy();
+                    }
+                }
+                if (pane && section.id === "system" && root.delayedFrames < 6) {
+                    root.responseCheck(pane.opacity === 0 && !pane.enabled,
+                        "Updater status and queued discovery keep System hidden");
+                    root.checkedUpdaterRead = true;
+                    if (++root.delayedFrames === 3) {
+                        desktopUpdateModel.initialCheckQueued = true;
+                        desktopUpdateModel.commandPending = false;
+                    }
+                    if (root.delayedFrames === 6) desktopUpdateModel.initialCheckQueued = false;
+                }
+                if (section.id === "appearance" && pane && !pane.parent.presented
+                        && !appearanceModel.initialLoading && !settingsModel.busy
+                        && !settingsModel.capabilityRefreshPending
+                        && (accessibilityModel.initialLoading || panelSettingsModel.initialLoading)) {
+                    root.responseCheck(pane.opacity === 0 && !pane.enabled,
+                        "Late accessibility/panel status cannot reveal default controls");
+                    root.checkedAppearanceStatusDelay = true;
+                }
+                if (!pane || !pane.visible || pane.opacity !== 1 || pane.width <= 0 || pane.height <= 0) return;
                 root.responseCheck(pane.width > 0 && pane.height > 0, "Loaded pane has layout geometry: " + section.id);
+                if (section.id === "appearance") root.responseCheck(notificationModel.policyState === "available",
+                    "The delayed first policy save produces a valid available policy");
                 if (section.id === "input") {
                     const reads = settingsModel.testInputReads;
                     settingsModel.refresh();
@@ -175,12 +261,26 @@
                 root.responsePanes.push(pane);
                 root.responseStage++;
             } else if (root.responseStage === 11) {
+                root.responseCheck(!settingsWindow.testEarlyPresentation, "First presentation waits for every pending provider");
+                root.responseCheck(root.checkedDisplayRecovery && root.checkedInputRecovery,
+                    "Exercised both delayed preview-recovery reads");
+                root.responseCheck(root.checkedPolicyRead && root.checkedUpdaterRead,
+                    "Exercised notification policy and desktop updater initial reads");
+                root.responseCheck(!autostartModel.testQueuedGap && !defaultsModel.testQueuedGap
+                        && !powerModel.testQueuedGap && !settingsModel.testQueuedGap,
+                    "Queued refresh flags remain set until the next process starts");
+                root.responseCheck(root.checkedAppearanceStatusDelay,
+                    "Exercised panel/accessibility reads finishing after other Appearance data");
+                settingsModel.testInitialLoading = true;
                 settingsModel.close();
                 root.responseCheck(root.responsePaneItems().length === 9, "Closing retains visited panes");
                 settingsModel.openWindow();
                 root.responseStage++;
             } else if (root.responseStage === 12) {
                 root.responseCheck(root.responsePaneItems().length === 9, "Reopening does not duplicate panes");
+                root.responseCheck(root.responseFirstPane.opacity === 1 && root.responseFirstPane.enabled,
+                    "Previously loaded controls stay usable when reopening during a refresh");
+                settingsModel.testInitialLoading = false;
                 root.responseCheck(root.responsePaneItems().indexOf(root.responseFirstPane) >= 0, "First pane identity survives navigation and close");
                 root.responseCheck(root.responseFirstPane.profileName === "Unsaved display profile", "Unsaved profile name survives navigation and close");
                 root.responseCheck(root.responsePanes.every(item => root.responsePaneItems().indexOf(item) >= 0), "Every visited pane survives");
