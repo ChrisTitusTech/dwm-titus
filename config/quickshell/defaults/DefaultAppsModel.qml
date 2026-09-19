@@ -154,9 +154,9 @@ Scope {
             root.snapshotPending = true;
             return;
         }
-        root.snapshotPending = false;
         root.snapshotGeneration = root.mutationGeneration;
         snapshotProcess.running = true;
+        root.snapshotPending = false;
     }
 
     function runAction(action, scope, desktopId, origin) {
@@ -206,7 +206,6 @@ Scope {
         }
         onRunningChanged: {
             if (!running && root.snapshotPending && root.settingsVisible) {
-                root.snapshotPending = false;
                 Qt.callLater(root.refresh);
             }
         }

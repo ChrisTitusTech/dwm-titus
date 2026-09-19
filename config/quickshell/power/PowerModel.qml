@@ -278,9 +278,9 @@ Scope {
             root.snapshotPending = true;
             return;
         }
-        root.snapshotPending = false;
         root.snapshotGeneration = root.mutationGeneration;
         snapshotProcess.running = true;
+        root.snapshotPending = false;
     }
 
     function parseSnapshot(text) {
@@ -539,7 +539,6 @@ Scope {
         }
         onRunningChanged: {
             if (!running && root.snapshotPending && root.sectionVisible) {
-                root.snapshotPending = false;
                 Qt.callLater(root.refresh);
             }
         }

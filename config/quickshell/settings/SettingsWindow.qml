@@ -335,7 +335,7 @@ FloatingWindow {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 selected: root.settingsModel.selectedSectionId === "displays"
-                                dataLoading: root.settingsModel.displayState === "loading" || root.settingsModel.displayRefreshPending || root.settingsModel.automaticDisplayBusy
+                                dataLoading: root.settingsModel.displayState === "loading" || root.settingsModel.displayRefreshPending || root.settingsModel.automaticDisplayBusy || root.settingsModel.automaticDisplayRefreshPending || root.settingsModel.displayActionBusy
                                 windowVisible: root.visible
                                 sourceComponent: DisplaySettingsPane {
                                     settingsModel: root.settingsModel
@@ -346,7 +346,7 @@ FloatingWindow {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 selected: root.settingsModel.selectedSectionId === "input"
-                                dataLoading: root.settingsModel.inputState === "loading" || root.settingsModel.inputRefreshPending
+                                dataLoading: root.settingsModel.inputState === "loading" || root.settingsModel.inputRefreshPending || root.settingsModel.inputActionBusy
                                 windowVisible: root.visible
                                 sourceComponent: InputSettingsPane {
                                     settingsModel: root.settingsModel
@@ -415,7 +415,7 @@ FloatingWindow {
                                 Layout.fillHeight: true
                                 selected: root.settingsModel.selectedSectionId === "appearance"
                                 dataLoading: root.appearanceModel.initialLoading || root.accessibilityModel.initialLoading
-                                    || root.panelSettingsModel.initialLoading || root.settingsModel.busy
+                                    || root.panelSettingsModel.initialLoading || root.notificationModel.initialLoading || root.settingsModel.busy
                                     || root.settingsModel.capabilityRefreshPending
                                 windowVisible: root.visible
                                 sourceComponent: AppearanceSettingsPane {
@@ -438,7 +438,7 @@ FloatingWindow {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 selected: root.settingsModel.selectedSectionId === "system"
-                                dataLoading: root.systemManagementModel.initialLoading
+                                dataLoading: root.systemManagementModel.initialLoading || (root.desktopUpdateModel && root.desktopUpdateModel.initialLoading)
                                 windowVisible: root.visible
                                 sourceComponent: SystemSettingsPane {
                                     desktopUpdateModel: root.desktopUpdateModel
