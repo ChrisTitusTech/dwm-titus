@@ -6,6 +6,14 @@ versions from `config.mk`.
 
 ## [Unreleased]
 
+### Fixed
+
+- Prepare Flatpak and verify the official Flathub remote before installing
+  Flatpak applications, using the target user for existing-system installs and
+  the system scope for factory images. Stop app installation on setup failures,
+  conflicting remote URLs, or disabled remotes (issue #332).
+- Set the installer build version to 0.7.1.
+
 ### Changed
 
 - Shrink visible tiled windows by 15% when `Super+F` enters floating layout.

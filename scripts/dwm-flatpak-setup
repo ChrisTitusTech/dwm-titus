@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# Configure the official remote before installing applications in this scope.
+set -euo pipefail
+
+case ${1:-} in
+--user | --system) scope=$1 ;;
+*)
+	printf 'Usage: dwm-flatpak-setup --user|--system\n' >&2
+	exit 2
+	;;
+esac
+[[ $# == 1 ]] || exit 2
+
+if ! command -v flatpak >/dev/null 2>&1; then
+	printf 'Flatpak setup requires the Fedora flatpak package; rerun the recommended installer profile.\n' >&2
+	exit 1
+fi
+
+verify_remote() {
+	local remotes remote url options
+	# Capture first so a failed query cannot be lost in process substitution.
+	remotes=$(flatpak remotes "$scope" --show-disabled --columns=name,url,options) || return 1
+	while IFS=$'\t' read -r remote url options; do
+		[[ $remote == flathub ]] || continue
+		if [[ ${url%/} != https://dl.flathub.org/repo ]]; then
+			printf 'Refusing non-official %s Flathub remote URL: %s\n' "${scope#--}" "$url" >&2
+			return 1
+		fi
+		case ,$options, in
+		*,no-gpg-verify,*)
+			printf 'The %s Flathub remote has signature verification disabled; repair it before installing apps.\n' "${scope#--}" >&2
+			return 1
+			;;
+		*,disabled,*)
+			printf 'The %s Flathub remote is disabled; enable it before installing apps.\n' "${scope#--}" >&2
+			return 1
+			;;
+		esac
+		return 0
+	done <<<"$remotes"
+	return 3
+}
+
+if verify_remote; then
+	printf 'Flatpak and %s Flathub are ready.\n' "${scope#--}"
+	exit 0
+else
+	status=$?
+	[[ $status == 3 ]] || exit "$status"
+fi
+
+printf 'Adding the official %s Flathub remote...\n' "${scope#--}"
+flatpak remote-add "$scope" --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+if ! verify_remote; then
+	printf 'The %s Flathub remote could not be verified after setup.\n' "${scope#--}" >&2
+	exit 1
+fi
+printf 'Flatpak and %s Flathub are ready.\n' "${scope#--}"
