@@ -10,9 +10,8 @@ network --bootproto=dhcp --activate
 
 # Use regular partitions with /home inside the root filesystem. Anaconda
 # supplies firmware-specific boot partitions; never preselect or erase disks.
-# The ISO builder includes matching uncapped defaults in product.img so
-# selecting a drive in the UI preserves this layout.
-autopart --type=plain --nohome
+# The ISO builder sets uncapped layout defaults through product.img. Do not
+# use a Kickstart autopart command here: it preselects all attached disks.
 
 firstboot --disable
 selinux --disabled

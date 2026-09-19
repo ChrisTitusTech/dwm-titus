@@ -113,11 +113,10 @@ assert config['Storage']['default_scheme'] == 'PLAIN'
 assert config['Storage']['default_partitioning'].strip() == '/ (min 2 GiB)'
 PYCONFIG
 
-# Public profiles must select a layout without selecting or clearing any disk.
+# Public profiles leave drive selection entirely to the user. Kickstart
+# autopart preselects every disk, so only the private factory may use it.
 for ks in "$standard_ks" "$nvidia_ks" "$repo/dwm-fedora-image.ks"; do
-	[[ $(grep -c '^autopart ' "$ks") == 1 ]]
-	grep -Fxq 'autopart --type=plain --nohome' "$ks"
-	if grep -Eq '^(clearpart|zerombr|ignoredisk|part|partition|logvol|volgroup|reqpart)([[:space:]]|$)' "$ks"; then
+	if grep -Eq '^(autopart|clearpart|zerombr|ignoredisk|part|partition|logvol|volgroup|reqpart)([[:space:]]|$)' "$ks"; then
 		printf 'Public Kickstart overrides interactive disk selection or shared root layout: %s\n' "$ks" >&2
 		exit 1
 	fi
