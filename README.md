@@ -48,15 +48,17 @@ For complete requirements and installation details, see the
 
 ### Fedora ISO
 
-Download the **v0.7.0 offline images (2026-09-11)** for Fedora 44 x86_64:
+Download the **current offline images** for Fedora 44 x86_64:
 
-| Image | Size | Download |
-| --- | --- | --- |
-| Standard | 3.39 GiB | [Standard ISO](https://downloads.christitus.com/iso/2026-09-11/dwm-titus-fedora44-x86_64-20260911.iso) |
-| NVIDIA | 3.96 GiB | [NVIDIA ISO](https://downloads.christitus.com/iso/2026-09-11/dwm-titus-fedora44-x86_64-20260911-nvidia.iso) |
-| Verification | | [SHA256SUMS](https://downloads.christitus.com/iso/2026-09-11/SHA256SUMS) and [release notes](https://github.com/ChrisTitusTech/dwm-titus/releases/tag/v0.7.0) |
+| Image | Download |
+| --- | --- |
+| Standard | [Standard ISO](https://downloads.christitus.com/iso/dwm-titus.iso) |
+| NVIDIA | [NVIDIA ISO](https://downloads.christitus.com/iso/dwm-titus-nvidia.iso) |
+| Verification | [SHA256SUMS](https://downloads.christitus.com/iso/SHA256SUMS) and [release notes](https://github.com/ChrisTitusTech/dwm-titus/releases/latest) |
 
-Download the checksum file into the same directory as your selected ISO, then run:
+These stable URLs always serve the current builds. The [build manifest](https://downloads.christitus.com/iso/BUILD-MANIFEST.json)
+records the version, sizes and hashes. Download a fresh checksum file with your
+selected ISO; restart partial downloads if the build changes. In that directory, run:
 
 ```sh
 sha256sum --ignore-missing -c SHA256SUMS
@@ -72,14 +74,10 @@ no Internet connection or software selection. The images include Quickshell,
 Gear Lever, `maim`, region capture and clipboard tools. Internet access is needed
 later for updates and additional software.
 
-Standard offline installation passed UEFI and BIOS VM tests. The NVIDIA image
-passed UEFI installation and desktop tests with virtual graphics; **physical
-NVIDIA acceleration remains untested**. Secure Boot was off during qualification.
 See the [installation guide](https://dwm.christitus.com/install.html#fedora-iso-recommended-for-a-new-installation)
-and [build qualification](https://downloads.christitus.com/iso/2026-09-11/BUILD-NOTES.md).
-
-The older GitHub-hosted `dwm-titus.iso` and `dwm-titus-nvidia.iso` assets are
-network installers. Use the Cloudflare links above for offline installation.
+and [current build qualification](https://downloads.christitus.com/iso/BUILD-NOTES.md)
+for tested firmware modes and hardware limits, including NVIDIA and Secure Boot.
+Use the Cloudflare links above for the current offline installation images.
 For building images, see [compressed-image builds](docs/COMPRESSED-IMAGES.md).
 
 ### Existing System

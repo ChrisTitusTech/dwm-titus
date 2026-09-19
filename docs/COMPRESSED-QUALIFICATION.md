@@ -1,5 +1,10 @@
 # DWM-Titus compressed installers - 2026-09-11
 
+This is a historical qualification record. Those ISO objects have been retired;
+use the [current downloads](../README.md#fedora-iso) and
+[current build notes](https://downloads.christitus.com/iso/BUILD-NOTES.md).
+The filenames, checksums and test results below apply only to the historical builds.
+
 These Fedora 44 x86_64 installers contain a preinstalled compressed desktop.
 Anaconda retains disk, partition, language, timezone, keyboard and account
 selection. Installation needs no package selection or Internet connection.
@@ -87,8 +92,8 @@ retained as `public-download-verification.json` in the same directory.
 The existing GitHub `v0.7.0` release was updated with these public links,
 qualification limits, and build provenance on 2026-09-11. The published notes
 were read back and matched the prepared body; existing assets were preserved.
-The tag and source archives remain unchanged. Public downloads are under
-`https://downloads.christitus.com/iso/2026-09-11/`.
+The tag and source archives remain unchanged. At that time, public downloads
+used the now-retired object prefix `iso/2026-09-11/`.
 
 The Cloudflare download/install documentation passed `npm --prefix docs ci`
 and `npm --prefix docs run build` (zero Astro errors/warnings, 11 pages). The
