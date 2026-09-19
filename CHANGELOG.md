@@ -6,6 +6,8 @@ versions from `config.mk`.
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-09-19
+
 ### Fixed
 
 - Prepare Flatpak and verify the official Flathub remote before installing
