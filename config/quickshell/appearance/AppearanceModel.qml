@@ -9,6 +9,12 @@ Scope {
     id: root
 
     property bool settingsVisible: false
+    // Only finite initial reads belong here, never resident subscriptions.
+    readonly property bool initialLoading: snapshotProcess.running || readinessProcess.running
+        || previewStatusProcess.running || recoveryStatusProcess.running
+        || root.wallpaperStatusBusy || root.fontStatusBusy
+        || root.personalizationStatusBusy || root.personalizationStatusPending
+        || root.fontStatusPending || picomModel.statusBusy
     property bool busy: false
     property bool mutationReady: false
     property bool mutationReadinessPending: false

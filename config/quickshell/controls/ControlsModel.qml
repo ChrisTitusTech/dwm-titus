@@ -7,6 +7,9 @@ import qs.core
 Scope {
     id: root
 
+    readonly property bool initialLoading: audioSnapshotProcess.running || volumeStatusProcess.running
+        || micStatusProcess.running || mediaStatusProcess.running || bluetoothStatusProcess.running
+
     property bool visible: false
     property bool settingsVisible: false
     property bool busy: false

@@ -1,4 +1,7 @@
     // Runs inside an isolated copy of the production ShellRoot.
+    property bool checkedAppearanceStatusDelay: false
+    property int loadingFrames: 0
+    property var loadingBounds: []
     property int responseStage: -4
     property var scaleHealthWindow: null
     property var scaleNotificationPopup: null
@@ -134,12 +137,34 @@
                 appearanceModel.personalizationSelections["text-size"] = {
                     state: "available", value: "1.0", option: "follow-system"};
                 appearanceModel.applySharedTypography();
+                settingsModel.testInitialLoading = true;
                 settingsModel.openWindow();
                 root.responseStarted = Date.now();
                 root.responseStage = 1;
             } else if (root.responseStage === 1) {
                 const panes = root.responsePaneItems();
                 if (!panes.some(item => String(item).startsWith("DisplaySettingsPane"))) return;
+                const initialPane = panes.find(item => String(item).startsWith("DisplaySettingsPane"));
+                const viewport = initialPane.parent;
+                if (settingsModel.testInitialLoading) {
+                    root.responseCheck(initialPane.opacity === 0 && !initialPane.enabled,
+                        "Initial controls stay hidden and disabled while data is delayed");
+                    const bounds = [viewport.x, viewport.y, viewport.width, viewport.height];
+                    if (root.loadingFrames === 0) root.loadingBounds = bounds;
+                    else root.responseCheck(JSON.stringify(bounds) === JSON.stringify(root.loadingBounds),
+                        "Loading viewport stays fixed while initial data is delayed");
+                    root.loadingFrames++;
+                    if (root.loadingFrames >= 6) settingsModel.testInitialLoading = false;
+                    return;
+                }
+                if (initialPane.opacity !== 1) return;
+                root.responseCheck(initialPane.enabled, "Settled controls become usable");
+                root.responseCheck(JSON.stringify([viewport.x, viewport.y, viewport.width, viewport.height])
+                    === JSON.stringify(root.loadingBounds), "Loaded viewport matches loading viewport");
+                settingsModel.testInitialLoading = true;
+                root.responseCheck(initialPane.opacity === 1 && initialPane.enabled,
+                    "Later refresh does not hide existing controls");
+                settingsModel.testInitialLoading = false;
                 console.info("Settings measurement: first pane ready_ms=" + (Date.now() - root.responseStarted));
                 const before = settingsModel.testActivations;
                 settingsModel.setSearch("dis");
@@ -165,7 +190,15 @@
                 settingsModel.selectSection(section.id);
                 const expected = ["Display", "Input", "Network", "Bluetooth", "Audio", "Power", "Defaults", "Appearance", "System"][index];
                 const pane = root.responsePaneItems().find(item => String(item).startsWith(expected + "SettingsPane"));
-                if (!pane || !pane.visible || pane.width <= 0 || pane.height <= 0) return;
+                if (section.id === "appearance" && pane
+                        && !appearanceModel.initialLoading && !settingsModel.busy
+                        && !settingsModel.capabilityRefreshPending
+                        && (accessibilityModel.initialLoading || panelSettingsModel.initialLoading)) {
+                    root.responseCheck(pane.opacity === 0 && !pane.enabled,
+                        "Late accessibility/panel status cannot reveal default controls");
+                    root.checkedAppearanceStatusDelay = true;
+                }
+                if (!pane || !pane.visible || pane.opacity !== 1 || pane.width <= 0 || pane.height <= 0) return;
                 root.responseCheck(pane.width > 0 && pane.height > 0, "Loaded pane has layout geometry: " + section.id);
                 if (section.id === "input") {
                     const reads = settingsModel.testInputReads;
@@ -175,12 +208,18 @@
                 root.responsePanes.push(pane);
                 root.responseStage++;
             } else if (root.responseStage === 11) {
+                root.responseCheck(root.checkedAppearanceStatusDelay,
+                    "Exercised panel/accessibility reads finishing after other Appearance data");
+                settingsModel.testInitialLoading = true;
                 settingsModel.close();
                 root.responseCheck(root.responsePaneItems().length === 9, "Closing retains visited panes");
                 settingsModel.openWindow();
                 root.responseStage++;
             } else if (root.responseStage === 12) {
                 root.responseCheck(root.responsePaneItems().length === 9, "Reopening does not duplicate panes");
+                root.responseCheck(root.responseFirstPane.opacity === 1 && root.responseFirstPane.enabled,
+                    "Previously loaded controls stay usable when reopening during a refresh");
+                settingsModel.testInitialLoading = false;
                 root.responseCheck(root.responsePaneItems().indexOf(root.responseFirstPane) >= 0, "First pane identity survives navigation and close");
                 root.responseCheck(root.responseFirstPane.profileName === "Unsaved display profile", "Unsaved profile name survives navigation and close");
                 root.responseCheck(root.responsePanes.every(item => root.responsePaneItems().indexOf(item) >= 0), "Every visited pane survives");

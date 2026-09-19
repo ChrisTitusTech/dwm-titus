@@ -6,6 +6,8 @@ import qs.core
 Scope {
     id: root
 
+    readonly property bool initialLoading: snapshotProcess.running || root.snapshotPending
+
     property bool settingsVisible: false
     property bool busy: false
     property string providerState: "idle"

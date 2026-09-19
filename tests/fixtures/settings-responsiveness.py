@@ -11,7 +11,8 @@ def replace_once(text, old, new):
 
 qml = Path(sys.argv[1])
 model = qml / "settings/SettingsModel.qml"
-text = model.read_text()
+text = replace_once(model.read_text(), "id: root",
+                    "id: root\n    property bool testInitialLoading: false")
 for method, counter in (
     ("activateSection(id)", "testActivations"),
     ("refreshDisplays()", "testDisplayReads"),
@@ -26,7 +27,7 @@ model.write_text(text)
 commands = qml / "core/Commands.qml"
 text = replace_once(
     commands.read_text(), "const argv = args || [];",
-    'return ["true"];\n        const argv = args || [];',
+    'if (action === "status" && (helper === "dwm-accessibility-settings" || helper === "dwm-panel-settings")) return ["sleep", "0.75"];\n        return ["true"];\n        const argv = args || [];',
 )
 commands.write_text(text)
 appearance = qml / "appearance/AppearanceModel.qml"
@@ -42,3 +43,7 @@ if not text.rstrip().endswith("}"):
     raise SystemExit("Settings fixture shell root changed")
 end = text.rfind("}")
 shell.write_text(text[:end] + Path(sys.argv[2]).read_text() + text[end:])
+
+window = qml / "settings/SettingsWindow.qml"
+window.write_text(window.read_text().replace(
+    "dataLoading: ", "dataLoading: root.settingsModel.testInitialLoading || "))

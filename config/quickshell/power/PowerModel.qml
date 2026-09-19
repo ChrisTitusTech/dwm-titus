@@ -7,6 +7,8 @@ import qs.core
 Scope {
     id: root
 
+    readonly property bool initialLoading: snapshotProcess.running || root.snapshotPending
+
     property bool settingsVisible: false
     property bool controlCenterVisible: false
     property bool sessionMenuVisible: false

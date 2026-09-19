@@ -6,6 +6,12 @@ versions from `config.mk`.
 
 ## [Unreleased]
 
+### Fixed
+
+- Keep Settings panes in a stable loading surface while their initial reads
+  complete, including Appearance capabilities and personalization state. Reveal
+  populated controls together and preserve them during later refreshes (#315).
+
 ### Changed
 
 - Shrink visible tiled windows by 15% when `Super+F` enters floating layout.
