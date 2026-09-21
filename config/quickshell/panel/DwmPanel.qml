@@ -68,6 +68,11 @@ PanelWindow {
 
         PillShadow { cornerRadius: island.radius }
 
+        MouseArea {
+            anchors.fill: parent
+            onClicked: root.popupRequested(root, "")
+        }
+
         RowLayout {
             anchors.fill: parent
             anchors.leftMargin: Theme.panelGap

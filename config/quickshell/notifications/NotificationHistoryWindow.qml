@@ -12,20 +12,32 @@ FloatingWindow {
 
     title: "dwm notification history"
     visible: notificationModel.historyVisible
-    implicitWidth: 560
-    implicitHeight: 600
+    screen: Quickshell.screens.length > 0 ? Quickshell.screens[0] : null
+    implicitWidth: screen ? screen.width : 560
+    implicitHeight: screen ? screen.height : 600
     color: Theme.transparent
 
     onVisibleChanged: {
         if (visible) Qt.callLater(historySurface.forceActiveFocus);
     }
 
+    MouseArea {
+        anchors.fill: parent
+        onClicked: root.notificationModel.closeHistory()
+    }
+
     ShellSurface {
         id: historySurface
 
-        anchors.fill: parent
+        anchors.centerIn: parent
+        width: Math.min(560, root.screen ? root.screen.width - 40 : 560)
+        height: Math.min(600, root.screen ? root.screen.height - 40 : 600)
         margin: Theme.largeSurfaceMargin
         focus: true
+
+        MouseArea {
+            anchors.fill: parent
+        }
 
         Keys.onPressed: event => {
             if (event.key === Qt.Key_Escape) {
@@ -91,7 +103,7 @@ FloatingWindow {
 
                             Layout.fillWidth: true
                             Layout.preferredHeight: Math.max(82, historyContent.implicitHeight + 26)
-                            radius: Theme.largeSurfaceCardRadius
+                            radius: 0
                             color: historyEntry.modelData.urgencyName === "critical" ? Theme.dangerSurface : Theme.surface
                             border.color: historyEntry.modelData.urgencyName === "critical" ? Theme.danger : Theme.popupBorder
                             border.width: Theme.controlBorderWidth

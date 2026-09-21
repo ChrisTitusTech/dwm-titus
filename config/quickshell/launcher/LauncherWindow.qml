@@ -13,8 +13,8 @@ FloatingWindow {
     title: "dwm launcher"
     visible: launcherModel.visible
     screen: launcherModel.targetScreen
-    implicitWidth: 820
-    implicitHeight: 600
+    implicitWidth: screen ? screen.width : 820
+    implicitHeight: screen ? screen.height : 600
     color: Theme.transparent
 
     function focusSearch() {
@@ -28,8 +28,20 @@ FloatingWindow {
         }
     }
 
-    ShellSurface {
+    MouseArea {
         anchors.fill: parent
+        onClicked: root.launcherModel.close()
+    }
+
+    ShellSurface {
+        anchors.centerIn: parent
+        width: Math.min(820, root.screen ? root.screen.width - 40 : 820)
+        height: Math.min(600, root.screen ? root.screen.height - 40 : 600)
+        radius: 0
+
+        MouseArea {
+            anchors.fill: parent
+        }
 
         ColumnLayout {
             anchors.fill: parent

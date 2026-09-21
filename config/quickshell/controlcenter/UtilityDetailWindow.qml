@@ -12,8 +12,8 @@ FloatingWindow {
 
     visible: controlCenterModel.utilityVisible
     screen: controlCenterModel.utilityScreen
-    implicitWidth: 680
-    implicitHeight: 500
+    implicitWidth: screen ? screen.width : 680
+    implicitHeight: screen ? screen.height : 500
     color: Theme.transparent
     // The prefix keeps this window compatible with preserved user rules that
     // already float the dwm control center by title substring.
@@ -29,9 +29,21 @@ FloatingWindow {
         return controlCenterModel.infoRows;
     }
 
-    ShellSurface {
+    MouseArea {
         anchors.fill: parent
+        onClicked: root.controlCenterModel.closeUtility()
+    }
+
+    ShellSurface {
+        anchors.centerIn: parent
+        width: Math.min(680, root.screen ? root.screen.width - 40 : 680)
+        height: Math.min(500, root.screen ? root.screen.height - 40 : 500)
+        radius: 0
         focus: true
+
+        MouseArea {
+            anchors.fill: parent
+        }
 
         Keys.onPressed: function(event) {
             if (event.key === Qt.Key_Escape) {
