@@ -654,7 +654,7 @@ trap 'exit 143' HUP INT TERM
 "$DWM_TEST_REAL_FIND" "$@"
 if [ "${1:-}" = -L ] && [ "${2:-}" = "$DWM_APPEARANCE_WALLPAPER_DIR" ] &&
 	[ "${3:-}" = -mindepth ]; then
-	sleep 2
+	sleep 1
 	printf 'complete\n' >"$DWM_TEST_FIND_COMPLETE"
 fi
 EOF

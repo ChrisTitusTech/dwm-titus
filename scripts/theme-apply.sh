@@ -998,11 +998,19 @@ if [[ $RUNTIME_ONLY == 0 && $LIVE_ONLY == 0 ]]; then
 		"Gtk/CursorThemeName \"$XSETTINGS_CURSOR_THEME\""
 	xsettingsd_config_write "$XSETTINGSD_CONFIG" Gtk/CursorThemeSize \
 		"Gtk/CursorThemeSize $CURSOR_SIZE"
+	if [[ $GTK_THEME_NAME == *$'\r'* || $GTK_THEME_NAME == *$'\n'* ]]; then
+		echo "theme-apply: invalid GTK theme name" >&2
+		exit 1
+	fi
 	XSETTINGS_GTK_THEME=${GTK_THEME_NAME//\\/\\\\}
 	XSETTINGS_GTK_THEME=${XSETTINGS_GTK_THEME//\"/\\\"}
 	xsettingsd_config_write "$XSETTINGSD_CONFIG" Net/ThemeName \
 		"Net/ThemeName \"$XSETTINGS_GTK_THEME\""
 	if [[ -n $ICON_CHOICE && $ICON_CHOICE != follow-system ]]; then
+		if [[ $ICON_CHOICE == *$'\r'* || $ICON_CHOICE == *$'\n'* ]]; then
+			echo "theme-apply: invalid icon theme name" >&2
+			exit 1
+		fi
 		XSETTINGS_ICON_THEME=${ICON_CHOICE//\\/\\\\}
 		XSETTINGS_ICON_THEME=${XSETTINGS_ICON_THEME//\"/\\\"}
 		xsettingsd_config_write "$XSETTINGSD_CONFIG" Net/IconThemeName \

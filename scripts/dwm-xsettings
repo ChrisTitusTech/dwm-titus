@@ -90,10 +90,10 @@ load_config() {
 			xsettings_cursor_size=$line
 			;;
 		Net/ThemeName\ *)
-			[[ ${#line} -le 1024 ]] || die 'invalid theme name setting'
+			[[ ${#line} -le 1024 && $line != *$'\r'* ]] || die 'invalid theme name setting'
 			;;
 		Net/IconThemeName\ *)
-			[[ ${#line} -le 1024 ]] || die 'invalid icon theme setting'
+			[[ ${#line} -le 1024 && $line != *$'\r'* ]] || die 'invalid icon theme setting'
 			;;
 		*)
 			[[ ${#line} -le 4095 && $line != *$'\t'* && $line != *$'\r'* ]] ||
