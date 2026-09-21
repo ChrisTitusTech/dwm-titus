@@ -139,11 +139,11 @@ Singleton {
     readonly property int controlRowHeight: scaledSize(32)
     readonly property int controlPaddingX: scaledSize(9)
     readonly property int controlBorderWidth: highContrast ? 2 : 1
-    readonly property int controlFocusBorderWidth: highContrast ? 3 : 2
+    readonly property int controlFocusBorderWidth: controlBorderWidth
     readonly property int controlRadius: scaledSize(6)
     readonly property int menuHeaderHeight: scaledSize(26)
     readonly property int popupPadding: spacingHuge
-    readonly property int popupRadius: controlRadius
+    readonly property int popupRadius: 0
     readonly property int panelHeroIconSize: scaledSize(32)
     readonly property real panelMetaLetterSpacing: 1.2 * fontScale
     readonly property int panelSliderHeight: scaledSize(32)
@@ -185,7 +185,7 @@ Singleton {
     readonly property int compactButtonHeight: scaledSize(40)
     readonly property int confirmButtonHeight: scaledSize(48)
     readonly property int notificationAccentWidth: scaledSize(4)
-    readonly property int notificationAccentRadius: scaledSize(2)
+    readonly property int notificationAccentRadius: 0
     readonly property int largeSurfaceMargin: scaledSize(22)
     readonly property int largeSurfaceNavWidth: scaledSize(248)
     readonly property int largeSurfaceSearchHeight: scaledSize(44)
