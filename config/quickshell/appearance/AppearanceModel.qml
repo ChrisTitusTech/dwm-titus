@@ -830,7 +830,7 @@ Scope {
         for (const installed of Qt.fontFamilies()) {
             if (family.toLowerCase() === installed.toLowerCase()) return installed;
             if (family.toLowerCase().startsWith(installed.toLowerCase() + " ")
-                    && installed.length > matched.length
+                    && installed.length > String(matched).length
                     && /^(?:(?:thin|ultra-?light|extra-?light|light|semi-?light|book|regular|normal|medium|semi-?bold|demi-?bold|bold|ultra-?bold|extra-?bold|heavy|black|italic|oblique|condensed|expanded)\s*)+$/i.test(
                         family.slice(installed.length).trim()))
                 matched = installed;

@@ -103,7 +103,7 @@ ColumnLayout {
         else if (disableButton.activeFocus) root.revealRequested(focusTarget(ntpCard, disableButton));
         else {
             for (let index = 0; index < catalogRepeater.count; index++) {
-                const item = catalogRepeater.itemAt(index);
+                const item = catalogRepeater.itemAt(index) as CatalogCard;
                 // An asynchronous pane can have a count before its delegates exist.
                 if (item !== null) item.revealFocus();
             }
@@ -127,8 +127,8 @@ ColumnLayout {
             preparedArgument = "";
             if (action === "ntp-set") focusReturn = argument === "disabled" ? disableButton : enableButton;
             else for (let index = 0; index < catalogRepeater.count; index++) {
-                const card = catalogRepeater.itemAt(index);
-                if (card.action === action) focusReturn = card.originControl;
+                const card = catalogRepeater.itemAt(index) as CatalogCard;
+                if (card !== null && card.action === action) focusReturn = card.originControl;
             }
             Qt.callLater(root.restoreFocus);
         }
@@ -157,136 +157,138 @@ ColumnLayout {
         text: "Load reported choices, select a value, then review a fresh preview. System locale changes apply to new sessions; Settings will not log you out."
         color: Theme.menuMutedText
     }
+    component CatalogCard: Rectangle {
+        id: catalogCard
+        required property var modelData
+        readonly property string action: modelData.kind === "timezone" ? "timezone-set" : "locale-set"
+        readonly property var choices: root.regional.choices(modelData.kind)
+        readonly property var filtered: choices.filter(value => value.toLowerCase().indexOf(search.text.toLowerCase()) >= 0)
+        property string selected: ""
+        readonly property string reason: root.regional.actionReason(action)
+        readonly property bool canRead: root.confirmation === null && !root.regional.ownsPreparation()
+            && !root.model.dispatchingNative && !root.model.dispatchingUpdate
+            && root.model.nativeConfirmation === null && root.model.updateConfirmation === null
+            && root.regional.contextReason(action, false) === ""
+        objectName: "regional-card-" + modelData.kind
+        Layout.fillWidth: true
+        implicitHeight: catalogContent.implicitHeight + Theme.spacingMd * 2
+        radius: Theme.controlRadius
+        color: Theme.controlNormalFill
+        border.color: Theme.controlNormalBorder
+        onChoicesChanged: { selected = ""; search.clear(); }
+        readonly property var originControl: loadButton
+        function revealFocus() {
+            if (loadButton.activeFocus) root.revealRequested(loadButton);
+            else if (previewButton.activeFocus) root.revealRequested(previewButton);
+            else if (search.activeFocus) root.revealRequested(searchBox);
+            else if (choiceList.activeFocus) root.revealRequested(choiceList);
+        }
+        ColumnLayout {
+            id: catalogContent
+            anchors.fill: parent
+            anchors.margins: Theme.spacingMd
+            spacing: Theme.spacingSm
+            PlainText { text: catalogCard.modelData.label; font.bold: true }
+            StateText { identifier: catalogCard.modelData.kind; label: "Current" }
+            ActionButton {
+                id: loadButton
+                objectName: "load-" + catalogCard.modelData.kind
+                revealTarget: loadButton
+                label: catalogCard.choices.length > 0 ? "Reload choices" : "Load choices"
+                enabled: catalogCard.canRead
+                onActivated: {
+                    root.beginRead(loadButton);
+                    root.regional.requestChoices(catalogCard.modelData.kind);
+                }
+            }
+            Rectangle {
+                id: searchBox
+                visible: catalogCard.choices.length > 0
+                Layout.fillWidth: true
+                implicitHeight: Theme.controlHeight
+                color: Theme.controlNormalFill
+                border.color: search.activeFocus ? Theme.controlFocusBorder : Theme.controlNormalBorder
+                radius: Theme.controlRadius
+                TextInput {
+                    id: search
+                    objectName: "search-" + catalogCard.modelData.kind
+                    anchors.fill: parent
+                    anchors.margins: Theme.spacingSm
+                    clip: true
+                    selectByMouse: true
+                    activeFocusOnTab: true
+                    maximumLength: 255
+                    color: Theme.menuText
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.inputFontSize
+                    Accessible.name: "Filter " + catalogCard.modelData.label + " choices"
+                    onActiveFocusChanged: { if (activeFocus) root.revealRequested(searchBox); }
+                }
+            }
+            PlainText {
+                visible: catalogCard.choices.length > 0
+                text: "Filter choices above. " + catalogCard.filtered.length + " matches. Select with click or Enter."
+                color: Theme.menuMutedText
+            }
+            ListView {
+                id: choiceList
+                objectName: "choices-" + catalogCard.modelData.kind
+                visible: catalogCard.choices.length > 0
+                Layout.fillWidth: true
+                Layout.preferredHeight: Math.min(contentHeight, 144, Math.max(0, root.viewportHeight))
+                model: catalogCard.filtered
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
+                activeFocusOnTab: count > 0
+                keyNavigationEnabled: true
+                onActiveFocusChanged: { if (activeFocus) root.revealRequested(choiceList); }
+                Keys.onPressed: event => {
+                    if (event.key === Qt.Key_Home) { currentIndex = 0; positionViewAtBeginning(); }
+                    else if (event.key === Qt.Key_End) { currentIndex = count - 1; positionViewAtEnd(); }
+                    else if (event.key === Qt.Key_PageDown || event.key === Qt.Key_PageUp) {
+                        currentIndex = Math.max(0, Math.min(count - 1, currentIndex
+                            + (event.key === Qt.Key_PageDown ? 1 : -1) * Math.max(1, Math.floor(height / Theme.controlHeight))));
+                        positionViewAtIndex(currentIndex, ListView.Contain);
+                    } else if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space)
+                            && currentIndex >= 0 && currentIndex < count) catalogCard.selected = catalogCard.filtered[currentIndex];
+                    else return;
+                    event.accepted = true;
+                }
+                delegate: PlainText {
+                    required property string modelData
+                    required property int index
+                    width: ListView.view.width
+                    height: Math.max(Theme.controlHeight, implicitHeight)
+                    text: (catalogCard.selected === modelData ? "Selected: " : "") + modelData
+                    color: choiceList.currentIndex === index ? Theme.accent : Theme.menuText
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: { choiceList.currentIndex = parent.index; catalogCard.selected = parent.modelData; choiceList.forceActiveFocus(); }
+                    }
+                }
+            }
+            PlainText { visible: catalogCard.selected.length > 0; text: "Selected: " + catalogCard.selected }
+            ActionButton {
+                id: previewButton
+                objectName: "prepare-" + catalogCard.action
+                revealTarget: previewButton
+                label: "Review change..."
+                enabled: root.confirmation === null && catalogCard.reason === "" && catalogCard.selected.length > 0
+                    && catalogCard.choices.indexOf(catalogCard.selected) >= 0
+                onActivated: {
+                    root.beginRead(previewButton);
+                    root.regional.prepare(catalogCard.action,
+                        (catalogCard.modelData.kind === "locale" ? "LANG=" : "") + catalogCard.selected);
+                }
+            }
+            PlainText { visible: text.length > 0; text: catalogCard.reason; color: Theme.menuMutedText }
+        }
+    }
+
     Repeater {
         id: catalogRepeater
         model: [{kind: "timezone", label: "Timezone"}, {kind: "locale", label: "System locale"}]
-        delegate: Rectangle {
-            id: catalogCard
-            required property var modelData
-            readonly property string action: modelData.kind === "timezone" ? "timezone-set" : "locale-set"
-            readonly property var choices: root.regional.choices(modelData.kind)
-            readonly property var filtered: choices.filter(value => value.toLowerCase().indexOf(search.text.toLowerCase()) >= 0)
-            property string selected: ""
-            readonly property string reason: root.regional.actionReason(action)
-            readonly property bool canRead: root.confirmation === null && !root.regional.ownsPreparation()
-                && !root.model.dispatchingNative && !root.model.dispatchingUpdate
-                && root.model.nativeConfirmation === null && root.model.updateConfirmation === null
-                && root.regional.contextReason(action, false) === ""
-            objectName: "regional-card-" + modelData.kind
-            Layout.fillWidth: true
-            implicitHeight: catalogContent.implicitHeight + Theme.spacingMd * 2
-            radius: Theme.controlRadius
-            color: Theme.controlNormalFill
-            border.color: Theme.controlNormalBorder
-            onChoicesChanged: { selected = ""; search.clear(); }
-            readonly property var originControl: loadButton
-            function revealFocus() {
-                if (loadButton.activeFocus) root.revealRequested(loadButton);
-                else if (previewButton.activeFocus) root.revealRequested(previewButton);
-                else if (search.activeFocus) root.revealRequested(searchBox);
-                else if (choiceList.activeFocus) root.revealRequested(choiceList);
-            }
-            ColumnLayout {
-                id: catalogContent
-                anchors.fill: parent
-                anchors.margins: Theme.spacingMd
-                spacing: Theme.spacingSm
-                PlainText { text: catalogCard.modelData.label; font.bold: true }
-                StateText { identifier: catalogCard.modelData.kind; label: "Current" }
-                ActionButton {
-                    id: loadButton
-                    objectName: "load-" + catalogCard.modelData.kind
-                    revealTarget: loadButton
-                    label: catalogCard.choices.length > 0 ? "Reload choices" : "Load choices"
-                    enabled: catalogCard.canRead
-                    onActivated: {
-                        root.beginRead(loadButton);
-                        root.regional.requestChoices(catalogCard.modelData.kind);
-                    }
-                }
-                Rectangle {
-                    id: searchBox
-                    visible: catalogCard.choices.length > 0
-                    Layout.fillWidth: true
-                    implicitHeight: Theme.controlHeight
-                    color: Theme.controlNormalFill
-                    border.color: search.activeFocus ? Theme.controlFocusBorder : Theme.controlNormalBorder
-                    radius: Theme.controlRadius
-                    TextInput {
-                        id: search
-                        objectName: "search-" + catalogCard.modelData.kind
-                        anchors.fill: parent
-                        anchors.margins: Theme.spacingSm
-                        clip: true
-                        selectByMouse: true
-                        activeFocusOnTab: true
-                        maximumLength: 255
-                        color: Theme.menuText
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.inputFontSize
-                        Accessible.name: "Filter " + catalogCard.modelData.label + " choices"
-                        onActiveFocusChanged: { if (activeFocus) root.revealRequested(searchBox); }
-                    }
-                }
-                PlainText {
-                    visible: catalogCard.choices.length > 0
-                    text: "Filter choices above. " + catalogCard.filtered.length + " matches. Select with click or Enter."
-                    color: Theme.menuMutedText
-                }
-                ListView {
-                    id: choiceList
-                    objectName: "choices-" + catalogCard.modelData.kind
-                    visible: catalogCard.choices.length > 0
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: Math.min(contentHeight, 144, Math.max(0, root.viewportHeight))
-                    model: catalogCard.filtered
-                    clip: true
-                    boundsBehavior: Flickable.StopAtBounds
-                    activeFocusOnTab: count > 0
-                    keyNavigationEnabled: true
-                    onActiveFocusChanged: { if (activeFocus) root.revealRequested(choiceList); }
-                    Keys.onPressed: event => {
-                        if (event.key === Qt.Key_Home) { currentIndex = 0; positionViewAtBeginning(); }
-                        else if (event.key === Qt.Key_End) { currentIndex = count - 1; positionViewAtEnd(); }
-                        else if (event.key === Qt.Key_PageDown || event.key === Qt.Key_PageUp) {
-                            currentIndex = Math.max(0, Math.min(count - 1, currentIndex
-                                + (event.key === Qt.Key_PageDown ? 1 : -1) * Math.max(1, Math.floor(height / Theme.controlHeight))));
-                            positionViewAtIndex(currentIndex, ListView.Contain);
-                        } else if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space)
-                                && currentIndex >= 0 && currentIndex < count) catalogCard.selected = catalogCard.filtered[currentIndex];
-                        else return;
-                        event.accepted = true;
-                    }
-                    delegate: PlainText {
-                        required property string modelData
-                        required property int index
-                        width: ListView.view.width
-                        height: Math.max(Theme.controlHeight, implicitHeight)
-                        text: (catalogCard.selected === modelData ? "Selected: " : "") + modelData
-                        color: choiceList.currentIndex === index ? Theme.accent : Theme.menuText
-                        MouseArea {
-                            anchors.fill: parent
-                            onClicked: { choiceList.currentIndex = parent.index; catalogCard.selected = parent.modelData; choiceList.forceActiveFocus(); }
-                        }
-                    }
-                }
-                PlainText { visible: catalogCard.selected.length > 0; text: "Selected: " + catalogCard.selected }
-                ActionButton {
-                    id: previewButton
-                    objectName: "prepare-" + catalogCard.action
-                    revealTarget: previewButton
-                    label: "Review change..."
-                    enabled: root.confirmation === null && catalogCard.reason === "" && catalogCard.selected.length > 0
-                        && catalogCard.choices.indexOf(catalogCard.selected) >= 0
-                    onActivated: {
-                        root.beginRead(previewButton);
-                        root.regional.prepare(catalogCard.action,
-                            (catalogCard.modelData.kind === "locale" ? "LANG=" : "") + catalogCard.selected);
-                    }
-                }
-                PlainText { visible: text.length > 0; text: catalogCard.reason; color: Theme.menuMutedText }
-            }
-        }
+        delegate: CatalogCard {}
     }
     Rectangle {
         id: ntpCard

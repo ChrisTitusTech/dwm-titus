@@ -6,6 +6,12 @@ versions from `config.mk`.
 
 ## [Unreleased]
 
+### Fixed
+
+- Keep Quickshell linting compatible with Fedora 44 Qt tooling, with typed
+  regional controls and provider monitors, an unambiguous running-app state
+  property, and narrowly scoped exceptions for missing upstream enum metadata.
+
 ## [0.7.1] - 2026-09-19
 
 ### Fixed

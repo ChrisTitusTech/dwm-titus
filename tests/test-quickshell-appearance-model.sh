@@ -46,7 +46,9 @@ awk '
 		if (/if \(!providerProcess.running\) root.refreshCapabilities\(\);/ && !guarded) guarded = NR
 		if (depth == 0) {
 			in_handler = 0
-			verified = cleared && deferred && guarded && cleared < deferred && deferred < guarded
+			# Keep the pending flag until refreshCapabilities starts the queued read.
+			verified = !cleared && deferred && guarded && deferred < guarded
+			exit
 		}
 	}
 	END {

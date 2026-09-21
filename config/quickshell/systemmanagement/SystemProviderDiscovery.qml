@@ -156,7 +156,7 @@ Scope {
             storage: root.domain === "storage", prefix: selected.prefix });
         const owner = monitorComponent.createObject(root, { identity: identity,
             callbacks: root.monitorCallbacks(identity),
-            command: Commands.systemManagementCommand(selected.action, selected.args) });
+            command: Commands.systemManagementCommand(selected.action, selected.args) }) as Monitor;
         if (owner === null) {
             root.failed = true;
             root.invalidated();
@@ -254,34 +254,37 @@ Scope {
 
     Component {
         id: monitorComponent
-        Scope {
-            id: owner
-            required property var identity
-            required property var callbacks
-            property alias command: process.command
-            function start() { setupDeadline.restart(); process.running = true; }
-            function stopSetup() { setupDeadline.stop(); }
-            function stop() { setupDeadline.stop(); stopDeadline.restart(); process.signal(15); }
-            function signal(number) { process.signal(number); }
-            function clearDeadlines() { setupDeadline.stop(); stopDeadline.stop(); }
-            Timer {
-                id: setupDeadline
-                interval: owner.identity.storage ? 3000 : 12000
-                repeat: false
-                onTriggered: owner.callbacks.setup()
-            }
-            Timer {
-                id: stopDeadline
-                interval: owner.identity.storage ? 2000 : 1500
-                repeat: false
-                onTriggered: owner.callbacks.stop()
-            }
-            Process {
-                id: process
-                stdout: SplitParser { onRead: line => owner.callbacks.line(line) }
-                onExited: owner.callbacks.finish()
-                onRunningChanged: { if (!running) owner.callbacks.finish(); }
-            }
+        Monitor {}
+    }
+
+    component Monitor: Scope {
+        id: owner
+        required property var identity
+        required property var callbacks
+        property alias command: process.command
+        function start() { setupDeadline.restart(); process.running = true; }
+        function stopSetup() { setupDeadline.stop(); }
+        function stop() { setupDeadline.stop(); stopDeadline.restart(); process.signal(15); }
+        function signal(number) { process.signal(number); }
+        function clearDeadlines() { setupDeadline.stop(); stopDeadline.stop(); }
+        Timer {
+            id: setupDeadline
+            interval: owner.identity.storage ? 3000 : 12000
+            repeat: false
+            onTriggered: owner.callbacks.setup()
+        }
+        Timer {
+            id: stopDeadline
+            interval: owner.identity.storage ? 2000 : 1500
+            repeat: false
+            onTriggered: owner.callbacks.stop()
+        }
+        Process {
+            id: process
+            stdout: SplitParser { onRead: line => owner.callbacks.line(line) }
+            // Fedora Quickshell qmltypes omit QProcess::ExitStatus; the runtime signal is valid.
+            onExited: owner.callbacks.finish() // qmllint disable signal-handler-parameters
+            onRunningChanged: { if (!running) owner.callbacks.finish(); }
         }
     }
 }

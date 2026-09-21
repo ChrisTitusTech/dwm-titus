@@ -21,7 +21,7 @@ grep -Fq 'aboveWindows: root.state.fullscreenMonitorIndexes.indexOf(' "$panel/Dw
 grep -Fq 'signal popupRequested(var panelWindow, string popupId)' "$panel/DwmPanel.qml"
 grep -Fq 'model: root.state.workspaceIndexes(root.screen)' "$panel/DwmPanel.qml"
 grep -Fq 'sourceComponent: TrayArea {}' "$panel/DwmPanel.qml"
-grep -Fq 'RunningAppsArea { state: root.state }' "$panel/DwmPanel.qml"
+grep -Fq 'RunningAppsArea { desktopState: root.state }' "$panel/DwmPanel.qml"
 
 grep -Fq 'outlined: true' "$panel/DwmPanel.qml"
 grep -Fq 'outlined ? Theme.controlNormalFill : Theme.transparent' "$core/PanelPill.qml"
