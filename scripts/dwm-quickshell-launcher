@@ -125,6 +125,9 @@ desktop_entry_summary() {
 			if (type != "Application" || name == "" || exec == "" || hidden == "true" || nodisplay == "true") {
 				return 0
 			}
+			if (has_onlyshowin && has_notshowin) {
+				return 0
+			}
 			if (has_onlyshowin && !desktop_matches(onlyshowin)) {
 				return 0
 			}

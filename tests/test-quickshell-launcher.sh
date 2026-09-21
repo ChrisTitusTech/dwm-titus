@@ -216,6 +216,23 @@ Exec=not-kde-app
 NotShowIn=KDE;
 DESKTOP
 
+cat >"$work/data/applications/both-keys.desktop" <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=Both Keys App
+Exec=both-keys-app
+OnlyShowIn=dwm;
+NotShowIn=XFCE;
+DESKTOP
+
+cat >"$work/data/applications/empty-only.desktop" <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=Empty Only App
+Exec=empty-only-app
+OnlyShowIn=
+DESKTOP
+
 output=$(
 	LANG=en_US.UTF-8 \
 		HOME="$work/home" \
@@ -243,6 +260,14 @@ if printf '%s\n' "$output" | grep -F 'XFCE Only App'; then
 fi
 if printf '%s\n' "$output" | grep -F 'Not DWM App'; then
 	printf 'Not DWM App should not be listed under default dwm desktop\n' >&2
+	exit 1
+fi
+if printf '%s\n' "$output" | grep -F 'Both Keys App'; then
+	printf 'Both Keys App should not be listed under default dwm desktop (violates spec mutual exclusivity)\n' >&2
+	exit 1
+fi
+if printf '%s\n' "$output" | grep -F 'Empty Only App'; then
+	printf 'Empty Only App should not be listed under default dwm desktop\n' >&2
 	exit 1
 fi
 if printf '%s\n' "$output" | grep -F 'Hidden App'; then
@@ -273,6 +298,14 @@ if printf '%s\n' "$unset_desktop_output" | grep -Fq 'XFCE Only App'; then
 	printf 'XFCE Only App should not be listed when XDG_CURRENT_DESKTOP is unset\n' >&2
 	exit 1
 fi
+if printf '%s\n' "$unset_desktop_output" | grep -Fq 'Both Keys App'; then
+	printf 'Both Keys App should not be listed when XDG_CURRENT_DESKTOP is unset\n' >&2
+	exit 1
+fi
+if printf '%s\n' "$unset_desktop_output" | grep -Fq 'Empty Only App'; then
+	printf 'Empty Only App should not be listed when XDG_CURRENT_DESKTOP is unset\n' >&2
+	exit 1
+fi
 
 custom_desktop_output=$(
 	LANG=en_US.UTF-8 \
@@ -289,6 +322,14 @@ if ! printf '%s\n' "$custom_desktop_output" | grep -Fq 'XFCE Only App'; then
 fi
 if printf '%s\n' "$custom_desktop_output" | grep -Fq 'X-DWM Only App'; then
 	printf 'X-DWM Only App should not be listed when XDG_CURRENT_DESKTOP=XFCE\n' >&2
+	exit 1
+fi
+if printf '%s\n' "$custom_desktop_output" | grep -Fq 'Both Keys App'; then
+	printf 'Both Keys App should not be listed when XDG_CURRENT_DESKTOP=XFCE\n' >&2
+	exit 1
+fi
+if printf '%s\n' "$custom_desktop_output" | grep -Fq 'Empty Only App'; then
+	printf 'Empty Only App should not be listed when XDG_CURRENT_DESKTOP=XFCE\n' >&2
 	exit 1
 fi
 

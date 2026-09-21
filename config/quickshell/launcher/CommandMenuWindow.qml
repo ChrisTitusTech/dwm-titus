@@ -14,8 +14,8 @@ FloatingWindow {
     title: "dwm menu"
     visible: commandMenuModel.visible
     screen: commandMenuModel.targetScreen
-    implicitWidth: screen ? screen.width : 720
-    implicitHeight: screen ? screen.height : 600
+    implicitWidth: 720
+    implicitHeight: 600
     color: Theme.transparent
 
     function focusSearch() {
@@ -36,20 +36,8 @@ FloatingWindow {
         command: Commands.pointerHelperCommand("command-menu")
     }
 
-    MouseArea {
-        anchors.fill: parent
-        onClicked: root.commandMenuModel.close()
-    }
-
     ShellSurface {
-        anchors.centerIn: parent
-        width: Math.min(720, root.screen ? root.screen.width - 40 : 720)
-        height: Math.min(600, root.screen ? root.screen.height - 40 : 600)
-        radius: 0
-
-        MouseArea {
-            anchors.fill: parent
-        }
+        anchors.fill: parent
 
         ColumnLayout {
             anchors.fill: parent

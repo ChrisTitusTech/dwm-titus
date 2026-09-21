@@ -15,7 +15,7 @@ Rectangle {
     Layout.preferredHeight: Math.max(Theme.scaledSize(82), content.implicitHeight + Theme.scaledSize(28))
 
     opacity: 1.0
-    radius: 0
+    radius: Theme.popupRadius
     color: item.urgency === NotificationUrgency.Critical ? Theme.dangerSurface : Theme.surface
     border.color: item.urgency === NotificationUrgency.Critical ? Theme.danger : Theme.popupBorder
     border.width: Theme.controlBorderWidth
