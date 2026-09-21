@@ -164,7 +164,8 @@ Scope {
                     root.overflow(run, "Regional preflight error output exceeded its limit.");
             }
         }
-        onExited: (exitCode, exitStatus) => {
+        // Fedora Quickshell qmltypes omit QProcess::ExitStatus; the runtime signal is valid.
+        onExited: (exitCode, exitStatus) => { // qmllint disable signal-handler-parameters
             root.consume(output.data);
             root.finish(root.current, exitCode, exitStatus === 0);
         }

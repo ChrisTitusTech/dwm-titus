@@ -74,7 +74,8 @@ Scope {
         command: Commands.helperCommand("dwm-settings-picom", "status", [], true)
         stdout: StdioCollector { id: statusOutput }
         stderr: StdioCollector { id: statusError }
-        onExited: (exitCode, exitStatus) => {
+        // Fedora Quickshell qmltypes omit QProcess::ExitStatus; the runtime signal is valid.
+        onExited: (exitCode, exitStatus) => { // qmllint disable signal-handler-parameters
             if (!root.active) return;
             if (!root.busy) {
                 try {
@@ -92,7 +93,8 @@ Scope {
         command: Commands.helperCommand("dwm-settings-picom", root.action, root.actionArguments, true)
         stdout: StdioCollector { id: actionOutput }
         stderr: StdioCollector { id: actionError }
-        onExited: (exitCode, exitStatus) => {
+        // Fedora Quickshell qmltypes omit QProcess::ExitStatus; the runtime signal is valid.
+        onExited: (exitCode, exitStatus) => { // qmllint disable signal-handler-parameters
             try {
                 if (exitCode !== 0 || exitStatus !== 0) throw new Error(actionError.text || "Picom change failed");
                 root.accept(actionOutput.text);
@@ -114,7 +116,8 @@ Scope {
             }
         }
         stderr: StdioCollector { id: watchError }
-        onExited: (exitCode, exitStatus) => {
+        // Fedora Quickshell qmltypes omit QProcess::ExitStatus; the runtime signal is valid.
+        onExited: (exitCode, exitStatus) => { // qmllint disable signal-handler-parameters
             if (root.active && (exitCode !== 0 || exitStatus !== 0))
                 root.watchFailure = watchError.text || "Live Picom updates unavailable; use Refresh";
         }

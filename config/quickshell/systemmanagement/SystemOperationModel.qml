@@ -398,7 +398,8 @@ Scope {
                 }
             }
         }
-        onExited: (exitCode, exitStatus) => root.finishWatch(exitCode, exitStatus === 0)
+        // Fedora Quickshell qmltypes omit QProcess::ExitStatus; the runtime signal is valid.
+        onExited: (exitCode, exitStatus) => root.finishWatch(exitCode, exitStatus === 0) // qmllint disable signal-handler-parameters
         // FailedToStart has no exited signal. Normal exits finalize ownership
         // above BEFORE runningChanged. Never read retained collector data here.
         onRunningChanged: { if (!running && root.streamOwned) root.finishWatch(-1, false); }
@@ -423,7 +424,8 @@ Scope {
                 }
             }
         }
-        onExited: (exitCode, exitStatus) => root.finishAcknowledgment(exitCode, exitStatus === 0)
+        // Fedora Quickshell qmltypes omit QProcess::ExitStatus; the runtime signal is valid.
+        onExited: (exitCode, exitStatus) => root.finishAcknowledgment(exitCode, exitStatus === 0) // qmllint disable signal-handler-parameters
         onRunningChanged: { if (!running && root.controlOwned) root.finishAcknowledgment(-1, false); }
     }
 }

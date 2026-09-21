@@ -1295,7 +1295,8 @@ Scope {
                 }
             }
         }
-        onExited: (exitCode, exitStatus) => root.finishSnapshot(exitCode, exitStatus === 0)
+        // Fedora Quickshell qmltypes omit QProcess::ExitStatus; the runtime signal is valid.
+        onExited: (exitCode, exitStatus) => root.finishSnapshot(exitCode, exitStatus === 0) // qmllint disable signal-handler-parameters
         onRunningChanged: {
             if (!running && root.snapshotOwned) root.finishSnapshot(-1, false);
         }

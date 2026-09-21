@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Layouts
 import qs.core
@@ -5,17 +7,17 @@ import qs.core
 RowLayout {
     id: root
 
-    required property var state
+    required property var desktopState
     spacing: Theme.panelGap
 
     Repeater {
-        model: root.state.runningApps
+        model: root.desktopState.runningApps
 
         delegate: RunningAppItem {
             required property var modelData
             app: modelData
-            active: modelData.appClass === root.state.activeWindowClass
-            onFocusRequested: windowId => root.state.focusWindow(windowId)
+            active: modelData.appClass === root.desktopState.activeWindowClass
+            onFocusRequested: windowId => root.desktopState.focusWindow(windowId)
         }
     }
 }

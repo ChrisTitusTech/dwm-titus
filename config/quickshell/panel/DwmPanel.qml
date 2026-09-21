@@ -196,7 +196,7 @@ PanelWindow {
                         onActivated: root.desktopUpdateModel.showProgress()
                     }
 
-                    RunningAppsArea { state: root.state }
+                    RunningAppsArea { desktopState: root.state }
 
                     Loader {
                         active: root.primaryPanel
