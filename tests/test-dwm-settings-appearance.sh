@@ -768,6 +768,15 @@ fi
 sed -i 's/gtk-theme-name=Adwaita-dark/gtk-theme-name=Nordic/' \
 	"$config_home/gtk-3.0/settings.ini" "$config_home/gtk-4.0/settings.ini"
 
+mkdir -p "$data_root/themes/adw-gtk3-dark/gtk-3.0" "$data_root/themes/adw-gtk3-dark/gtk-4.0"
+sed -i 's/gtk-theme-name=Nordic/gtk-theme-name=adw-gtk3-dark/' \
+	"$config_home/gtk-3.0/settings.ini" "$config_home/gtk-4.0/settings.ini"
+adw_dark=$(snapshot)
+grep -Fqx $'integration\tgtk\tavailable\tadw-gtk3-dark\tRequested GTK theme is installed and applied' <<<"$adw_dark"
+sed -i 's/gtk-theme-name=adw-gtk3-dark/gtk-theme-name=Nordic/' \
+	"$config_home/gtk-3.0/settings.ini" "$config_home/gtk-4.0/settings.ini"
+rm -rf "$data_root/themes/adw-gtk3-dark"
+
 cp "$work/managed-themes.toml" "$config_home/dwm-titus/themes.toml"
 sed -i '0,/theme = "nord"/s//theme = "missing"/' "$config_home/dwm-titus/themes.toml"
 unknown=$(snapshot)

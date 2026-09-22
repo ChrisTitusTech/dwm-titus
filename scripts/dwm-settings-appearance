@@ -1952,9 +1952,68 @@ emit_integrations() {
 	requested_gtk=${value[$resolved_theme$key_separator'gtk_theme']:-}
 	if [[ -z $requested_gtk ]]; then
 		if [[ $dark == true ]]; then
-			[[ $resolved_theme == nord ]] && requested_gtk=Nordic || requested_gtk=Adwaita-dark
+			case $resolved_theme in
+			nord)
+				if gtk_theme_available "Nordic"; then
+					requested_gtk=Nordic
+				fi
+				;;
+			dracula)
+				if gtk_theme_available "Dracula"; then
+					requested_gtk=Dracula
+				elif gtk_theme_available "dracula"; then
+					requested_gtk=dracula
+				fi
+				;;
+			gruvbox*)
+				if gtk_theme_available "Gruvbox-Dark"; then
+					requested_gtk=Gruvbox-Dark
+				elif gtk_theme_available "gruvbox-dark"; then
+					requested_gtk=gruvbox-dark
+				fi
+				;;
+			catppuccin*)
+				if gtk_theme_available "Catppuccin-Mocha"; then
+					requested_gtk=Catppuccin-Mocha
+				fi
+				;;
+			tokyonight*)
+				if gtk_theme_available "Tokyonight-Dark"; then
+					requested_gtk=Tokyonight-Dark
+				fi
+				;;
+			esac
+			if [[ -z $requested_gtk ]]; then
+				if gtk_theme_available "adw-gtk3-dark"; then
+					requested_gtk=adw-gtk3-dark
+				elif gtk_theme_available "Adwaita-dark"; then
+					requested_gtk=Adwaita-dark
+				elif gtk_theme_available "Arc-Dark"; then
+					requested_gtk=Arc-Dark
+				else
+					requested_gtk=Adwaita-dark
+				fi
+			fi
 		else
-			requested_gtk=Adwaita
+			case $resolved_theme in
+			gruvbox-light)
+				if gtk_theme_available "Gruvbox-Light"; then
+					requested_gtk=Gruvbox-Light
+				fi
+				;;
+			catppuccin-latte)
+				if gtk_theme_available "Catppuccin-Latte"; then
+					requested_gtk=Catppuccin-Latte
+				fi
+				;;
+			esac
+			if [[ -z $requested_gtk ]]; then
+				if gtk_theme_available "adw-gtk3"; then
+					requested_gtk=adw-gtk3
+				else
+					requested_gtk=Adwaita
+				fi
+			fi
 		fi
 	fi
 	override=$(personalization_value gtk 2>/dev/null || true)
@@ -1980,7 +2039,23 @@ emit_integrations() {
 			"$(clean_field "$requested_gtk")"
 		add_error gtk stale-theme "Applied GTK settings do not match '$requested_gtk'"
 	else
-		[[ $dark == true ]] && fallback_gtk=Adwaita-dark || fallback_gtk=Adwaita
+		if [[ $dark == true ]]; then
+			if gtk_theme_available "adw-gtk3-dark"; then
+				fallback_gtk=adw-gtk3-dark
+			elif gtk_theme_available "Adwaita-dark"; then
+				fallback_gtk=Adwaita-dark
+			elif gtk_theme_available "Arc-Dark"; then
+				fallback_gtk=Arc-Dark
+			else
+				fallback_gtk=Adwaita-dark
+			fi
+		else
+			if gtk_theme_available "adw-gtk3"; then
+				fallback_gtk=adw-gtk3
+			else
+				fallback_gtk=Adwaita
+			fi
+		fi
 		printf 'integration\tgtk\tpartial\t%s\tRequested GTK theme is missing; apply falls back to %s\n' \
 			"$(clean_field "$requested_gtk")" "$fallback_gtk"
 		add_error gtk missing-theme "GTK theme '$requested_gtk' is not installed"

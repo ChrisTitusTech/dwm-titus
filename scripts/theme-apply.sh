@@ -384,11 +384,72 @@ gtk_theme_available() {
 default_gtk_theme() {
 	if [[ "$DARK_MODE" == "true" ]]; then
 		case "$THEME_NAME" in
-		nord) printf '%s\n' "Nordic" ;;
-		*) printf '%s\n' "Adwaita-dark" ;;
+		nord)
+			if gtk_theme_available "Nordic"; then
+				printf '%s\n' "Nordic"
+				return
+			fi
+			;;
+		dracula)
+			if gtk_theme_available "Dracula"; then
+				printf '%s\n' "Dracula"
+				return
+			elif gtk_theme_available "dracula"; then
+				printf '%s\n' "dracula"
+				return
+			fi
+			;;
+		gruvbox*)
+			if gtk_theme_available "Gruvbox-Dark"; then
+				printf '%s\n' "Gruvbox-Dark"
+				return
+			elif gtk_theme_available "gruvbox-dark"; then
+				printf '%s\n' "gruvbox-dark"
+				return
+			fi
+			;;
+		catppuccin*)
+			if gtk_theme_available "Catppuccin-Mocha"; then
+				printf '%s\n' "Catppuccin-Mocha"
+				return
+			fi
+			;;
+		tokyonight*)
+			if gtk_theme_available "Tokyonight-Dark"; then
+				printf '%s\n' "Tokyonight-Dark"
+				return
+			fi
+			;;
 		esac
+		if gtk_theme_available "adw-gtk3-dark"; then
+			printf '%s\n' "adw-gtk3-dark"
+		elif gtk_theme_available "Adwaita-dark"; then
+			printf '%s\n' "Adwaita-dark"
+		elif gtk_theme_available "Arc-Dark"; then
+			printf '%s\n' "Arc-Dark"
+		else
+			printf '%s\n' "Adwaita-dark"
+		fi
 	else
-		printf '%s\n' "Adwaita"
+		case "$THEME_NAME" in
+		gruvbox-light)
+			if gtk_theme_available "Gruvbox-Light"; then
+				printf '%s\n' "Gruvbox-Light"
+				return
+			fi
+			;;
+		catppuccin-latte)
+			if gtk_theme_available "Catppuccin-Latte"; then
+				printf '%s\n' "Catppuccin-Latte"
+				return
+			fi
+			;;
+		esac
+		if gtk_theme_available "adw-gtk3"; then
+			printf '%s\n' "adw-gtk3"
+		else
+			printf '%s\n' "Adwaita"
+		fi
 	fi
 }
 
@@ -549,8 +610,23 @@ if [[ -n $GTK_CHOICE && $GTK_CHOICE != follow-theme ]]; then
 	GTK_THEME_NAME=$GTK_CHOICE
 fi
 if ! gtk_theme_available "$GTK_THEME_NAME"; then
-	GTK_THEME_FALLBACK="Adwaita"
-	[[ "$DARK_MODE" == "true" ]] && GTK_THEME_FALLBACK="Adwaita-dark"
+	if [[ "$DARK_MODE" == "true" ]]; then
+		if gtk_theme_available "adw-gtk3-dark"; then
+			GTK_THEME_FALLBACK="adw-gtk3-dark"
+		elif gtk_theme_available "Adwaita-dark"; then
+			GTK_THEME_FALLBACK="Adwaita-dark"
+		elif gtk_theme_available "Arc-Dark"; then
+			GTK_THEME_FALLBACK="Arc-Dark"
+		else
+			GTK_THEME_FALLBACK="Adwaita-dark"
+		fi
+	else
+		if gtk_theme_available "adw-gtk3"; then
+			GTK_THEME_FALLBACK="adw-gtk3"
+		else
+			GTK_THEME_FALLBACK="Adwaita"
+		fi
+	fi
 	echo "theme-apply: GTK theme '$GTK_THEME_NAME' not found; falling back to '$GTK_THEME_FALLBACK'" >&2
 	GTK_THEME_NAME="$GTK_THEME_FALLBACK"
 fi
@@ -922,6 +998,26 @@ if [[ $RUNTIME_ONLY == 0 && $LIVE_ONLY == 0 ]]; then
 		"Gtk/CursorThemeName \"$XSETTINGS_CURSOR_THEME\""
 	xsettingsd_config_write "$XSETTINGSD_CONFIG" Gtk/CursorThemeSize \
 		"Gtk/CursorThemeSize $CURSOR_SIZE"
+	if [[ $GTK_THEME_NAME == *$'\r'* || $GTK_THEME_NAME == *$'\n'* ]]; then
+		echo "theme-apply: invalid GTK theme name" >&2
+		exit 1
+	fi
+	XSETTINGS_GTK_THEME=${GTK_THEME_NAME//\\/\\\\}
+	XSETTINGS_GTK_THEME=${XSETTINGS_GTK_THEME//\"/\\\"}
+	xsettingsd_config_write "$XSETTINGSD_CONFIG" Net/ThemeName \
+		"Net/ThemeName \"$XSETTINGS_GTK_THEME\""
+	if [[ -n $ICON_CHOICE && $ICON_CHOICE != follow-system ]]; then
+		if [[ $ICON_CHOICE == *$'\r'* || $ICON_CHOICE == *$'\n'* ]]; then
+			echo "theme-apply: invalid icon theme name" >&2
+			exit 1
+		fi
+		XSETTINGS_ICON_THEME=${ICON_CHOICE//\\/\\\\}
+		XSETTINGS_ICON_THEME=${XSETTINGS_ICON_THEME//\"/\\\"}
+		xsettingsd_config_write "$XSETTINGSD_CONFIG" Net/IconThemeName \
+			"Net/IconThemeName \"$XSETTINGS_ICON_THEME\""
+	elif [[ $ICON_CHOICE == follow-system && $PERSONALIZATION_CAPABILITY == icon ]]; then
+		xsettingsd_config_write "$XSETTINGSD_CONFIG" Net/IconThemeName
+	fi
 	if [[ -z $TEXT_SCALE_CHOICE || $TEXT_SCALE_CHOICE == follow-system ]]; then
 		xsettingsd_config_write "$XSETTINGSD_CONFIG" Xft/DPI
 	else
