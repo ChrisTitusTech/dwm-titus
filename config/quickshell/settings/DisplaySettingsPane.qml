@@ -314,7 +314,7 @@ Flickable {
                         height: modelData.height * arrangement.scaleFactor
                         color: modelData.primary ? Theme.controlSelectedFill : Theme.controlHoverFill
                         border.color: modelData.primary ? Theme.accent : Theme.controlNormalBorder
-                        border.width: 2
+                        border.width: Theme.controlBorderWidth
                         radius: Theme.controlRadius
                         Accessible.name: "Monitor " + modelData.number + " - " + modelData.name + (modelData.primary ? " - primary" : "")
                         Text {

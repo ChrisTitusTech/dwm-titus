@@ -73,8 +73,9 @@ desktop_entry_summary() {
 	locale=${LC_MESSAGES:-${LANG:-}}
 	locale=${locale%%.*}
 	locale_short=${locale%%_*}
+	current_desktop=${XDG_CURRENT_DESKTOP:-X-DWM:dwm}
 
-	awk -v locale="$locale" -v locale_short="$locale_short" '
+	awk -v locale="$locale" -v locale_short="$locale_short" -v current_desktop="$current_desktop" '
 		function clean(value) {
 			gsub(/\t/, " ", value)
 			gsub(/\r/, "", value)
@@ -107,12 +108,33 @@ desktop_entry_summary() {
 			}
 		}
 
+		function desktop_matches(list_str) {
+			n_d = split(current_desktop, cur_desks, "[:;]")
+			n_l = split(list_str, target_desks, ";")
+			for (i = 1; i <= n_d; i++) {
+				if (cur_desks[i] == "") continue
+				for (j = 1; j <= n_l; j++) {
+					if (target_desks[j] == "") continue
+					if (cur_desks[i] == target_desks[j]) return 1
+				}
+			}
+			return 0
+		}
+
 		function desktop_entry_visible() {
-			return type == "Application" &&
-				name != "" &&
-				exec != "" &&
-				hidden != "true" &&
-				nodisplay != "true"
+			if (type != "Application" || name == "" || exec == "" || hidden == "true" || nodisplay == "true") {
+				return 0
+			}
+			if (has_onlyshowin && has_notshowin) {
+				return 0
+			}
+			if (has_onlyshowin && !desktop_matches(onlyshowin)) {
+				return 0
+			}
+			if (has_notshowin && desktop_matches(notshowin)) {
+				return 0
+			}
+			return 1
 		}
 
 		function emit() {
@@ -140,6 +162,10 @@ desktop_entry_summary() {
 			actions = ""
 			hidden = "false"
 			nodisplay = "false"
+			onlyshowin = ""
+			notshowin = ""
+			has_onlyshowin = 0
+			has_notshowin = 0
 		}
 
 		$0 == "[Desktop Entry]" {
@@ -209,6 +235,18 @@ desktop_entry_summary() {
 
 		entry && $0 ~ /^NoDisplay=/ {
 			nodisplay = tolower(substr($0, 11))
+			next
+		}
+
+		entry && $0 ~ /^OnlyShowIn=/ {
+			onlyshowin = clean(substr($0, 12))
+			has_onlyshowin = 1
+			next
+		}
+
+		entry && $0 ~ /^NotShowIn=/ {
+			notshowin = clean(substr($0, 11))
+			has_notshowin = 1
 			next
 		}
 

@@ -40,6 +40,9 @@ ShellRoot {
         }
 
         commandMenuModel.close();
+        launcherModel.close();
+        notificationModel.closeHistory();
+        controlCenterModel.closeUtility();
         if (popupId !== "bluetooth") bluetoothModel.close();
         if (popupId !== "controlcenter") controlCenterModel.close();
         if (popupId !== "controls") controlsModel.close();

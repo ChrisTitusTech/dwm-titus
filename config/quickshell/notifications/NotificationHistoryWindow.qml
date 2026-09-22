@@ -91,7 +91,7 @@ FloatingWindow {
 
                             Layout.fillWidth: true
                             Layout.preferredHeight: Math.max(82, historyContent.implicitHeight + 26)
-                            radius: Theme.largeSurfaceCardRadius
+                            radius: Theme.popupRadius
                             color: historyEntry.modelData.urgencyName === "critical" ? Theme.dangerSurface : Theme.surface
                             border.color: historyEntry.modelData.urgencyName === "critical" ? Theme.danger : Theme.popupBorder
                             border.width: Theme.controlBorderWidth

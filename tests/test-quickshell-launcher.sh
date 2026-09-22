@@ -176,12 +176,70 @@ Name=Link Entry
 Exec=xdg-open https://example.invalid
 DESKTOP
 
+cat >"$work/data/applications/only-xfce.desktop" <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=XFCE Only App
+Exec=xfce-app
+OnlyShowIn=XFCE;
+DESKTOP
+
+cat >"$work/data/applications/only-dwm.desktop" <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=DWM Only App
+Exec=dwm-only-app
+OnlyShowIn=XFCE;dwm;
+DESKTOP
+
+cat >"$work/data/applications/only-xdwm.desktop" <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=X-DWM Only App
+Exec=xdwm-only-app
+OnlyShowIn=X-DWM;
+DESKTOP
+
+cat >"$work/data/applications/not-dwm.desktop" <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=Not DWM App
+Exec=not-dwm-app
+NotShowIn=dwm;
+DESKTOP
+
+cat >"$work/data/applications/not-kde.desktop" <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=Not KDE App
+Exec=not-kde-app
+NotShowIn=KDE;
+DESKTOP
+
+cat >"$work/data/applications/both-keys.desktop" <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=Both Keys App
+Exec=both-keys-app
+OnlyShowIn=dwm;
+NotShowIn=XFCE;
+DESKTOP
+
+cat >"$work/data/applications/empty-only.desktop" <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=Empty Only App
+Exec=empty-only-app
+OnlyShowIn=
+DESKTOP
+
 output=$(
 	LANG=en_US.UTF-8 \
 		HOME="$work/home" \
 		XDG_RUNTIME_DIR=relative-runtime \
 		XDG_DATA_HOME="$work/empty" \
 		XDG_DATA_DIRS="$work/data" \
+		XDG_CURRENT_DESKTOP="X-DWM:dwm" \
 		"$repo/scripts/dwm-quickshell-launcher" list
 )
 
@@ -193,6 +251,25 @@ assert_listed 'Flatpak Export	Exported App	Shown from Flatpak export path	flatpa
 assert_listed 'Snap Export	Packaged App	Shown from Snap export path	snap-export	snap	'"$snap_desktop"'	snap;exported;	Utility;	snap-export	new-window;'
 assert_listed 'Localized Name	Localized Generic	Localized comment	localized-app	localized	'"$localized_desktop"'	localized;translated;	Office;'
 assert_listed 'Symlinked App			symlinked-app		'"$symlink_desktop"
+assert_listed 'DWM Only App			dwm-only-app		'"$work/data/applications/only-dwm.desktop"
+assert_listed 'X-DWM Only App			xdwm-only-app		'"$work/data/applications/only-xdwm.desktop"
+assert_listed 'Not KDE App			not-kde-app		'"$work/data/applications/not-kde.desktop"
+if printf '%s\n' "$output" | grep -F 'XFCE Only App'; then
+	printf 'XFCE Only App should not be listed under default dwm desktop\n' >&2
+	exit 1
+fi
+if printf '%s\n' "$output" | grep -F 'Not DWM App'; then
+	printf 'Not DWM App should not be listed under default dwm desktop\n' >&2
+	exit 1
+fi
+if printf '%s\n' "$output" | grep -F 'Both Keys App'; then
+	printf 'Both Keys App should not be listed under default dwm desktop (violates spec mutual exclusivity)\n' >&2
+	exit 1
+fi
+if printf '%s\n' "$output" | grep -F 'Empty Only App'; then
+	printf 'Empty Only App should not be listed under default dwm desktop\n' >&2
+	exit 1
+fi
 if printf '%s\n' "$output" | grep -F 'Hidden App'; then
 	exit 1
 fi
@@ -201,6 +278,58 @@ if printf '%s\n' "$output" | grep -F 'Link Entry'; then
 fi
 assert_listed "$chatgpt_native_desktop"
 if printf '%s\n' "$output" | grep -F "$chatgpt_web_desktop"; then
+	exit 1
+fi
+
+unset_desktop_output=$(
+	LANG=en_US.UTF-8 \
+		HOME="$work/home" \
+		XDG_RUNTIME_DIR=relative-runtime \
+		XDG_DATA_HOME="$work/empty" \
+		XDG_DATA_DIRS="$work/data" \
+		env -u XDG_CURRENT_DESKTOP \
+		"$repo/scripts/dwm-quickshell-launcher" list
+)
+if ! printf '%s\n' "$unset_desktop_output" | grep -Fq 'DWM Only App'; then
+	printf 'DWM Only App should be listed when XDG_CURRENT_DESKTOP is unset (fallback to X-DWM:dwm)\n' >&2
+	exit 1
+fi
+if printf '%s\n' "$unset_desktop_output" | grep -Fq 'XFCE Only App'; then
+	printf 'XFCE Only App should not be listed when XDG_CURRENT_DESKTOP is unset\n' >&2
+	exit 1
+fi
+if printf '%s\n' "$unset_desktop_output" | grep -Fq 'Both Keys App'; then
+	printf 'Both Keys App should not be listed when XDG_CURRENT_DESKTOP is unset\n' >&2
+	exit 1
+fi
+if printf '%s\n' "$unset_desktop_output" | grep -Fq 'Empty Only App'; then
+	printf 'Empty Only App should not be listed when XDG_CURRENT_DESKTOP is unset\n' >&2
+	exit 1
+fi
+
+custom_desktop_output=$(
+	LANG=en_US.UTF-8 \
+		HOME="$work/home" \
+		XDG_RUNTIME_DIR=relative-runtime \
+		XDG_DATA_HOME="$work/empty" \
+		XDG_DATA_DIRS="$work/data" \
+		XDG_CURRENT_DESKTOP="XFCE" \
+		"$repo/scripts/dwm-quickshell-launcher" list
+)
+if ! printf '%s\n' "$custom_desktop_output" | grep -Fq 'XFCE Only App'; then
+	printf 'XFCE Only App should be listed when XDG_CURRENT_DESKTOP=XFCE\n' >&2
+	exit 1
+fi
+if printf '%s\n' "$custom_desktop_output" | grep -Fq 'X-DWM Only App'; then
+	printf 'X-DWM Only App should not be listed when XDG_CURRENT_DESKTOP=XFCE\n' >&2
+	exit 1
+fi
+if printf '%s\n' "$custom_desktop_output" | grep -Fq 'Both Keys App'; then
+	printf 'Both Keys App should not be listed when XDG_CURRENT_DESKTOP=XFCE\n' >&2
+	exit 1
+fi
+if printf '%s\n' "$custom_desktop_output" | grep -Fq 'Empty Only App'; then
+	printf 'Empty Only App should not be listed when XDG_CURRENT_DESKTOP=XFCE\n' >&2
 	exit 1
 fi
 
