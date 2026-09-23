@@ -168,7 +168,8 @@ Edits preserve custom comments and includes with up to ten automatic recovery ba
 All 15 shipped presets include offline `Dwm-<preset>` application themes,
 including `Dwm-dracula`, for Thunar and other native GTK 2/3/4 applications.
 The system install places their files under `${DATADIR}/themes` (normally
-`/usr/local/share/themes`); source updates install and verify them too.
+`/usr/share/themes` with the supported installer); source updates install and
+verify them too.
 Qt applications using qt5ct or qt6ct receive the matching installed palette,
 also listed in those tools from `${DATADIR}/qt5ct/colors` and
 `${DATADIR}/qt6ct/colors`;
