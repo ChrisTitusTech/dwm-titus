@@ -49,7 +49,7 @@ borderpx = 1   # border size in pixels (0 = none, 1-3 = recommended)
 #     term_color0 … term_color15  (standard 16-color palette)
 #
 #   Dark mode: dark_mode = true                   (true = dark, false = light; default: true)
-#   GTK theme: gtk_theme = "Nordic"               (optional; auto-resolves to matching installed theme, adw-gtk3-dark, or Adwaita)
+#   GTK theme: gtk_theme = "Nordic"               (optional; auto-resolves to bundled Dwm-<preset>, matching installed theme, or Adwaita)
 
 
 # ── Nord ──────────────────────────────────────────────────────────────────────

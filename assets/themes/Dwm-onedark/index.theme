@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=X-GNOME-Metatheme
+Name=Dwm-onedark
+Comment=dwm-titus onedark application palette
+
+[X-GNOME-Metatheme]
+GtkTheme=Dwm-onedark

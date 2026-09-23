@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=X-GNOME-Metatheme
+Name=Dwm-dracula
+Comment=dwm-titus dracula application palette
+
+[X-GNOME-Metatheme]
+GtkTheme=Dwm-dracula

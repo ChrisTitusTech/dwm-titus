@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=X-GNOME-Metatheme
+Name=Dwm-gruvbox
+Comment=dwm-titus gruvbox application palette
+
+[X-GNOME-Metatheme]
+GtkTheme=Dwm-gruvbox

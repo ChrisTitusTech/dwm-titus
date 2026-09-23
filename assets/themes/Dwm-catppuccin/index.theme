@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=X-GNOME-Metatheme
+Name=Dwm-catppuccin
+Comment=dwm-titus catppuccin application palette
+
+[X-GNOME-Metatheme]
+GtkTheme=Dwm-catppuccin

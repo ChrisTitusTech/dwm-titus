@@ -6,6 +6,9 @@ helper=$repo/scripts/dwm-settings-appearance
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT HUP INT TERM
 
+export HOME=$work/home
+mkdir -p "$HOME"
+
 config_home=$work/config
 data_root=$work/data
 bin_dir=$work/bin

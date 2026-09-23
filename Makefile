@@ -192,7 +192,7 @@ install-system-files:
 		test -e "$$input" || { echo "dwm build input is missing: $$input. Run make before install-system." >&2; exit 1; }; \
 		test ! "$$input" -nt dwm || { echo "dwm is stale. Run make before install-system." >&2; exit 1; }; \
 	done
-	$(MAKE) install-cursors
+	$(MAKE) install-cursors install-app-themes
 	@echo ""
 	@echo "==> Installing system files..."
 	install -Dm755 dwm "${DESTDIR}${PREFIX}/bin/dwm"
@@ -214,6 +214,20 @@ install-system-files:
 		--xsessions "${XSESSIONSDIR}" --datadir "${DATADIR}" \
 		--commands ${INSTALL_COMMAND_NAMES} --helpers $(notdir ${PRIVILEGED_HELPERS}) \
 		--packages $$("${DESTDIR}${PREFIX}/bin/dwm-packages.sh" fedora build) $$("${DESTDIR}${PREFIX}/bin/dwm-packages.sh" fedora source-update)
+
+install-app-themes:
+	@echo "==> Installing application themes..."
+	set -e; for theme in assets/themes/Dwm-*; do \
+		name=$$(basename "$$theme"); \
+		rm -rf "${DESTDIR}${DATADIR}/themes/$$name"; \
+		install -d -m755 "${DESTDIR}${DATADIR}/themes/$$name"; \
+		cp -a --no-preserve=ownership "$$theme/." "${DESTDIR}${DATADIR}/themes/$$name/"; \
+		find "${DESTDIR}${DATADIR}/themes/$$name" -type d -exec chmod 755 {} +; \
+		find "${DESTDIR}${DATADIR}/themes/$$name" -type f -exec chmod 644 {} +; \
+		for backend in qt5ct qt6ct; do \
+			install -Dm644 "$$theme/qt/colors.conf" "${DESTDIR}${DATADIR}/$$backend/colors/$$name.conf"; \
+		done; \
+	done
 
 install-cursors:
 	@echo "==> Installing Capitaine cursor themes..."
@@ -336,6 +350,12 @@ uninstall:
 	/usr/bin/python3 -I scripts/dwm-desktop-update guard-system-install --destdir "${DESTDIR}" -- $(MAKE) uninstall-files
 
 uninstall-files:
+	set -e; for theme in assets/themes/Dwm-*; do \
+		rm -rf "${DESTDIR}${DATADIR}/themes/$$(basename "$$theme")"; \
+		for backend in qt5ct qt6ct; do \
+			rm -f "${DESTDIR}${DATADIR}/$$backend/colors/$$(basename "$$theme").conf"; \
+		done; \
+	done
 	rm -f "${DESTDIR}${PREFIX}/bin/dwm" \
 		"${DESTDIR}${MANPREFIX}/man1/dwm.1" \
 		"${DESTDIR}${XSESSIONSDIR}/dwm.desktop"
@@ -582,6 +602,7 @@ check-fedora-packages:
 check-install: check-install-manifest
 
 check-install-manifest: all
+	python3 scripts/generate-app-themes.py --check
 	@set -eu; \
 	stage="$$(mktemp -d)"; \
 	before="$$(mktemp)"; \
@@ -604,6 +625,12 @@ check-install-manifest: all
 			usr/share/xsessions/dwm.desktop; \
 		for name in ${INSTALL_COMMAND_NAMES}; do \
 			printf 'usr/bin/%s\n' "$$name"; \
+		done; \
+		find assets/themes -type f -printf 'usr/share/themes/%P\n'; \
+		for theme in assets/themes/Dwm-*; do \
+			for backend in qt5ct qt6ct; do \
+				printf 'usr/share/%s/colors/%s.conf\n' "$$backend" "$$(basename "$$theme")"; \
+			done; \
 		done; \
 		find "assets/cursors/${CAPITAINE_DARK_THEME}" \
 			\( -type f -o -type l \) \
@@ -674,7 +701,11 @@ check-picom:
 check-picom-xvfb:
 	$(call run_managed_test,python3 tests/test-picom-xvfb.py)
 
+check-app-themes:
+	$(call run_managed_test,xvfb-run -a python3 tests/test-app-themes.py)
+
 check: check-picom check-picom-xvfb
+	$(MAKE) check-app-themes
 	$(MAKE) check-desktop-update
 	$(MAKE) clean
 	$(MAKE) all
@@ -743,4 +774,4 @@ check: check-picom check-picom-xvfb
 	check-gearlever-install check-herdr-install check-install-manifest check-install-preservation check-kickstart check-lock \
 	check-session-guards check-session-migration check-screenshot check-release-helper check-shell check-webapp-launch check-diagnostics check-status check-system-health check-system-management check-quickshell-system-management check-settings \
 	check-quickshell-launcher check-quickshell-controls check-quickshell-audio check-quickshell-controlcenter check-quickshell-power check-quickshell-power-backend check-quickshell-power-model check-quickshell-session-actions check-quickshell-defaults-model check-quickshell-appearance-model check-quickshell-design-system check-quickshell-large-surfaces check-quickshell-large-surfaces-xvfb check-quickshell-panel-menus check-quickshell-panel-settings check-quickshell-command-menu check-quickshell-notifications check-quickshell-tray check-quickshell-health-xvfb check-quickshell-settings-xvfb check-quickshell-settings-responsiveness-xvfb check-quickshell-network check-quickshell-connectivity check-quickshell-qml check-lightdm-config check-terminal check-xvfb-runtime install install-system install-user \
-	install-cursors native release release-check uninstall uninstall-files
+	install-cursors install-app-themes check-app-themes native release release-check uninstall uninstall-files

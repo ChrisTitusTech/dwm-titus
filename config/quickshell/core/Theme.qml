@@ -25,6 +25,7 @@ Singleton {
     property string accent: "#81A1C1"
     property string accentSecondary: "#81A1C1"
     property string accentText: "#2E3440"
+    readonly property string accentHoverText: readableText(accentText, accentSecondary)
     property string success: "#A3BE8C"
     property string warning: "#EBCB8B"
     property string danger: "#BF616A"
@@ -41,24 +42,49 @@ Singleton {
     readonly property string menuMutedText: textMuted
     readonly property string menuActionText: accent
     readonly property string menuHoverBackground: surfaceHover
-    readonly property string menuHoverText: textStrong
+    readonly property string menuHoverText: readableText(textStrong, menuHoverBackground)
     readonly property string menuSelectedBackground: surfaceActive
-    readonly property string menuSelectedText: accentSecondary
+    readonly property string menuSelectedText: readableText(accentSecondary, menuSelectedBackground)
     readonly property string controlNormalFill: surface
     readonly property string controlNormalBorder: highContrast ? textStrong : border
-    readonly property string controlNormalText: text
+    readonly property string controlNormalText: readableText(text, controlNormalFill)
     readonly property string controlHoverFill: surfaceHover
     readonly property string controlHoverBorder: highContrast ? textStrong : borderStrong
-    readonly property string controlHoverText: text
+    readonly property string controlHoverText: readableText(text, controlHoverFill)
     readonly property string controlFocusFill: surface
     readonly property string controlFocusBorder: highContrast ? textStrong : accent
-    readonly property string controlFocusText: text
+    readonly property string controlFocusText: readableText(text, controlFocusFill)
     readonly property string controlSelectedFill: surfaceActive
     readonly property string controlSelectedBorder: highContrast ? textStrong : accentSecondary
-    readonly property string controlSelectedText: accentSecondary
+    readonly property string controlSelectedText: readableText(accentSecondary, controlSelectedFill)
     readonly property string controlDisabledFill: barBackground
     readonly property string controlDisabledBorder: highContrast ? textStrong : border
     readonly property string controlDisabledText: textMuted
+
+    function luminance(color) {
+        const channels = [1, 3, 5].map(function(offset) {
+            const value = parseInt(color.slice(offset, offset + 2), 16) / 255;
+            return value <= 0.04045 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4);
+        });
+        return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
+    }
+
+    function readableText(foreground, background) {
+        const fg = luminance(foreground);
+        const bg = luminance(background);
+        if ((Math.max(fg, bg) + 0.05) / (Math.min(fg, bg) + 0.05) >= 4.5)
+            return foreground;
+        return bg > 0.179 ? "#000000" : "#ffffff";
+    }
+
+    function lightHover(background, foreground) {
+        // ANSI bright-black is a terminal foreground, not a light UI surface.
+        return "#" + [1, 3, 5].map(function(offset) {
+            const bg = parseInt(background.slice(offset, offset + 2), 16);
+            const fg = parseInt(foreground.slice(offset, offset + 2), 16);
+            return Math.round(bg * 0.92 + fg * 0.08).toString(16).padStart(2, "0");
+        }).join("");
+    }
 
     // AppearanceModel is the single owner of theme inventory and validation.
     // Existing shell surfaces continue to consume these semantic properties.
@@ -67,7 +93,8 @@ Singleton {
         root.bg = colors.background;
         root.barBackground = colors["bar-background"];
         root.surface = colors.surface;
-        root.surfaceHover = colors["surface-hover"];
+        root.surfaceHover = darkMode ? colors["surface-hover"]
+            : lightHover(colors.background, colors["text-strong"]);
         root.surfaceActive = colors["surface-active"];
         root.border = colors.border;
         root.borderStrong = colors["border-strong"];
@@ -77,7 +104,7 @@ Singleton {
         root.placeholder = colors.placeholder;
         root.accent = colors.accent;
         root.accentSecondary = colors["accent-secondary"];
-        root.accentText = colors["accent-text"];
+        root.accentText = readableText(colors["accent-text"], colors.accent);
         root.success = colors.success;
         root.warning = colors.warning;
         root.danger = colors.danger;

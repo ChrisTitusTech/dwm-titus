@@ -50,8 +50,8 @@ Rectangle {
         anchors.centerIn: parent
         text: root.label
         color: !root.enabled ? Theme.controlDisabledText
-            : root.danger ? Theme.textStrong
-            : root.primary ? Theme.accentText
+            : root.danger ? (root.hovered ? Theme.controlHoverText : Theme.textStrong)
+            : root.primary ? (root.hovered ? Theme.accentHoverText : Theme.accentText)
             : root.hovered ? Theme.controlHoverText : Theme.controlNormalText
         font.family: Theme.fontFamily
         font.pixelSize: root.compact ? Theme.fontBodySmallSize : Theme.fontBodySize
