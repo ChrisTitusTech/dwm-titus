@@ -73,7 +73,7 @@ Rectangle {
             const title = root.trayItem.tooltipTitle || root.trayItem.title || root.trayItem.id || "?";
             return title.length > 0 ? title.charAt(0).toUpperCase() : "?";
         }
-        color: Theme.text
+        color: trayMouse.containsMouse ? Theme.controlHoverText : Theme.text
         font.family: Theme.fontFamily
         font.pixelSize: Theme.tinyFontSize
         font.bold: true

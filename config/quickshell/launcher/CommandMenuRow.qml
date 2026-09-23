@@ -54,7 +54,7 @@ Rectangle {
                 anchors.centerIn: parent
                 text: root.modelData.kind === "submenu" ? ">" : root.modelData.current ? "*" : "-"
                 visible: root.modelData.kind !== "application"
-                color: root.selected ? Theme.menuSelectedText : Theme.menuActionText
+                color: root.selected ? Theme.menuSelectedText : mouseArea.containsMouse ? Theme.menuHoverText : Theme.menuActionText
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.bodyFontSize
                 font.bold: true
@@ -68,7 +68,7 @@ Rectangle {
             Text {
                 width: parent.width
                 text: root.modelData.label
-                color: root.selected ? Theme.menuSelectedText : Theme.menuText
+                color: root.selected ? Theme.menuSelectedText : mouseArea.containsMouse ? Theme.menuHoverText : Theme.menuText
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.bodyFontSize
                 font.bold: root.selected || root.modelData.current
@@ -78,7 +78,7 @@ Rectangle {
             Text {
                 width: parent.width
                 text: root.modelData.detail || ""
-                color: root.selected ? Theme.menuSelectedText : Theme.menuMutedText
+                color: root.selected ? Theme.menuSelectedText : mouseArea.containsMouse ? Theme.menuHoverText : Theme.menuMutedText
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.smallFontSize
                 elide: Text.ElideRight
@@ -89,7 +89,7 @@ Rectangle {
         Text {
             Layout.alignment: Qt.AlignVCenter
             text: root.modelData.kind === "submenu" ? ">" : root.modelData.current ? "Current" : ""
-            color: root.selected ? Theme.menuSelectedText : Theme.menuMutedText
+            color: root.selected ? Theme.menuSelectedText : mouseArea.containsMouse ? Theme.menuHoverText : Theme.menuMutedText
             font.family: Theme.fontFamily
             font.pixelSize: Theme.smallFontSize
         }

@@ -45,7 +45,8 @@ Flickable {
                     anchors.centerIn: parent
                     text: categoryDelegate.modelData.label + " " + categoryDelegate.modelData.count
                     color: root.launcherModel.category === categoryDelegate.modelData.id
-                        ? Theme.controlSelectedText : Theme.controlNormalText
+                        ? Theme.controlSelectedText
+                        : launcherCategoryMouse.containsMouse ? Theme.controlHoverText : Theme.controlNormalText
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.smallFontSize
                     font.bold: root.launcherModel.category === categoryDelegate.modelData.id

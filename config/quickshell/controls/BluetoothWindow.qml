@@ -103,7 +103,7 @@ ClickAwayPopup {
                             UiText {
                                 Layout.fillWidth: true
                                 text: deviceRow.modelData.name.length > 0 ? deviceRow.modelData.name : deviceRow.modelData.address
-                                color: Theme.textStrong
+                                color: Theme.readableText(Theme.textStrong, String(deviceRow.color))
                                 font.bold: true
                                 elide: Text.ElideRight
                             }
@@ -112,7 +112,7 @@ ClickAwayPopup {
                                 Layout.fillWidth: true
                                 text: deviceRow.modelData.connected ? "Connected"
                                     : deviceRow.modelData.paired ? "Paired" : deviceRow.modelData.address
-                                color: Theme.menuMutedText
+                                color: Theme.readableText(Theme.menuMutedText, String(deviceRow.color))
                                 font.pixelSize: Theme.fontCaptionSize
                                 elide: Text.ElideRight
                             }

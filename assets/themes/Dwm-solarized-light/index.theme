@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=X-GNOME-Metatheme
+Name=Dwm-solarized-light
+Comment=dwm-titus solarized-light application palette
+
+[X-GNOME-Metatheme]
+GtkTheme=Dwm-solarized-light

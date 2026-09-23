@@ -312,6 +312,15 @@ verify_install() {
 		verify_tree "$cursor_source" "$data_root/icons/$cursor_name" \
 			"cursor theme $cursor_name"
 	done
+	for theme_source in "$repo_dir"/assets/themes/Dwm-*; do
+		[ -d "$theme_source" ] || continue
+		verify_tree "$theme_source" "$data_root/themes/${theme_source##*/}" \
+			"application theme ${theme_source##*/}"
+		for qt_backend in qt5ct qt6ct; do
+			verify_file "$theme_source/qt/colors.conf" \
+				"$data_root/$qt_backend/colors/${theme_source##*/}.conf" "Qt palette ${theme_source##*/}"
+		done
+	done
 	verify_file "$repo_dir/assets/cursors/COPYING" \
 		"$data_root/licenses/dwm-titus/capitaine-cursors/COPYING" \
 		"cursor license"
@@ -371,6 +380,14 @@ backup_live_install() {
 	for cursor_source in "$repo_dir"/assets/cursors/Capitaine-Cursors*; do
 		[ -d "$cursor_source" ] || continue
 		add_system_backup_path "$data_root/icons/${cursor_source##*/}"
+	done
+	for theme_target in "$data_root"/themes/Dwm-*; do
+		add_system_backup_path "$theme_target"
+	done
+	for qt_backend in qt5ct qt6ct; do
+		for palette_target in "$data_root/$qt_backend"/colors/Dwm-*.conf; do
+			add_system_backup_path "$palette_target"
+		done
 	done
 	add_system_backup_path "$data_root/licenses/dwm-titus/capitaine-cursors/COPYING"
 	if [ -s "$system_manifest" ]; then

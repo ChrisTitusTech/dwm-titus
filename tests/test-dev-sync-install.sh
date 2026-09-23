@@ -70,6 +70,13 @@ cp -a "$test_repo/scripts" "$data_dir/scripts"
 cp -a "$test_repo/config/quickshell" "$config_home/quickshell"
 printf '%s\n' '# preserved custom user unit' \
 	>"$config_home/systemd/user/wm-graphical-session.service"
+cp -a "$test_repo/assets/themes" "$data_root/themes"
+for theme_source in "$test_repo"/assets/themes/Dwm-*; do
+	for qt_backend in qt5ct qt6ct; do
+		install -Dm644 "$theme_source/qt/colors.conf" \
+			"$data_root/$qt_backend/colors/${theme_source##*/}.conf"
+	done
+done
 for cursor_source in "$test_repo"/assets/cursors/Capitaine-Cursors*; do
 	cp -a "$cursor_source" "$data_root/icons/"
 done

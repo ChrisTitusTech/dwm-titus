@@ -117,6 +117,17 @@ refresh_theme_environment() {
 	exit 2
 }
 
+# Toolkit children need custom installation data roots even when launched
+# from dwm's original environment after a theme change.
+case $0 in
+*/bin/*) data_updater=${0%/*}/dwm-desktop-update ;;
+*) data_updater=$(command -v dwm-desktop-update 2>/dev/null || :) ;;
+esac
+if [ -n "$data_updater" ] && session_data_dirs=$("$data_updater" data-directories 2>/dev/null); then
+	XDG_DATA_DIRS=$session_data_dirs
+	export XDG_DATA_DIRS
+fi
+
 # A damaged optional environment record must not prevent application launch.
 refresh_theme_environment || :
 exec "$@"

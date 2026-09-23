@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=X-GNOME-Metatheme
+Name=Dwm-everforest
+Comment=dwm-titus everforest application palette
+
+[X-GNOME-Metatheme]
+GtkTheme=Dwm-everforest

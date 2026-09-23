@@ -383,6 +383,12 @@ def record_system(args):
     for theme in sorted((source / "assets/cursors").glob("Capitaine-Cursors*")):
         files += [Path(layout["datadir"]) / "icons" / theme.name / path.relative_to(theme)
                   for path in theme.rglob("*") if path.is_file() or path.is_symlink()]
+    files += [Path(layout["datadir"]) / "themes" / path.relative_to(source / "assets/themes")
+              for theme in (source / "assets/themes").glob("Dwm-*")
+              for path in theme.rglob("*") if path.is_file()]
+    files += [Path(layout["datadir"]) / backend / "colors" / (theme.name + ".conf")
+              for theme in (source / "assets/themes").glob("Dwm-*")
+              for backend in ("qt5ct", "qt6ct")]
     manifest = {"schema": 1, "source": SOURCE, "revision": source_revision(source),
                 "layout": layout, "packages": sorted(set(args.packages)),
                 "files": {str(path): fingerprint(stage / str(path).lstrip("/")) for path in sorted(files)}}
@@ -1336,6 +1342,8 @@ def main():
     user.add_argument("source_dir")
     checking = commands.add_parser("check")
     checking.add_argument("--force", action="store_true")
+    commands.add_parser("data-directory")
+    commands.add_parser("data-directories")
     commands.add_parser("status")
     commands.add_parser("progress")
     start = commands.add_parser("start")
@@ -1354,6 +1362,14 @@ def main():
     if args.command == "guard-system-install":
         command = args.install_command
         return guard_system_install(args.destdir, command[1:] if command and command[0] == "--" else command, args.owner, args.user_state)
+    if args.command == "data-directories":
+        directory = installation()[1]["layout"]["datadir"]
+        roots = os.environ.get("XDG_DATA_DIRS") or "/usr/local/share:/usr/share"
+        print(":".join([directory, *[root for root in roots.split(":") if root != directory]]))
+        return 0
+    if args.command == "data-directory":
+        print(installation()[1]["layout"]["datadir"])
+        return 0
     if args.command == "record-system":
         record_system(args)
         return 0

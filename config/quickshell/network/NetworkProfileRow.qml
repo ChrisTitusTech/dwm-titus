@@ -38,7 +38,7 @@ Rectangle {
             Text {
                 Layout.fillWidth: true
                 text: root.profile.name
-                color: Theme.textStrong
+                color: Theme.readableText(Theme.textStrong, String(root.color))
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.panelFontSize
                 elide: Text.ElideRight
@@ -47,7 +47,7 @@ Rectangle {
             Text {
                 Layout.fillWidth: true
                 text: root.active ? root.profile.type + " on " + root.profile.device : root.profile.type
-                color: Theme.textMuted
+                color: Theme.readableText(Theme.textMuted, String(root.color))
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.smallFontSize
                 elide: Text.ElideRight

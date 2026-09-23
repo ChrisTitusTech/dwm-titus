@@ -9,6 +9,22 @@
 set -euo pipefail
 
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# Make installed custom data roots visible to GTK and toolkit subprocesses.
+if [[ $script_dir == */bin && -x $script_dir/dwm-desktop-update ]]; then
+	data_updater=$script_dir/dwm-desktop-update
+else
+	data_updater=$(command -v dwm-desktop-update || printf '%s' "$script_dir/dwm-desktop-update")
+fi
+# Automatic reloads are direct dwm children and do not inherit autostart's PATH.
+session_executable=$(readlink "/proc/$PPID/exe" 2>/dev/null || :)
+session_executable=${session_executable%" (deleted)"}
+if [[ $session_executable == */bin/dwm && -x ${session_executable%/*}/dwm-desktop-update ]]; then
+	data_updater=${session_executable%/*}/dwm-desktop-update
+fi
+if session_data_dirs=$("$data_updater" data-directories 2>/dev/null); then
+	export XDG_DATA_DIRS=$session_data_dirs
+fi
+export XDG_DATA_DIRS=${XDG_DATA_DIRS:-/usr/local/share:/usr/share}
 XSETTINGS_HELPER=${DWM_APPEARANCE_XSETTINGS_HELPER:-$script_dir/dwm-xsettings}
 THEME_DISCOVERY_HOME=${DWM_APPEARANCE_DISCOVERY_HOME:-$HOME}
 [[ $THEME_DISCOVERY_HOME == /* ]] || {
@@ -382,6 +398,10 @@ gtk_theme_available() {
 }
 
 default_gtk_theme() {
+	if gtk_theme_available "Dwm-$THEME_NAME"; then
+		printf '%s\n' "Dwm-$THEME_NAME"
+		return
+	fi
 	if [[ "$DARK_MODE" == "true" ]]; then
 		case "$THEME_NAME" in
 		nord)
@@ -610,23 +630,7 @@ if [[ -n $GTK_CHOICE && $GTK_CHOICE != follow-theme ]]; then
 	GTK_THEME_NAME=$GTK_CHOICE
 fi
 if ! gtk_theme_available "$GTK_THEME_NAME"; then
-	if [[ "$DARK_MODE" == "true" ]]; then
-		if gtk_theme_available "adw-gtk3-dark"; then
-			GTK_THEME_FALLBACK="adw-gtk3-dark"
-		elif gtk_theme_available "Adwaita-dark"; then
-			GTK_THEME_FALLBACK="Adwaita-dark"
-		elif gtk_theme_available "Arc-Dark"; then
-			GTK_THEME_FALLBACK="Arc-Dark"
-		else
-			GTK_THEME_FALLBACK="Adwaita-dark"
-		fi
-	else
-		if gtk_theme_available "adw-gtk3"; then
-			GTK_THEME_FALLBACK="adw-gtk3"
-		else
-			GTK_THEME_FALLBACK="Adwaita"
-		fi
-	fi
+	GTK_THEME_FALLBACK="$(default_gtk_theme)"
 	echo "theme-apply: GTK theme '$GTK_THEME_NAME' not found; falling back to '$GTK_THEME_FALLBACK'" >&2
 	GTK_THEME_NAME="$GTK_THEME_FALLBACK"
 fi
@@ -648,13 +652,13 @@ gtk_ini_edit_path() {
 }
 
 gtk_ini_set() {
-	local file="$1" key="$2" value="$3" temporary mode=600
+	local file="$1" key="$2" value="$3" temporary mode=600 section=${4:-Settings}
 	file=$(gtk_ini_edit_path "$file") || return 1
 	mkdir -p -- "${file%/*}"
 	temporary=$(mktemp "${file%/*}/.settings.ini.XXXXXX")
 	if [[ -f $file ]]; then
 		mode=$(stat -c %a -- "$file")
-		awk -v key="$key" -v assignment="$key=$value" '
+		awk -v section="$section" -v key="$key" -v assignment="$key=$value" '
 			BEGIN { in_settings = 0; saw_settings = 0 }
 			/^[[:space:]]*\[[^]]+\][[:space:]]*$/ {
 				if (in_settings && !written) {
@@ -663,7 +667,7 @@ gtk_ini_set() {
 				}
 				header = $0
 				gsub(/^[[:space:]]+|[[:space:]]+$/, "", header)
-				in_settings = (header == "[Settings]")
+				in_settings = (header == "[" section "]")
 				if (in_settings) saw_settings = 1
 				print
 				next
@@ -683,14 +687,14 @@ gtk_ini_set() {
 				if (!written) {
 					if (!saw_settings) {
 						if (NR) print ""
-						print "[Settings]"
+						print "[" section "]"
 					}
 					print assignment
 				}
 			}
 		' "$file" >"$temporary"
 	else
-		printf '[Settings]\n%s=%s\n' "$key" "$value" >"$temporary"
+		printf '[%s]\n%s=%s\n' "$section" "$key" "$value" >"$temporary"
 	fi
 	chmod "$mode" -- "$temporary"
 	mv -f -- "$temporary" "$file"
@@ -1278,20 +1282,39 @@ EOF
 
 fi
 
-# Update qt5ct / qt6ct color scheme config if that tool is the active theme
+# Qt palette files are immutable installed assets, so appearance transactions
+# only need to journal the existing qt5ct/qt6ct configuration files.
+qt_palette_path() {
+	local root
+	local -a roots=()
+	IFS=: read -r -a roots <<<"${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+	for root in "${XDG_DATA_HOME:-$HOME/.local/share}" "${roots[@]}"; do
+		[[ $root == /* ]] || continue
+		if [[ -f $root/$QT_PLATFORM_THEME/colors/Dwm-$THEME_NAME.conf ]]; then
+			printf '%s\n' "$root/$QT_PLATFORM_THEME/colors/Dwm-$THEME_NAME.conf"
+			return 0
+		fi
+	done
+	return 1
+}
+
 if [[ $RUNTIME_ONLY == 0 && $LIVE_ONLY == 0 &&
 	("$QT_PLATFORM_THEME" == "qt5ct" || "$QT_PLATFORM_THEME" == "qt6ct") ]]; then
 	QT_CT_CONF="${XDG_CONFIG_HOME:-$HOME/.config}/${QT_PLATFORM_THEME}/${QT_PLATFORM_THEME}.conf"
-	if [[ -f "$QT_CT_CONF" ]]; then
-		if [[ "$DARK_MODE" == "true" ]]; then
+	if QT_CT_SCHEME=$(qt_palette_path); then
+		gtk_ini_set "$QT_CT_CONF" color_scheme_path "$QT_CT_SCHEME" Appearance
+		gtk_ini_set "$QT_CT_CONF" custom_palette true Appearance
+	elif [[ -f $QT_CT_CONF ]]; then
+		if [[ $DARK_MODE == true ]]; then
 			QT_CT_SCHEME="/usr/share/${QT_PLATFORM_THEME}/colors/darker.conf"
 		else
 			QT_CT_SCHEME=""
 		fi
-		if grep -q '^color_scheme_path' "$QT_CT_CONF"; then
-			sed -i "s|^color_scheme_path=.*|color_scheme_path=$QT_CT_SCHEME|" "$QT_CT_CONF"
+		gtk_ini_set "$QT_CT_CONF" color_scheme_path "$QT_CT_SCHEME" Appearance
+		if [[ -n $QT_CT_SCHEME && -f $QT_CT_SCHEME ]]; then
+			gtk_ini_set "$QT_CT_CONF" custom_palette true Appearance
 		else
-			sed -i "/^\[Appearance\]/a color_scheme_path=${QT_CT_SCHEME}" "$QT_CT_CONF"
+			gtk_ini_set "$QT_CT_CONF" custom_palette false Appearance
 		fi
 	fi
 fi
@@ -1313,6 +1336,7 @@ if [[ $RUNTIME_ONLY == 0 && $TRANSACTIONAL_APPLY == 0 ]] && command -v systemctl
 	QT_QPA_PLATFORMTHEME=$QT_PLATFORM_THEME \
 		XCURSOR_THEME=$CURSOR_THEME XCURSOR_SIZE=$CURSOR_SIZE \
 		systemctl --user import-environment \
+		XDG_DATA_DIRS \
 		QT_QPA_PLATFORMTHEME \
 		XCURSOR_THEME \
 		XCURSOR_SIZE 2>/dev/null || true
@@ -1320,6 +1344,7 @@ fi
 if [[ $RUNTIME_ONLY == 0 && $TRANSACTIONAL_APPLY == 0 ]] &&
 	command -v dbus-update-activation-environment &>/dev/null; then
 	dbus-update-activation-environment --systemd \
+		XDG_DATA_DIRS="$XDG_DATA_DIRS" \
 		QT_QPA_PLATFORMTHEME="$QT_PLATFORM_THEME" \
 		XCURSOR_THEME="$CURSOR_THEME" \
 		XCURSOR_SIZE="$CURSOR_SIZE" 2>/dev/null || true

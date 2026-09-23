@@ -379,6 +379,34 @@ THEME_ENV="${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/theme-env.sh"
 # shellcheck disable=SC1090
 [ -f "$THEME_ENV" ] && . "$THEME_ENV"
 
+# Share custom installation data roots with GTK, the shell and D-Bus apps.
+data_updater=$(command -v dwm-desktop-update 2>/dev/null || :)
+# dwm execs this user-data script directly. Its executable identifies the
+# installation even when the display manager did not add PREFIX/bin to PATH.
+session_executable=$(readlink "/proc/$PPID/exe" 2>/dev/null || :)
+session_executable=${session_executable%" (deleted)"}
+case $session_executable in
+*/bin/dwm)
+	if [ -x "${session_executable%/*}/dwm-desktop-update" ]; then
+		data_updater=${session_executable%/*}/dwm-desktop-update
+		# Descendant shell/settings helpers must select this installation too.
+		case $PATH in
+		"${session_executable%/*}:"*) ;;
+		*)
+			PATH=${session_executable%/*}:$PATH
+			export PATH
+			;;
+		esac
+	fi
+	;;
+esac
+if [ -n "$data_updater" ] && session_data_dirs=$("$data_updater" data-directories 2>/dev/null); then
+	XDG_DATA_DIRS=$session_data_dirs
+	export XDG_DATA_DIRS
+fi
+XDG_DATA_DIRS=${XDG_DATA_DIRS:-/usr/local/share:/usr/share}
+export XDG_DATA_DIRS
+
 # Native GTK applications in the plain Xorg session consume text scaling from
 # XSETTINGS. Reconcile the project-owned xsettingsd instance before launching
 # the shell, portals, or XDG autostart applications.
@@ -421,7 +449,7 @@ if command -v systemctl >/dev/null 2>&1; then
 	{
 		systemctl --user unset-environment WAYLAND_DISPLAY
 		systemctl --user import-environment \
-			DISPLAY XAUTHORITY XDG_CURRENT_DESKTOP DESKTOP_SESSION \
+			DISPLAY XAUTHORITY XDG_CURRENT_DESKTOP DESKTOP_SESSION XDG_DATA_DIRS \
 			XDG_SESSION_TYPE QT_QPA_PLATFORM QT_QPA_PLATFORMTHEME \
 			XCURSOR_THEME XCURSOR_SIZE
 	} &
@@ -431,7 +459,7 @@ if command -v dbus-update-activation-environment >/dev/null 2>&1; then
 	{
 		dbus-update-activation-environment WAYLAND_DISPLAY=
 		dbus-update-activation-environment --systemd \
-			DISPLAY XAUTHORITY XDG_CURRENT_DESKTOP DESKTOP_SESSION \
+			DISPLAY XAUTHORITY XDG_CURRENT_DESKTOP DESKTOP_SESSION XDG_DATA_DIRS \
 			XDG_SESSION_TYPE QT_QPA_PLATFORM QT_QPA_PLATFORMTHEME \
 			XCURSOR_THEME XCURSOR_SIZE
 	} 2>/dev/null &

@@ -33,7 +33,7 @@ RowLayout {
     UiText {
         Layout.fillWidth: true
         text: root.title
-        color: Theme.menuHoverText
+        color: Theme.menuText
         font.letterSpacing: root.titleLetterSpacing
         elide: Text.ElideRight
     }

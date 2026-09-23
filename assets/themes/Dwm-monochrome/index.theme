@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=X-GNOME-Metatheme
+Name=Dwm-monochrome
+Comment=dwm-titus monochrome application palette
+
+[X-GNOME-Metatheme]
+GtkTheme=Dwm-monochrome

@@ -39,7 +39,7 @@ Rectangle {
             Layout.fillWidth: true
             text: root.label
             color: !root.enabled ? Theme.controlDisabledText
-                : root.hovered ? Theme.controlHoverText : Theme.textStrong
+                : Theme.readableText(Theme.textStrong, String(root.color))
             font.family: Theme.fontFamily
             font.pixelSize: Theme.panelFontSize
             font.bold: true
@@ -49,7 +49,7 @@ Rectangle {
         Text {
             Layout.fillWidth: true
             text: root.detail
-            color: Theme.textMuted
+            color: Theme.readableText(Theme.textMuted, String(root.color))
             font.family: Theme.fontFamily
             font.pixelSize: Theme.smallFontSize
             elide: Text.ElideRight

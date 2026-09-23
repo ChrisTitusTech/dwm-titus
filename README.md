@@ -165,6 +165,29 @@ fallback paths `~/.config/picom.conf` and `~/.config/picom/picom.conf`). The aut
 backend policy selects GLX for accelerated Intel/AMD graphics and falls back to XRender
 on NVIDIA or software rendering, with manual GLX, XRender, and EGL overrides available.
 Edits preserve custom comments and includes with up to ten automatic recovery backups.
+All 15 shipped presets include offline `Dwm-<preset>` application themes,
+including `Dwm-dracula`, for Thunar and other native GTK 2/3/4 applications.
+The system install places their files under `${DATADIR}/themes` (normally
+`/usr/share/themes` with the supported installer); source updates install and
+verify them too.
+Qt applications using qt5ct or qt6ct receive the matching installed palette,
+also listed in those tools from `${DATADIR}/qt5ct/colors` and
+`${DATADIR}/qt6ct/colors`;
+Alacritty and Kitty continue to receive the active terminal colors. Restart
+Qt applications if they do not reload their platform theme dynamically.
+These are dwm-titus palette adaptations of GTK's built-in widgets, not the
+upstream third-party theme packages. Libadwaita and sandboxed applications may
+follow only the light/dark preference rather than the custom palette.
+
+Existing explicit `gtk_theme` values and Appearance personalization overrides
+are preserved. Remove an explicit GTK theme setting to follow the bundled
+preset automatically, or select a `Dwm-` theme in Appearance. The existing explicit `Nordic` selection remains supported; `Dwm-nord` is
+also available offline. Existing installations need the supported source
+installer once (`./install.sh --profile recommended`) to add the new system
+file paths before subsequent updates can use Settings.
+Maintainers regenerate assets with `python3 scripts/generate-app-themes.py`
+after changing the shipped palettes.
+
 Cursor theme changes in Settings take effect immediately across running X11
 applications via `dwm-cursor-reload`.
 

@@ -222,6 +222,7 @@ for live_command in dbus-update-activation-environment gsettings systemctl xfcon
 	cat >"$work/integration-bin/$live_command" <<'SH'
 #!/bin/sh
 printf '%s\n' "${0##*/}" >>"${DWM_TEST_LIVE_LOG:?}"
+printf '%s\t%s\t%s\n' "${0##*/}" "$*" "${XDG_DATA_DIRS:-}" >>"$DWM_TEST_LIVE_LOG.environ"
 exit 0
 SH
 	chmod +x "$work/integration-bin/$live_command"
@@ -837,6 +838,8 @@ HOME=$home_dir XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 [[ $(integration_snapshot) != "$integration_before" ]]
 grep -Fqx gsettings "$work/live.log"
 grep -Fqx xfconf-query "$work/live.log"
+grep -Eq '^systemctl[[:space:]].*import-environment XDG_DATA_DIRS ' "$work/live.log.environ"
+grep -Eq '^dbus-update-activation-environment[[:space:]].*XDG_DATA_DIRS=' "$work/live.log.environ"
 
 reset_fixture
 mkdir -p "$config_home/alacritty"

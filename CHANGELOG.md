@@ -8,6 +8,10 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Keep light-preset hover surfaces light and hovered/selected shell labels
+  readable (issue #349). Install offline GTK 2/3/4 themes and Qt palettes for
+  all 15 presets, including Dracula, with update verification and backup coverage.
+
 - Keep Quickshell linting compatible with Fedora 44 Qt tooling, with typed
   regional controls and provider monitors, an unambiguous running-app state
   property, and narrowly scoped exceptions for missing upstream enum metadata.

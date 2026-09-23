@@ -165,7 +165,8 @@ ClickAwayPopup {
             text: presetButton.label
             color: !presetButton.enabled ? Theme.controlDisabledText
                 : presetButton.activeFocus ? Theme.controlFocusText
-                : presetButton.active ? Theme.controlSelectedText : Theme.controlNormalText
+                : presetButton.active ? Theme.controlSelectedText
+                : presetMouse.containsMouse ? Theme.controlHoverText : Theme.controlNormalText
         }
 
         MouseArea {

@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=X-GNOME-Metatheme
+Name=Dwm-rosepine
+Comment=dwm-titus rosepine application palette
+
+[X-GNOME-Metatheme]
+GtkTheme=Dwm-rosepine

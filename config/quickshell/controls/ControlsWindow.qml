@@ -166,7 +166,7 @@ ClickAwayPopup {
                             Text {
                                 Layout.fillWidth: true
                                 text: outputDeviceRow.modelData.description
-                                color: Theme.text
+                                color: Theme.readableText(Theme.text, String(outputDeviceRow.color))
                                 font.family: Theme.fontFamily
                                 font.pixelSize: Theme.panelFontSize
                                 font.bold: outputDeviceRow.modelData.isDefault
@@ -177,7 +177,7 @@ ClickAwayPopup {
                             Text {
                                 Layout.preferredWidth: Theme.scaledSize(58)
                                 text: outputDeviceRow.modelData.isDefault ? "Default" : "Set"
-                                color: outputDeviceRow.modelData.isDefault ? Theme.controlSelectedText : Theme.textMuted
+                                color: Theme.readableText(outputDeviceRow.modelData.isDefault ? Theme.controlSelectedText : Theme.textMuted, String(outputDeviceRow.color))
                                 font.family: Theme.fontFamily
                                 font.pixelSize: Theme.smallFontSize
                                 font.bold: true

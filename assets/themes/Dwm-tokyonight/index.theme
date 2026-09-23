@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=X-GNOME-Metatheme
+Name=Dwm-tokyonight
+Comment=dwm-titus tokyonight application palette
+
+[X-GNOME-Metatheme]
+GtkTheme=Dwm-tokyonight

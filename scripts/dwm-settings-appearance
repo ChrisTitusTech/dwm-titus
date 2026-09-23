@@ -19,6 +19,14 @@ script_dir=$(cd "${script_path%/*}" && pwd -P) || {
 	printf 'dwm-settings-appearance: executable path could not be resolved\n' >&2
 	exit 1
 }
+if [[ $script_dir == */bin && -x $script_dir/dwm-desktop-update ]]; then
+	data_updater=$script_dir/dwm-desktop-update
+else
+	data_updater=$(command -v dwm-desktop-update || printf '%s' "$script_dir/dwm-desktop-update")
+fi
+if session_data_dirs=$("$data_updater" data-directories 2>/dev/null); then
+	export XDG_DATA_DIRS=$session_data_dirs
+fi
 config_home=${XDG_CONFIG_HOME:-}
 data_home=${XDG_DATA_HOME:-}
 state_home=${XDG_STATE_HOME:-}
@@ -1950,6 +1958,9 @@ emit_integrations() {
 	dark=${value[$resolved_theme$key_separator'dark_mode']:-true}
 	[[ $dark == true || $dark == false ]] || dark=true
 	requested_gtk=${value[$resolved_theme$key_separator'gtk_theme']:-}
+	if [[ -z $requested_gtk ]] && gtk_theme_available "Dwm-$resolved_theme"; then
+		requested_gtk="Dwm-$resolved_theme"
+	fi
 	if [[ -z $requested_gtk ]]; then
 		if [[ $dark == true ]]; then
 			case $resolved_theme in
@@ -2039,7 +2050,9 @@ emit_integrations() {
 			"$(clean_field "$requested_gtk")"
 		add_error gtk stale-theme "Applied GTK settings do not match '$requested_gtk'"
 	else
-		if [[ $dark == true ]]; then
+		if gtk_theme_available "Dwm-$resolved_theme"; then
+			fallback_gtk="Dwm-$resolved_theme"
+		elif [[ $dark == true ]]; then
 			if gtk_theme_available "adw-gtk3-dark"; then
 				fallback_gtk=adw-gtk3-dark
 			elif gtk_theme_available "Adwaita-dark"; then

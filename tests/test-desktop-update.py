@@ -1,6 +1,8 @@
 #!/usr/bin/python3
 """Offline update discovery, staging, generation, and recovery regressions."""
 import copy
+import contextlib
+import io
 import importlib.machinery
 import importlib.util
 import json
@@ -31,6 +33,7 @@ def module(name, path):
 update = module("desktop_update", REPO / "scripts/dwm-desktop-update")
 privileged = module("desktop_root", REPO / "scripts/dwm-desktop-update-root")
 REAL_SESSION = update.PrivilegedSession
+REAL_INSTALLATION = update.installation
 REAL_RUN = update.run
 REAL_ROOT_OWNED = update.root_owned
 
@@ -252,6 +255,44 @@ class DesktopUpdate(unittest.TestCase):
         with patch.object(update, "root_owned", return_value=False):
             self.assertEqual(update.check(True)["state"], "blocked")
         self.command.assert_not_called()
+
+    def test_data_directory_reads_custom_installed_receipt(self):
+        prefix = self.base / 'custom-prefix'
+        manifest = prefix / 'share/dwm-titus/desktop-install.json'
+        manifest.parent.mkdir(parents=True)
+        manifest.write_text(json.dumps({'layout': {'datadir': '/opt/custom/palettes'}}))
+        output = io.StringIO()
+        with patch.object(update, 'installation', REAL_INSTALLATION), \
+                patch.object(update, '__file__', str(prefix / 'bin/dwm-desktop-update')), \
+                patch.object(update, 'trusted_installation') as trusted, \
+                patch.object(sys, 'argv', ['dwm-desktop-update', 'data-directory']), \
+                contextlib.redirect_stdout(output):
+            self.assertEqual(update.main(), 0)
+        trusted.assert_called_once_with(manifest)
+        self.assertEqual(output.getvalue(), '/opt/custom/palettes\n')
+        output = io.StringIO()
+        with patch.object(update, 'installation', return_value=(manifest, {'layout': {'datadir': '/opt/custom/palettes'}})), \
+                patch.dict(os.environ, XDG_DATA_DIRS='/example/share:/usr/share'), \
+                patch.object(sys, 'argv', ['dwm-desktop-update', 'data-directories']), \
+                contextlib.redirect_stdout(output):
+            self.assertEqual(update.main(), 0)
+        self.assertEqual(output.getvalue(), '/opt/custom/palettes:/example/share:/usr/share\n')
+
+
+    def test_manifest_only_records_managed_application_themes(self):
+        for name in ('Dwm-dracula', 'Personal'):
+            path = self.base / 'assets/themes' / name / 'gtk-3.0/gtk.css'
+            path.parent.mkdir(parents=True)
+            path.write_text('theme')
+        stage = self.base / 'stage'
+        args = SimpleNamespace(source_dir=str(self.base), destdir=str(stage), prefix='/usr',
+                               manprefix='/usr/share/man', xsessions='/usr/share/xsessions', datadir='/usr/share',
+                               commands=[], helpers=[], packages=[])
+        with patch.object(update, 'fingerprint', return_value={'mode': 0o644, 'sha256': 'a' * 64}):
+            update.record_system(args)
+        manifest = json.loads((stage / 'usr/share/dwm-titus/desktop-install.json').read_text())
+        self.assertIn('/usr/share/themes/Dwm-dracula/gtk-3.0/gtk.css', manifest['files'])
+        self.assertFalse(any('Personal' in path for path in manifest['files']))
 
     def test_manifest_directory_uses_trusted_mode_under_group_umask(self):
         stage = self.base / "stage"
