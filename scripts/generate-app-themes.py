@@ -92,8 +92,8 @@ tooltip, tooltip label { background-color: @dwm_surface; color: @dwm_surface_fg;
     for group in ('active', 'inactive', 'disabled'):
         group_roles = roles.copy()
         if group == 'disabled':
-            for index in (0, 6, 8, 20):
-                group_roles[index] = palette['term_color8']
+            for index, background in ((0, 10), (6, 9), (8, 1), (20, 18)):
+                group_roles[index] = readable(palette['term_color8'], roles[background])
         qt += group + '_colors=' + ', '.join('#ff' + c[1:] for c in group_roles) + '\n'
     files['qt/colors.conf'] = qt
     return files

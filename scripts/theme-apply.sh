@@ -1269,10 +1269,18 @@ fi
 # Qt palette files are immutable installed assets, so appearance transactions
 # only need to journal the existing qt5ct/qt6ct configuration files.
 qt_palette_path() {
-	local root
+	local root updater installed_data
 	local -a roots=()
 	IFS=: read -r -a roots <<<"${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
-	for root in "${XDG_DATA_HOME:-$HOME/.local/share}" "${roots[@]}"; do
+	# The installed receipt retains custom PREFIX/DATADIR choices after the
+	# installer environment is gone. The updater validates it before reading.
+	if [[ $script_dir == */bin && -x $script_dir/dwm-desktop-update ]]; then
+		updater=$script_dir/dwm-desktop-update
+	else
+		updater=$(command -v dwm-desktop-update || printf '%s' "$script_dir/dwm-desktop-update")
+	fi
+	installed_data=$("$updater" data-directory 2>/dev/null) || installed_data=
+	for root in "${XDG_DATA_HOME:-$HOME/.local/share}" "${roots[@]}" "$installed_data"; do
 		[[ $root == /* ]] || continue
 		if [[ -f $root/$QT_PLATFORM_THEME/colors/Dwm-$THEME_NAME.conf ]]; then
 			printf '%s\n' "$root/$QT_PLATFORM_THEME/colors/Dwm-$THEME_NAME.conf"

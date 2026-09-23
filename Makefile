@@ -351,12 +351,8 @@ uninstall:
 	/usr/bin/python3 -I scripts/dwm-desktop-update guard-system-install --destdir "${DESTDIR}" -- $(MAKE) uninstall-files
 
 uninstall-files:
-	set -e; for theme in assets/themes/Dwm-*; do \
-		rm -rf "${DESTDIR}${DATADIR}/themes/$$(basename "$$theme")"; \
-		for backend in qt5ct qt6ct; do \
-			rm -f "${DESTDIR}${DATADIR}/$$backend/colors/$$(basename "$$theme").conf"; \
-		done; \
-	done
+	rm -rf "${DESTDIR}${DATADIR}/themes/"Dwm-*
+	rm -f "${DESTDIR}${DATADIR}/qt5ct/colors/"Dwm-*.conf "${DESTDIR}${DATADIR}/qt6ct/colors/"Dwm-*.conf
 	rm -f "${DESTDIR}${PREFIX}/bin/dwm" \
 		"${DESTDIR}${MANPREFIX}/man1/dwm.1" \
 		"${DESTDIR}${XSESSIONSDIR}/dwm.desktop"

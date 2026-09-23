@@ -1342,6 +1342,7 @@ def main():
     user.add_argument("source_dir")
     checking = commands.add_parser("check")
     checking.add_argument("--force", action="store_true")
+    commands.add_parser("data-directory")
     commands.add_parser("status")
     commands.add_parser("progress")
     start = commands.add_parser("start")
@@ -1360,6 +1361,9 @@ def main():
     if args.command == "guard-system-install":
         command = args.install_command
         return guard_system_install(args.destdir, command[1:] if command and command[0] == "--" else command, args.owner, args.user_state)
+    if args.command == "data-directory":
+        print(installation()[1]["layout"]["datadir"])
+        return 0
     if args.command == "record-system":
         record_system(args)
         return 0

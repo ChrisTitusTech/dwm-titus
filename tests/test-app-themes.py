@@ -120,6 +120,9 @@ assert not errors, errors
             roles = [color.strip()[3:] for color in scheme['ColorScheme'][group + '_colors'].split(',')]
             # QPalette BrightText (7) is used over Dark (4), not Highlight (12).
             assert ratio('#' + roles[7], '#' + roles[4]) >= 4.5, (name, group)
+            if group == 'disabled':
+                for foreground, background in ((0, 10), (6, 9), (8, 1), (20, 18)):
+                    assert ratio('#' + roles[foreground], '#' + roles[background]) >= 4.5, (name, foreground)
         theme_file.write_text((ROOT / 'config/themes.toml').read_text().replace('theme = "nord"', f'theme = "{name}"'))
         subprocess.run([str(ROOT / 'scripts/theme-apply.sh')], env=env, check=True,
                        stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
@@ -133,6 +136,21 @@ assert not errors, errors
             qt_settings = qt_file.read_text()
             assert f'{qt_file.parent.name}/colors/Dwm-{name}.conf' in qt_settings
             assert 'custom_palette=true' in qt_settings
+
+    # A receipt-discovered custom data root must work without XDG_DATA_DIRS
+    # pointing to it. Fixture only replaces the read-only installation query.
+    custom_data = stage / 'custom-data'
+    custom_palette = custom_data / 'qt6ct/colors/Dwm-dracula.conf'
+    custom_palette.parent.mkdir(parents=True)
+    shutil.copy2(stage / 'usr/share/qt6ct/colors/Dwm-dracula.conf', custom_palette)
+    updater = binary_dir / 'dwm-desktop-update'
+    updater.write_text('#!/bin/sh\n[ "$1" = data-directory ] || exit 1\nprintf "%s\\n" "$TEST_CUSTOM_DATA"\n')
+    updater.chmod(0o755)
+    theme_file.write_text((ROOT / 'config/themes.toml').read_text().replace('theme = "nord"', 'theme = "dracula"'))
+    custom_env = dict(env, XDG_DATA_DIRS=str(stage / 'empty-data'), TEST_CUSTOM_DATA=str(custom_data))
+    subprocess.run([str(ROOT / 'scripts/theme-apply.sh')], env=custom_env, check=True,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    assert str(custom_palette) in (config / 'qt6ct/qt6ct.conf').read_text()
 
     # Run the actual shared QML Theme singleton against every preset and a
     # dark-to-light switch, so the original terminal-color hover bug regresses.
@@ -244,4 +262,12 @@ ShellRoot {
             Gdk.pixbuf_get_from_window(window.get_window(), 0, 0, width, height).savev(
                 str(path / f'gtk-{name}.png'), 'png', [], [])
     window.destroy()
+
+    for path in retired:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('retired')
+    subprocess.run(['make', 'uninstall-files', f'DESTDIR={stage}', 'PREFIX=/usr'],
+                   cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
+    assert not any(path.exists() for path in retired), 'Uninstall must remove retired themes'
+    assert unrelated.read_text() == 'personal', 'Uninstall must preserve unrelated themes'
 print('PASS: all 15 installed GTK palettes parse, retain readable widget states, and apply matching GTK/Qt/terminal colors')
