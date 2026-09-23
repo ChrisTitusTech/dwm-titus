@@ -17,12 +17,14 @@ else
 fi
 # Automatic reloads are direct dwm children and do not inherit autostart's PATH.
 session_executable=$(readlink "/proc/$PPID/exe" 2>/dev/null || :)
+session_executable=${session_executable%" (deleted)"}
 if [[ $session_executable == */bin/dwm && -x ${session_executable%/*}/dwm-desktop-update ]]; then
 	data_updater=${session_executable%/*}/dwm-desktop-update
 fi
 if session_data_dirs=$("$data_updater" data-directories 2>/dev/null); then
 	export XDG_DATA_DIRS=$session_data_dirs
 fi
+export XDG_DATA_DIRS=${XDG_DATA_DIRS:-/usr/local/share:/usr/share}
 XSETTINGS_HELPER=${DWM_APPEARANCE_XSETTINGS_HELPER:-$script_dir/dwm-xsettings}
 THEME_DISCOVERY_HOME=${DWM_APPEARANCE_DISCOVERY_HOME:-$HOME}
 [[ $THEME_DISCOVERY_HOME == /* ]] || {
@@ -1334,6 +1336,7 @@ if [[ $RUNTIME_ONLY == 0 && $TRANSACTIONAL_APPLY == 0 ]] && command -v systemctl
 	QT_QPA_PLATFORMTHEME=$QT_PLATFORM_THEME \
 		XCURSOR_THEME=$CURSOR_THEME XCURSOR_SIZE=$CURSOR_SIZE \
 		systemctl --user import-environment \
+		XDG_DATA_DIRS \
 		QT_QPA_PLATFORMTHEME \
 		XCURSOR_THEME \
 		XCURSOR_SIZE 2>/dev/null || true
@@ -1341,6 +1344,7 @@ fi
 if [[ $RUNTIME_ONLY == 0 && $TRANSACTIONAL_APPLY == 0 ]] &&
 	command -v dbus-update-activation-environment &>/dev/null; then
 	dbus-update-activation-environment --systemd \
+		XDG_DATA_DIRS="$XDG_DATA_DIRS" \
 		QT_QPA_PLATFORMTHEME="$QT_PLATFORM_THEME" \
 		XCURSOR_THEME="$CURSOR_THEME" \
 		XCURSOR_SIZE="$CURSOR_SIZE" 2>/dev/null || true

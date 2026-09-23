@@ -465,6 +465,7 @@ run_duplicate_case() {
 #include <unistd.h>
 int main(int argc, char **argv) {
     if (argc != 2) return 2;
+    if (unlink(argv[0]) != 0) return 6;
     pid_t pid = fork();
     if (pid < 0) return 3;
     if (pid == 0) { execl("/bin/sh", "sh", argv[1], (char *)0); _exit(127); }
@@ -473,7 +474,7 @@ int main(int argc, char **argv) {
     return WIFEXITED(status) ? WEXITSTATUS(status) : 5;
 }
 EOF
-		${CC:-cc} -o "$work/custom-prefix/bin/dwm" "$work/custom-prefix/parent.c"
+		${CC:-cc} -o "$work/custom-prefix/parent-fixture" "$work/custom-prefix/parent.c"
 		cat >"$work/custom-prefix/bin/dwm-desktop-update" <<'EOF'
 #!/bin/sh
 [ "$1" = data-directories ] || exit 2
@@ -497,6 +498,9 @@ EOF
 	: >"$state/polkit-mate-authentication-agent-1.running"
 
 	for iteration in 1 2; do
+		if [ "$mode" = custom-prefix ]; then
+			cp "$work/custom-prefix/parent-fixture" "$session_runner"
+		fi
 		if [ "$mode" = startx ]; then
 			XDG_RUNTIME_DIR="$runtime" dbus-run-session -- env \
 				DISPLAY="$case_display" \
