@@ -217,9 +217,10 @@ install-system-files:
 
 install-app-themes:
 	@echo "==> Installing application themes..."
+	rm -rf "${DESTDIR}${DATADIR}/themes/"Dwm-*
+	rm -f "${DESTDIR}${DATADIR}/qt5ct/colors/"Dwm-*.conf "${DESTDIR}${DATADIR}/qt6ct/colors/"Dwm-*.conf
 	set -e; for theme in assets/themes/Dwm-*; do \
 		name=$$(basename "$$theme"); \
-		rm -rf "${DESTDIR}${DATADIR}/themes/$$name"; \
 		install -d -m755 "${DESTDIR}${DATADIR}/themes/$$name"; \
 		cp -a --no-preserve=ownership "$$theme/." "${DESTDIR}${DATADIR}/themes/$$name/"; \
 		find "${DESTDIR}${DATADIR}/themes/$$name" -type d -exec chmod 755 {} +; \
@@ -626,8 +627,8 @@ check-install-manifest: all
 		for name in ${INSTALL_COMMAND_NAMES}; do \
 			printf 'usr/bin/%s\n' "$$name"; \
 		done; \
-		find assets/themes -type f -printf 'usr/share/themes/%P\n'; \
 		for theme in assets/themes/Dwm-*; do \
+			find "$$theme" -type f -printf "usr/share/themes/$$(basename "$$theme")/%P\n"; \
 			for backend in qt5ct qt6ct; do \
 				printf 'usr/share/%s/colors/%s.conf\n' "$$backend" "$$(basename "$$theme")"; \
 			done; \

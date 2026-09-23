@@ -64,11 +64,18 @@ with tempfile.TemporaryDirectory(dir=os.environ['DWM_TEST_WORKSPACE']) as work:
                    cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
     stale = stage / 'usr/share/themes/Dwm-dracula/obsolete.css'
     stale.write_text('obsolete')
+    retired = [stage / 'usr/share/themes/Dwm-retired/gtk-3.0/gtk.css',
+               stage / 'usr/share/qt5ct/colors/Dwm-retired.conf',
+               stage / 'usr/share/qt6ct/colors/Dwm-retired.conf']
+    for path in retired:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('retired')
     unrelated = stage / 'usr/share/themes/Personal/gtk-3.0/gtk.css'
     unrelated.parent.mkdir(parents=True)
     unrelated.write_text('personal')
     subprocess.run(['make', 'install-app-themes', f'DESTDIR={stage}', 'PREFIX=/usr'],
                    cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
+    assert not any(path.exists() for path in retired), 'Retired themes must be removed'
     assert not stale.exists(), 'Theme updates must remove obsolete managed assets'
     assert unrelated.read_text() == 'personal', 'Unrelated themes must be preserved'
     Gtk.Settings.get_default().set_property('gtk-enable-animations', False)
@@ -164,6 +171,18 @@ ShellRoot {
     const b = Theme.luminance(pair[1]);
     if ((Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05) < 4.5)
      throw new Error(snapshot.name + " unreadable role " + pair);
+   }
+   if (!snapshot.dark) {
+    for (const pair of [[Theme.controlNormalText, Theme.controlHoverFill],
+                        [Theme.menuText, Theme.menuBackground],
+                        [Theme.menuText, Theme.menuHoverBackground],
+                        [Theme.menuMutedText, Theme.menuBackground],
+                        [Theme.menuMutedText, Theme.menuHoverBackground]]) {
+     const a = Theme.luminance(pair[0]);
+     const b = Theme.luminance(pair[1]);
+     if ((Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05) < 4.5)
+      throw new Error(snapshot.name + " unreadable shared hover role " + pair);
+    }
    }
    if (!snapshot.dark && Theme.luminance(Theme.surfaceHover) < 0.5)
     throw new Error(snapshot.name + " dark hover surface");

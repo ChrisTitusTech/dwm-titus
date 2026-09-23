@@ -253,6 +253,21 @@ class DesktopUpdate(unittest.TestCase):
             self.assertEqual(update.check(True)["state"], "blocked")
         self.command.assert_not_called()
 
+    def test_manifest_only_records_managed_application_themes(self):
+        for name in ('Dwm-dracula', 'Personal'):
+            path = self.base / 'assets/themes' / name / 'gtk-3.0/gtk.css'
+            path.parent.mkdir(parents=True)
+            path.write_text('theme')
+        stage = self.base / 'stage'
+        args = SimpleNamespace(source_dir=str(self.base), destdir=str(stage), prefix='/usr',
+                               manprefix='/usr/share/man', xsessions='/usr/share/xsessions', datadir='/usr/share',
+                               commands=[], helpers=[], packages=[])
+        with patch.object(update, 'fingerprint', return_value={'mode': 0o644, 'sha256': 'a' * 64}):
+            update.record_system(args)
+        manifest = json.loads((stage / 'usr/share/dwm-titus/desktop-install.json').read_text())
+        self.assertIn('/usr/share/themes/Dwm-dracula/gtk-3.0/gtk.css', manifest['files'])
+        self.assertFalse(any('Personal' in path for path in manifest['files']))
+
     def test_manifest_directory_uses_trusted_mode_under_group_umask(self):
         stage = self.base / "stage"
         args = SimpleNamespace(source_dir=str(self.base), destdir=str(stage), prefix="/usr",

@@ -381,11 +381,12 @@ backup_live_install() {
 		[ -d "$cursor_source" ] || continue
 		add_system_backup_path "$data_root/icons/${cursor_source##*/}"
 	done
-	for theme_source in "$repo_dir"/assets/themes/Dwm-*; do
-		[ -d "$theme_source" ] || continue
-		add_system_backup_path "$data_root/themes/${theme_source##*/}"
-		for qt_backend in qt5ct qt6ct; do
-			add_system_backup_path "$data_root/$qt_backend/colors/${theme_source##*/}.conf"
+	for theme_target in "$data_root"/themes/Dwm-*; do
+		add_system_backup_path "$theme_target"
+	done
+	for qt_backend in qt5ct qt6ct; do
+		for palette_target in "$data_root/$qt_backend"/colors/Dwm-*.conf; do
+			add_system_backup_path "$palette_target"
 		done
 	done
 	add_system_backup_path "$data_root/licenses/dwm-titus/capitaine-cursors/COPYING"

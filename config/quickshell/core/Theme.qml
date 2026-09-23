@@ -38,8 +38,8 @@ Singleton {
     readonly property string popupBorder: highContrast ? textStrong : borderStrong
     readonly property string popupText: text
     readonly property string menuBackground: bg
-    readonly property string menuText: text
-    readonly property string menuMutedText: textMuted
+    readonly property string menuText: dark ? text : readableTextOnSurfaces(text, [menuBackground, menuHoverBackground])
+    readonly property string menuMutedText: dark ? textMuted : readableTextOnSurfaces(textMuted, [menuBackground, menuHoverBackground])
     readonly property string menuActionText: accent
     readonly property string menuHoverBackground: surfaceHover
     readonly property string menuHoverText: readableText(textStrong, menuHoverBackground)
@@ -47,7 +47,7 @@ Singleton {
     readonly property string menuSelectedText: readableText(accentSecondary, menuSelectedBackground)
     readonly property string controlNormalFill: surface
     readonly property string controlNormalBorder: highContrast ? textStrong : border
-    readonly property string controlNormalText: readableText(text, controlNormalFill)
+    readonly property string controlNormalText: dark ? readableText(text, controlNormalFill) : readableTextOnSurfaces(text, [controlNormalFill, controlHoverFill])
     readonly property string controlHoverFill: surfaceHover
     readonly property string controlHoverBorder: highContrast ? textStrong : borderStrong
     readonly property string controlHoverText: readableText(text, controlHoverFill)
@@ -75,6 +75,21 @@ Singleton {
         if ((Math.max(fg, bg) + 0.05) / (Math.min(fg, bg) + 0.05) >= 4.5)
             return foreground;
         return bg > 0.179 ? "#000000" : "#ffffff";
+    }
+
+    function readableTextOnSurfaces(foreground, backgrounds) {
+        // Some controls intentionally keep one text role while their fill
+        // changes on hover. Check that role against both actual surfaces.
+        function minimumContrast(color) {
+            const fg = luminance(color);
+            return Math.min.apply(null, backgrounds.map(function(background) {
+                const bg = luminance(background);
+                return (Math.max(fg, bg) + 0.05) / (Math.min(fg, bg) + 0.05);
+            }));
+        }
+        if (minimumContrast(foreground) >= 4.5)
+            return foreground;
+        return minimumContrast("#000000") > minimumContrast("#ffffff") ? "#000000" : "#ffffff";
     }
 
     function lightHover(background, foreground) {

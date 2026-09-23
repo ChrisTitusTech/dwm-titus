@@ -384,7 +384,8 @@ def record_system(args):
         files += [Path(layout["datadir"]) / "icons" / theme.name / path.relative_to(theme)
                   for path in theme.rglob("*") if path.is_file() or path.is_symlink()]
     files += [Path(layout["datadir"]) / "themes" / path.relative_to(source / "assets/themes")
-              for path in (source / "assets/themes").rglob("*") if path.is_file()]
+              for theme in (source / "assets/themes").glob("Dwm-*")
+              for path in theme.rglob("*") if path.is_file()]
     files += [Path(layout["datadir"]) / backend / "colors" / (theme.name + ".conf")
               for theme in (source / "assets/themes").glob("Dwm-*")
               for backend in ("qt5ct", "qt6ct")]
