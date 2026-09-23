@@ -5,6 +5,7 @@ These are dwm-titus palettes over GTK's built-in widget styling, not copies
 of third-party theme projects. Regenerate after changing config/themes.toml.
 """
 import argparse
+import shutil
 from pathlib import Path
 import tomllib
 
@@ -84,7 +85,7 @@ tooltip, tooltip label { background-color: @dwm_surface; color: @dwm_surface_fg;
     files['gtk-2.0/gtkrc'] = gtk2 + '}\nclass "*" style "dwm-palette"\n'
     # QPalette ColorRole order, shared by qt5ct and qt6ct.
     roles = [fg, surface, hover, surface, colors['border'], colors['border'], fg,
-             selected, colors['surface_fg'], bg, bg, '#000000', accent, selected,
+             readable(fg, colors['border']), colors['surface_fg'], bg, bg, '#000000', accent, selected,
              accent, palette['term_color5'], surface, '#000000', surface,
              colors['surface_fg'], fg]
     qt = '[ColorScheme]\n'
@@ -108,10 +109,16 @@ def main():
         for relative, content in render(name, palette).items():
             expected[ROOT / 'assets/themes' / f'Dwm-{name}' / relative] = content
     if args.check:
-        actual = {p for p in (ROOT / 'assets/themes').rglob('*') if p.is_file()}
+        actual = {p for theme in (ROOT / 'assets/themes').glob('Dwm-*')
+                  for p in theme.rglob('*') if p.is_file()}
         if actual != set(expected) or any(p.read_text() != text for p, text in expected.items()):
             raise SystemExit('Application themes are stale; run scripts/generate-app-themes.py')
     else:
+        # This namespace is generated; replace it so removed presets and files
+        # cannot survive regeneration and get installed again.
+        for theme in (ROOT / 'assets/themes').glob('Dwm-*'):
+            if theme.is_dir() and not theme.is_symlink():
+                shutil.rmtree(theme)
         for path, text in expected.items():
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(text)

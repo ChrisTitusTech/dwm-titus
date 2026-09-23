@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise installed GTK palettes on X11; run via scripts/run-tests xvfb-run."""
 import importlib.util
+import configparser
 import json
 import shutil
 import os
@@ -41,6 +42,24 @@ def hex_color(rgba):
 
 with tempfile.TemporaryDirectory(dir=os.environ['DWM_TEST_WORKSPACE']) as work:
     stage = Path(work)
+    # Exercise normal generation after both a removed preset and an obsolete
+    # output file; --check must then pass and unrelated assets must survive.
+    fixture = stage / 'generator'
+    (fixture / 'scripts').mkdir(parents=True)
+    (fixture / 'config').mkdir()
+    shutil.copy2(ROOT / 'scripts/generate-app-themes.py', fixture / 'scripts')
+    shutil.copy2(ROOT / 'config/themes.toml', fixture / 'config')
+    for relative in ('Dwm-retired/gtk-3.0/gtk.css', 'Dwm-dracula/obsolete.css',
+                     'Personal/gtk-3.0/gtk.css'):
+        path = fixture / 'assets/themes' / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('old')
+    generator = [sys.executable, str(fixture / 'scripts/generate-app-themes.py')]
+    subprocess.run(generator, check=True)
+    subprocess.run([*generator, '--check'], check=True)
+    assert not (fixture / 'assets/themes/Dwm-retired').exists()
+    assert not (fixture / 'assets/themes/Dwm-dracula/obsolete.css').exists()
+    assert (fixture / 'assets/themes/Personal/gtk-3.0/gtk.css').read_text() == 'old'
     subprocess.run(['make', 'install-app-themes', f'DESTDIR={stage}', 'PREFIX=/usr'],
                    cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
     stale = stage / 'usr/share/themes/Dwm-dracula/obsolete.css'
@@ -88,6 +107,12 @@ assert not errors, errors
                DWM_APPEARANCE_THEMES_FILE=str(theme_file), DISPLAY='', DBUS_SESSION_BUS_ADDRESS='',
                DWM_APPEARANCE_TRANSACTIONAL='1', DWM_APPEARANCE_RUNTIME_ONLY='0')
     for name in themes:
+        scheme = configparser.ConfigParser()
+        scheme.read(stage / f'usr/share/qt6ct/colors/Dwm-{name}.conf')
+        for group in ('active', 'inactive', 'disabled'):
+            roles = [color.strip()[3:] for color in scheme['ColorScheme'][group + '_colors'].split(',')]
+            # QPalette BrightText (7) is used over Dark (4), not Highlight (12).
+            assert ratio('#' + roles[7], '#' + roles[4]) >= 4.5, (name, group)
         theme_file.write_text((ROOT / 'config/themes.toml').read_text().replace('theme = "nord"', f'theme = "{name}"'))
         subprocess.run([str(ROOT / 'scripts/theme-apply.sh')], env=env, check=True,
                        stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
