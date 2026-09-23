@@ -30,6 +30,7 @@ Rectangle {
         anchors.centerIn: parent
         text: root.label
         color: !root.enabled ? Theme.controlDisabledText
+            : root.activeFocus ? Theme.controlFocusText
             : controlMouse.containsMouse ? Theme.controlHoverText : Theme.controlNormalText
         font.family: Theme.fontFamily
         font.pixelSize: Theme.panelFontSize

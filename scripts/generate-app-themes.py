@@ -86,7 +86,7 @@ tooltip, tooltip label { background-color: @dwm_surface; color: @dwm_surface_fg;
     # QPalette ColorRole order, shared by qt5ct and qt6ct.
     roles = [fg, surface, hover, surface, colors['border'], colors['border'], fg,
              readable(fg, colors['border']), colors['surface_fg'], bg, bg, '#000000', accent, selected,
-             accent, palette['term_color5'], surface, '#000000', surface,
+             readable(accent, bg), readable(palette['term_color5'], bg), surface, '#000000', surface,
              colors['surface_fg'], fg]
     qt = '[ColorScheme]\n'
     for group in ('active', 'inactive', 'disabled'):

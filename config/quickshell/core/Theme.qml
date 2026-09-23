@@ -40,7 +40,7 @@ Singleton {
     readonly property string menuBackground: bg
     readonly property string menuText: dark ? text : readableTextOnSurfaces(text, [menuBackground, menuHoverBackground])
     readonly property string menuMutedText: dark ? textMuted : readableTextOnSurfaces(textMuted, [menuBackground, menuHoverBackground])
-    readonly property string menuActionText: accent
+    readonly property string menuActionText: readableText(accent, menuBackground)
     readonly property string menuHoverBackground: surfaceHover
     readonly property string menuHoverText: readableText(textStrong, menuHoverBackground)
     readonly property string menuSelectedBackground: surfaceActive

@@ -212,7 +212,7 @@ FloatingWindow {
 
                                         UiText {
                                             text: String(categoryButton.index + 1).padStart(2, "0")
-                                            color: categoryButton.selected ? Theme.menuSelectedText : Theme.menuMutedText
+                                            color: categoryButton.selected ? Theme.menuSelectedText : categoryMouse.containsMouse ? Theme.menuHoverText : Theme.menuMutedText
                                             font.pixelSize: Theme.fontCaptionSize
                                             font.bold: true
                                         }
@@ -220,7 +220,7 @@ FloatingWindow {
                                         UiText {
                                             Layout.fillWidth: true
                                             text: categoryButton.modelData.label
-                                            color: categoryButton.selected ? Theme.menuSelectedText : Theme.menuText
+                                            color: categoryButton.selected ? Theme.menuSelectedText : categoryMouse.containsMouse ? Theme.menuHoverText : Theme.menuText
                                             font.bold: categoryButton.selected
                                             elide: Text.ElideRight
                                         }

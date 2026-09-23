@@ -43,7 +43,7 @@ Rectangle {
             Text {
                 Layout.fillWidth: true
                 text: root.network.ssid
-                color: Theme.textStrong
+                color: Theme.readableText(Theme.textStrong, String(root.color))
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.panelFontSize
                 elide: Text.ElideRight
@@ -52,7 +52,7 @@ Rectangle {
             Text {
                 Layout.fillWidth: true
                 text: (root.network.security.length > 0 ? root.network.security : "Open") + " - " + root.network.signal + "% - " + root.network.device
-                color: Theme.textMuted
+                color: Theme.readableText(Theme.textMuted, String(root.color))
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.smallFontSize
                 elide: Text.ElideRight
@@ -62,7 +62,7 @@ Rectangle {
         Text {
             Layout.preferredWidth: 54
             text: root.network.active ? "Active" : ""
-            color: Theme.controlSelectedText
+            color: Theme.readableText(Theme.controlSelectedText, String(root.color))
             font.family: Theme.fontFamily
             font.pixelSize: Theme.smallFontSize
             horizontalAlignment: Text.AlignRight

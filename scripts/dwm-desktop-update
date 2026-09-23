@@ -1365,7 +1365,7 @@ def main():
     if args.command == "data-directories":
         directory = installation()[1]["layout"]["datadir"]
         roots = os.environ.get("XDG_DATA_DIRS") or "/usr/local/share:/usr/share"
-        print(roots if directory in roots.split(":") else roots + ":" + directory)
+        print(":".join([directory, *[root for root in roots.split(":") if root != directory]]))
         return 0
     if args.command == "data-directory":
         print(installation()[1]["layout"]["datadir"])

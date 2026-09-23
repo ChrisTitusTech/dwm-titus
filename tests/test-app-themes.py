@@ -107,6 +107,11 @@ assert not errors, errors
     binary_dir.mkdir()
     (binary_dir / 'qt6ct').write_text('#!/bin/sh\nexit 0\n')
     (binary_dir / 'qt6ct').chmod(0o755)
+    # Keep the host installation receipt out of this staged fixture.
+    updater = binary_dir / 'dwm-desktop-update'
+    updater.write_text('#!/bin/sh\n[ "$1" = data-directories ] || exit 1\nprintf "%s\\n" "$XDG_DATA_DIRS"\n')
+    updater.chmod(0o755)
+
     env = dict(os.environ, PATH=str(binary_dir) + ':' + os.environ['PATH'],
                HOME=str(home), XDG_CONFIG_HOME=str(config),
                XDG_DATA_HOME=str(home / '.local/share'), XDG_DATA_DIRS=str(stage / 'usr/share'),
@@ -120,6 +125,8 @@ assert not errors, errors
             roles = [color.strip()[3:] for color in scheme['ColorScheme'][group + '_colors'].split(',')]
             # QPalette BrightText (7) is used over Dark (4), not Highlight (12).
             assert ratio('#' + roles[7], '#' + roles[4]) >= 4.5, (name, group)
+            for foreground in (14, 15):
+                assert ratio('#' + roles[foreground], '#' + roles[9]) >= 4.5, (name, foreground)
             if group == 'disabled':
                 for foreground, background in ((0, 10), (6, 9), (8, 1), (20, 18)):
                     assert ratio('#' + roles[foreground], '#' + roles[background]) >= 4.5, (name, foreground)
@@ -146,10 +153,10 @@ assert not errors, errors
     custom_palette.parent.mkdir(parents=True)
     shutil.copy2(stage / 'usr/share/qt6ct/colors/Dwm-dracula.conf', custom_palette)
     updater = binary_dir / 'dwm-desktop-update'
-    updater.write_text('#!/bin/sh\n[ "$1" = data-directories ] || exit 1\nprintf "%s\\n" "$XDG_DATA_DIRS:$TEST_CUSTOM_DATA"\n')
+    updater.write_text('#!/bin/sh\n[ "$1" = data-directories ] || exit 1\nprintf "%s\\n" "$TEST_CUSTOM_DATA:$XDG_DATA_DIRS"\n')
     updater.chmod(0o755)
     theme_file.write_text((ROOT / 'config/themes.toml').read_text().replace('theme = "nord"', 'theme = "dracula"'))
-    custom_env = dict(env, XDG_DATA_DIRS=str(stage / 'empty-data'), TEST_CUSTOM_DATA=str(custom_data))
+    custom_env = dict(env, XDG_DATA_DIRS=str(stage / 'usr/share'), TEST_CUSTOM_DATA=str(custom_data))
     subprocess.run([str(ROOT / 'scripts/theme-apply.sh')], env=custom_env, check=True,
                    stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
     assert str(custom_palette) in (config / 'qt6ct/qt6ct.conf').read_text()
@@ -166,11 +173,20 @@ assert 'dwm_bg' in provider.to_string(), 'Custom GTK theme was not found'
 '''], env=dict(custom_env, DISPLAY=os.environ['DISPLAY']), check=True)
 
 
+    # A custom light preset without bundled assets must leave custom-palette mode.
+    custom_theme = (ROOT / 'config/themes.toml').read_text().replace('theme = "nord"', 'theme = "custom-light"')
+    custom_theme = custom_theme.replace('[theme.catppuccin-latte]', '[theme.custom-light]')
+    theme_file.write_text(custom_theme)
+    subprocess.run([str(ROOT / 'scripts/theme-apply.sh')], env=custom_env, check=True,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    assert 'custom_palette=false' in (config / 'qt6ct/qt6ct.conf').read_text()
+
     # Run the actual shared QML Theme singleton against every preset and a
     # dark-to-light switch, so the original terminal-color hover bug regresses.
     qml_config = stage / 'qml-config/quickshell'
     shutil.copytree(ROOT / 'config/quickshell/core', qml_config / 'core')
     shutil.copytree(ROOT / 'config/quickshell/launcher', qml_config / 'launcher')
+    shutil.copytree(ROOT / 'config/quickshell/controlcenter', qml_config / 'controlcenter')
     mappings = {
         'background': 'term_bg', 'bar-background': 'normbgcolor', 'surface': 'normbgcolor',
         'surface-hover': 'term_color8', 'surface-active': 'selbgcolor',
@@ -227,17 +243,33 @@ ShellRoot {
     modelData: {name: "Selected app", generic: "Secondary label", comment: "", primaryCategory: "test", icon: ""},
     launcherModel: {categoryLabel: function() { return "Test"; }}
    });
-   function checkLabels(item) {
+   function checkLabels(item, background) {
     if (typeof item.text === "string" && item.text.length > 0) {
      const a = Theme.luminance(String(item.color));
-     const b = Theme.luminance(String(row.color));
+     const b = Theme.luminance(String(background));
      if ((Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05) < 4.5)
       throw new Error(snapshot.name + " unreadable selected label " + item.text);
     }
-    for (const child of item.children || []) checkLabels(child);
+    for (const child of item.children || []) checkLabels(child, background);
    }
-   checkLabels(row);
+   checkLabels(row, row.color);
+   row.selected = false;
+   row.hovered = true;
+   checkLabels(row, row.color);
    row.destroy();
+   for (const path of ["controlcenter/ControlCenterActionButton.qml", "controlcenter/ControlCenterOptionButton.qml"]) {
+    const control = Qt.createComponent(path);
+    if (control.status !== Component.Ready) throw new Error(control.errorString());
+    for (const hovered of [false, true]) {
+     const button = control.createObject(testRoot, {label: "Title", detail: "Detail", hovered: hovered});
+     checkLabels(button, button.color);
+     button.destroy();
+    }
+   }
+   const headerComponent = Qt.createComponent("core/MenuHeader.qml");
+   const header = headerComponent.createObject(testRoot, {title: "Menu title"});
+   checkLabels(header, Theme.menuBackground);
+   header.destroy();
    console.warn("CONTRAST PASS " + snapshot.name);
   }
   Qt.quit();

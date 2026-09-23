@@ -15,6 +15,11 @@ if [[ $script_dir == */bin && -x $script_dir/dwm-desktop-update ]]; then
 else
 	data_updater=$(command -v dwm-desktop-update || printf '%s' "$script_dir/dwm-desktop-update")
 fi
+# Automatic reloads are direct dwm children and do not inherit autostart's PATH.
+session_executable=$(readlink "/proc/$PPID/exe" 2>/dev/null || :)
+if [[ $session_executable == */bin/dwm && -x ${session_executable%/*}/dwm-desktop-update ]]; then
+	data_updater=${session_executable%/*}/dwm-desktop-update
+fi
 if session_data_dirs=$("$data_updater" data-directories 2>/dev/null); then
 	export XDG_DATA_DIRS=$session_data_dirs
 fi
@@ -1304,6 +1309,11 @@ if [[ $RUNTIME_ONLY == 0 && $LIVE_ONLY == 0 &&
 			QT_CT_SCHEME=""
 		fi
 		gtk_ini_set "$QT_CT_CONF" color_scheme_path "$QT_CT_SCHEME" Appearance
+		if [[ -n $QT_CT_SCHEME && -f $QT_CT_SCHEME ]]; then
+			gtk_ini_set "$QT_CT_CONF" custom_palette true Appearance
+		else
+			gtk_ini_set "$QT_CT_CONF" custom_palette false Appearance
+		fi
 	fi
 fi
 

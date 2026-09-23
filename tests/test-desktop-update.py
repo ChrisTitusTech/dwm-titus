@@ -276,7 +276,7 @@ class DesktopUpdate(unittest.TestCase):
                 patch.object(sys, 'argv', ['dwm-desktop-update', 'data-directories']), \
                 contextlib.redirect_stdout(output):
             self.assertEqual(update.main(), 0)
-        self.assertEqual(output.getvalue(), '/example/share:/usr/share:/opt/custom/palettes\n')
+        self.assertEqual(output.getvalue(), '/opt/custom/palettes:/example/share:/usr/share\n')
 
 
     def test_manifest_only_records_managed_application_themes(self):

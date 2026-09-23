@@ -170,6 +170,21 @@ wait_window() {
 	return 1
 }
 
+wait_launcher_index() {
+	i=0
+	while [ "$i" -lt 200 ]; do
+		count=$(ipc launcher indexCount 2>/dev/null || printf 0)
+		case $count in
+		'' | *[!0-9]*) ;;
+		*) [ "$count" -eq 0 ] || return 0 ;;
+		esac
+		i=$((i + 1))
+		sleep 0.05
+	done
+	printf 'Launcher application index did not become ready\n' >&2
+	return 1
+}
+
 capture_window() {
 	name=$1
 	window_id=$2
@@ -226,6 +241,7 @@ while [ "$i" -lt 200 ]; do
 	sleep 0.05
 done
 launcher_window=$(wait_window '^dwm launcher$')
+wait_launcher_index
 test_stage='validating launcher interactions'
 capture_window launcher "$launcher_window"
 if [ "${DWM_LARGE_SURFACE_CAPTURE_ONLY:-0}" = 1 ]; then
@@ -245,6 +261,7 @@ else
 
 	ipc launcher open >/dev/null
 	launcher_window=$(wait_window '^dwm launcher$')
+	wait_launcher_index
 	DISPLAY=$display xdotool windowactivate --sync "$launcher_window"
 	DISPLAY=$display xdotool type --delay 20 'Nested Surface Test'
 	DISPLAY=$display xdotool key Return

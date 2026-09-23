@@ -380,7 +380,26 @@ THEME_ENV="${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/theme-env.sh"
 [ -f "$THEME_ENV" ] && . "$THEME_ENV"
 
 # Share custom installation data roots with GTK, the shell and D-Bus apps.
-if session_data_dirs=$(dwm-desktop-update data-directories 2>/dev/null); then
+data_updater=$(command -v dwm-desktop-update 2>/dev/null || :)
+# dwm execs this user-data script directly. Its executable identifies the
+# installation even when the display manager did not add PREFIX/bin to PATH.
+session_executable=$(readlink "/proc/$PPID/exe" 2>/dev/null || :)
+case $session_executable in
+*/bin/dwm)
+	if [ -x "${session_executable%/*}/dwm-desktop-update" ]; then
+		data_updater=${session_executable%/*}/dwm-desktop-update
+		# Descendant shell/settings helpers must select this installation too.
+		case $PATH in
+		"${session_executable%/*}:"*) ;;
+		*)
+			PATH=${session_executable%/*}:$PATH
+			export PATH
+			;;
+		esac
+	fi
+	;;
+esac
+if [ -n "$data_updater" ] && session_data_dirs=$("$data_updater" data-directories 2>/dev/null); then
 	XDG_DATA_DIRS=$session_data_dirs
 	export XDG_DATA_DIRS
 fi

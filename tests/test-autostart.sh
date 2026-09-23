@@ -194,6 +194,7 @@ cat >"$work/bin/systemctl" <<'EOF'
 #!/bin/sh
 printf '%s\t%s\n' "${XDG_CURRENT_DESKTOP:-}" "$*" >>"${TEST_STATE:?}/systemctl.log"
 printf 'systemctl\t%s\n' "$*" >>"${TEST_STATE:?}/events.log"
+printf '%s\n' "${XDG_DATA_DIRS:-}" >>"${TEST_STATE:?}/data-dirs.log"
 case $* in
 *"start wm-graphical-session.service"*)
 	[ "${TEST_SYSTEMD_START_FAIL:-0}" != 1 ] || exit 1
@@ -456,8 +457,34 @@ chmod +x "$work/bin/quickshell"
 
 run_duplicate_case() {
 	mode=$1
+	session_runner="sh"
+	if [ "$mode" = custom-prefix ]; then
+		mkdir -p "$work/custom-prefix/bin"
+		cat >"$work/custom-prefix/parent.c" <<'EOF'
+#include <sys/wait.h>
+#include <unistd.h>
+int main(int argc, char **argv) {
+    if (argc != 2) return 2;
+    pid_t pid = fork();
+    if (pid < 0) return 3;
+    if (pid == 0) { execl("/bin/sh", "sh", argv[1], (char *)0); _exit(127); }
+    int status;
+    if (waitpid(pid, &status, 0) < 0) return 4;
+    return WIFEXITED(status) ? WEXITSTATUS(status) : 5;
+}
+EOF
+		${CC:-cc} -o "$work/custom-prefix/bin/dwm" "$work/custom-prefix/parent.c"
+		cat >"$work/custom-prefix/bin/dwm-desktop-update" <<'EOF'
+#!/bin/sh
+[ "$1" = data-directories ] || exit 2
+printf '%s\n' '/custom/theme-data:/usr/share'
+EOF
+		chmod +x "$work/custom-prefix/bin/dwm-desktop-update"
+		session_runner=$work/custom-prefix/bin/dwm
+	fi
 	case_display=:99
 	[ "$mode" != startx ] || case_display=:100
+	[ "$mode" != custom-prefix ] || case_display=:197
 	home="$work/$mode/home"
 	state="$work/$mode/state"
 	runtime="$work/$mode/runtime"
@@ -484,7 +511,7 @@ run_duplicate_case() {
 				TEST_AUTOSTART_ITERATION="$iteration" \
 				TEST_QUICKSHELL_PGREP_RACE="$([ "$iteration" = 1 ] && printf 1 || printf 0)" \
 				DWM_AUTOSTART_NO_SETSID=1 \
-				sh "$repo_dir/scripts/autostart.sh"
+				"$session_runner" "$repo_dir/scripts/autostart.sh"
 		else
 			DISPLAY="$case_display" \
 				HOME=$home \
@@ -499,7 +526,7 @@ run_duplicate_case() {
 				TEST_AUTOSTART_ITERATION="$iteration" \
 				TEST_QUICKSHELL_PGREP_RACE="$([ "$mode" = display-manager ] && [ "$iteration" = 1 ] && printf 1 || printf 0)" \
 				DWM_AUTOSTART_NO_SETSID=1 \
-				sh "$repo_dir/scripts/autostart.sh"
+				"$session_runner" "$repo_dir/scripts/autostart.sh"
 		fi
 		# Each startup applies wallpaper asynchronously, unlike resident services.
 		wait_for_count "$state/feh.count" "$iteration"
@@ -513,6 +540,9 @@ run_duplicate_case() {
 		fi
 	done
 
+	if [ "$mode" = custom-prefix ]; then
+		grep -Fqx "/custom/theme-data:/usr/share" "$state/data-dirs.log"
+	fi
 	test "$(cat "$state/feh.count")" -eq 2
 	for name in picom dwm-status dwm-lock-watch quickshell; do
 		test "$(cat "$state/$name.count")" -eq 1
@@ -982,6 +1012,7 @@ EOF
 }
 
 run_duplicate_case display-manager
+run_duplicate_case custom-prefix
 run_duplicate_case startx
 run_relative_config_home_case
 run_wallpaper_recovery_with_existing_feh_case

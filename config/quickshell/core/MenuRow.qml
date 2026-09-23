@@ -35,7 +35,7 @@ Rectangle {
         anchors.rightMargin: Theme.controlPaddingX
         anchors.verticalCenter: parent.verticalCenter
         text: root.detail.length > 0 ? root.detail : root.navigates ? ">" : ""
-        color: root.active ? Theme.menuSelectedText : Theme.menuMutedText
+        color: root.active ? Theme.menuSelectedText : rowMouse.containsMouse ? Theme.menuHoverText : Theme.menuMutedText
     }
 
     MouseArea {
