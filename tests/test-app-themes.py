@@ -141,21 +141,36 @@ assert not errors, errors
     # pointing to it. Fixture only replaces the read-only installation query.
     custom_data = stage / 'custom-data'
     custom_palette = custom_data / 'qt6ct/colors/Dwm-dracula.conf'
+    shutil.copytree(stage / 'usr/share/themes/Dwm-dracula', custom_data / 'themes/Dwm-dracula')
+    shutil.copytree(stage / 'usr/share/themes/Dwm-dracula', custom_data / 'themes/ReceiptOnly')
     custom_palette.parent.mkdir(parents=True)
     shutil.copy2(stage / 'usr/share/qt6ct/colors/Dwm-dracula.conf', custom_palette)
     updater = binary_dir / 'dwm-desktop-update'
-    updater.write_text('#!/bin/sh\n[ "$1" = data-directory ] || exit 1\nprintf "%s\\n" "$TEST_CUSTOM_DATA"\n')
+    updater.write_text('#!/bin/sh\n[ "$1" = data-directories ] || exit 1\nprintf "%s\\n" "$XDG_DATA_DIRS:$TEST_CUSTOM_DATA"\n')
     updater.chmod(0o755)
     theme_file.write_text((ROOT / 'config/themes.toml').read_text().replace('theme = "nord"', 'theme = "dracula"'))
     custom_env = dict(env, XDG_DATA_DIRS=str(stage / 'empty-data'), TEST_CUSTOM_DATA=str(custom_data))
     subprocess.run([str(ROOT / 'scripts/theme-apply.sh')], env=custom_env, check=True,
                    stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
     assert str(custom_palette) in (config / 'qt6ct/qt6ct.conf').read_text()
+    assert 'gtk-theme-name=Dwm-dracula' in (config / 'gtk-3.0/settings.ini').read_text()
+    # Actual GTK lookup in a newly launched child must see the custom root.
+    subprocess.run([str(ROOT / 'scripts/dwm-session-launch'), sys.executable, '-c', '''
+import gi, os
+gi.require_version('Gtk', '3.0')
+from gi.repository import Gtk
+Gtk.init([])
+assert os.environ['TEST_CUSTOM_DATA'] in os.environ['XDG_DATA_DIRS'].split(':')
+provider = Gtk.CssProvider.get_named('ReceiptOnly', None)
+assert 'dwm_bg' in provider.to_string(), 'Custom GTK theme was not found'
+'''], env=dict(custom_env, DISPLAY=os.environ['DISPLAY']), check=True)
+
 
     # Run the actual shared QML Theme singleton against every preset and a
     # dark-to-light switch, so the original terminal-color hover bug regresses.
     qml_config = stage / 'qml-config/quickshell'
     shutil.copytree(ROOT / 'config/quickshell/core', qml_config / 'core')
+    shutil.copytree(ROOT / 'config/quickshell/launcher', qml_config / 'launcher')
     mappings = {
         'background': 'term_bg', 'bar-background': 'normbgcolor', 'surface': 'normbgcolor',
         'surface-hover': 'term_color8', 'surface-active': 'selbgcolor',
@@ -173,6 +188,7 @@ assert not errors, errors
 import Quickshell
 import qs.core
 ShellRoot {
+ id: testRoot
  Timer { interval: 1; running: true; onTriggered: {
   const snapshots = SNAPSHOTS;
   for (const snapshot of snapshots) {
@@ -204,6 +220,24 @@ ShellRoot {
    }
    if (!snapshot.dark && Theme.luminance(Theme.surfaceHover) < 0.5)
     throw new Error(snapshot.name + " dark hover surface");
+   const component = Qt.createComponent("launcher/LauncherResultDelegate.qml");
+   if (component.status !== Component.Ready) throw new Error(component.errorString());
+   const row = component.createObject(testRoot, {
+    index: 0, selected: true,
+    modelData: {name: "Selected app", generic: "Secondary label", comment: "", primaryCategory: "test", icon: ""},
+    launcherModel: {categoryLabel: function() { return "Test"; }}
+   });
+   function checkLabels(item) {
+    if (typeof item.text === "string" && item.text.length > 0) {
+     const a = Theme.luminance(String(item.color));
+     const b = Theme.luminance(String(row.color));
+     if ((Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05) < 4.5)
+      throw new Error(snapshot.name + " unreadable selected label " + item.text);
+    }
+    for (const child of item.children || []) checkLabels(child);
+   }
+   checkLabels(row);
+   row.destroy();
    console.warn("CONTRAST PASS " + snapshot.name);
   }
   Qt.quit();

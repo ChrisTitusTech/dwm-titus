@@ -212,7 +212,7 @@ FloatingWindow {
 
                                         UiText {
                                             text: String(categoryButton.index + 1).padStart(2, "0")
-                                            color: categoryButton.selected ? Theme.menuActionText : Theme.menuMutedText
+                                            color: categoryButton.selected ? Theme.menuSelectedText : Theme.menuMutedText
                                             font.pixelSize: Theme.fontCaptionSize
                                             font.bold: true
                                         }

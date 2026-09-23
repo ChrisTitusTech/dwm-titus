@@ -9,6 +9,15 @@
 set -euo pipefail
 
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# Make installed custom data roots visible to GTK and toolkit subprocesses.
+if [[ $script_dir == */bin && -x $script_dir/dwm-desktop-update ]]; then
+	data_updater=$script_dir/dwm-desktop-update
+else
+	data_updater=$(command -v dwm-desktop-update || printf '%s' "$script_dir/dwm-desktop-update")
+fi
+if session_data_dirs=$("$data_updater" data-directories 2>/dev/null); then
+	export XDG_DATA_DIRS=$session_data_dirs
+fi
 XSETTINGS_HELPER=${DWM_APPEARANCE_XSETTINGS_HELPER:-$script_dir/dwm-xsettings}
 THEME_DISCOVERY_HOME=${DWM_APPEARANCE_DISCOVERY_HOME:-$HOME}
 [[ $THEME_DISCOVERY_HOME == /* ]] || {
@@ -1269,18 +1278,10 @@ fi
 # Qt palette files are immutable installed assets, so appearance transactions
 # only need to journal the existing qt5ct/qt6ct configuration files.
 qt_palette_path() {
-	local root updater installed_data
+	local root
 	local -a roots=()
 	IFS=: read -r -a roots <<<"${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
-	# The installed receipt retains custom PREFIX/DATADIR choices after the
-	# installer environment is gone. The updater validates it before reading.
-	if [[ $script_dir == */bin && -x $script_dir/dwm-desktop-update ]]; then
-		updater=$script_dir/dwm-desktop-update
-	else
-		updater=$(command -v dwm-desktop-update || printf '%s' "$script_dir/dwm-desktop-update")
-	fi
-	installed_data=$("$updater" data-directory 2>/dev/null) || installed_data=
-	for root in "${XDG_DATA_HOME:-$HOME/.local/share}" "${roots[@]}" "$installed_data"; do
+	for root in "${XDG_DATA_HOME:-$HOME/.local/share}" "${roots[@]}"; do
 		[[ $root == /* ]] || continue
 		if [[ -f $root/$QT_PLATFORM_THEME/colors/Dwm-$THEME_NAME.conf ]]; then
 			printf '%s\n' "$root/$QT_PLATFORM_THEME/colors/Dwm-$THEME_NAME.conf"

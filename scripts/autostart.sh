@@ -379,6 +379,12 @@ THEME_ENV="${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/theme-env.sh"
 # shellcheck disable=SC1090
 [ -f "$THEME_ENV" ] && . "$THEME_ENV"
 
+# Share custom installation data roots with GTK, the shell and D-Bus apps.
+if session_data_dirs=$(dwm-desktop-update data-directories 2>/dev/null); then
+	XDG_DATA_DIRS=$session_data_dirs
+	export XDG_DATA_DIRS
+fi
+
 # Native GTK applications in the plain Xorg session consume text scaling from
 # XSETTINGS. Reconcile the project-owned xsettingsd instance before launching
 # the shell, portals, or XDG autostart applications.
@@ -421,7 +427,7 @@ if command -v systemctl >/dev/null 2>&1; then
 	{
 		systemctl --user unset-environment WAYLAND_DISPLAY
 		systemctl --user import-environment \
-			DISPLAY XAUTHORITY XDG_CURRENT_DESKTOP DESKTOP_SESSION \
+			DISPLAY XAUTHORITY XDG_CURRENT_DESKTOP DESKTOP_SESSION XDG_DATA_DIRS \
 			XDG_SESSION_TYPE QT_QPA_PLATFORM QT_QPA_PLATFORMTHEME \
 			XCURSOR_THEME XCURSOR_SIZE
 	} &
@@ -431,7 +437,7 @@ if command -v dbus-update-activation-environment >/dev/null 2>&1; then
 	{
 		dbus-update-activation-environment WAYLAND_DISPLAY=
 		dbus-update-activation-environment --systemd \
-			DISPLAY XAUTHORITY XDG_CURRENT_DESKTOP DESKTOP_SESSION \
+			DISPLAY XAUTHORITY XDG_CURRENT_DESKTOP DESKTOP_SESSION XDG_DATA_DIRS \
 			XDG_SESSION_TYPE QT_QPA_PLATFORM QT_QPA_PLATFORMTHEME \
 			XCURSOR_THEME XCURSOR_SIZE
 	} 2>/dev/null &

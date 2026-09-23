@@ -74,7 +74,7 @@ Rectangle {
 
                     return category;
                 }
-                color: Theme.menuMutedText
+                color: root.selected ? Theme.menuSelectedText : Theme.menuMutedText
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.smallFontSize
                 elide: Text.ElideRight
