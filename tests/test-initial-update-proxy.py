@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Real DNF connectivity through an authenticated proxy in a disposable container."""
+"""Real DNF probes for proxy and file repositories in a disposable container."""
 import base64
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import os
@@ -69,8 +69,21 @@ with tempfile.TemporaryDirectory() as name:
                                  str(source), "probe"], timeout=55)
         assert result.returncode == 0
         assert "/repo/repodata/repomd.xml" in authenticated
+        # A normal file:// repository has no custom transport settings, but
+        # must still use DNF's native transport instead of HTTPS-only curl.
+        # Keep this fixture readable and traversable by the session user.
+        for entry in (packages, *packages.rglob("*")):
+            entry.chmod(0o755 if entry.is_dir() else 0o644)
+        (repos / "fixture.repo").write_text(
+            "[fixture]\nname=Local file fixture\n"
+            f"baseurl={packages.as_uri()}/\nenabled=1\npkg_gpgcheck=1\n")
+        result = subprocess.run(["runuser", "-u", "nobody", "--", "env",
+                                 "HOME=" + str(user_home), "TMPDIR=" + str(user_home),
+                                 str(source), "probe"], timeout=55)
+        assert result.returncode == 0, "Session-user file repository probe failed"
     finally:
         config.write_bytes(original)
         server.shutdown()
         server.server_close()
 print("PASS: native repository probe honors configured proxy credentials without copying them into argv")
+print("PASS: native repository probe accepts an ordinary file repository as the session user")

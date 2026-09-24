@@ -45,7 +45,11 @@ metadata refresh, so proxy and client-certificate settings are honored without
 copying credentials into command arguments. Administrator-only credentials may
 still require starting `dwm-initial-update` manually for authorization.
 
-A measured improvement of at least 10% can promote a mirror for this operation.
+Mirrors are ranked by TCP connection time plus the estimated payload time for
+a fixed 1 MiB transfer. Payload throughput excludes connection and server-wait
+time to avoid counting connection latency twice. This is a comparison heuristic,
+not a full TLS/server-response prediction. At least a 10% reduction in this
+estimate can promote a mirror for this operation.
 Temporary metalinks retain their verification data and every fallback mirror;
 temporary mirrorlists retain the original list. Nothing stores a builder's
 preferred server in a released image or permanently pins a user's repository.
@@ -146,3 +150,19 @@ contract in [SPEC.md Section 9.4](../SPEC.md#94-fedora-image-validation).
 See the [0.7.2 qualification record](INITIAL-UPDATE-QUALIFICATION.md) for measured
 results, fresh offline installation, failure/retry and reboot evidence, and
 remaining hardware-validation limits.
+
+Connectivity probes try up to three distinct fallback endpoints per repository
+within the existing 45-second overall deadline. One unavailable first mirror
+does not suppress an otherwise reachable repository.
+
+Uninstall removes an unchanged DNF defaults file only when the installer created
+it and recorded ownership. Preexisting files, administrator modifications, and
+symlink replacements are preserved. The ownership record lives under
+`/var/lib/dwm-titus/dnf-defaults/`.
+
+HTTP intranet mirrors, local file repositories, and custom transports use a
+bounded native DNF connectivity probe with their configured policy. They remain
+ineligible for the HTTPS-only mirror optimizer.
+
+Failed HTTPS probes or mirror discovery also fall back to native DNF within
+the shared deadline, including mixed lists with a reachable HTTP fallback.

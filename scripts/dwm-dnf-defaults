@@ -1,0 +1,88 @@
+#!/usr/bin/python3 -I
+"""Install and remove only the DNF defaults created by this installer."""
+
+import argparse
+import fcntl
+import hashlib
+import os
+from pathlib import Path
+
+
+def checked_path(root, relative):
+    """Reject symlinks before writing or removing managed configuration state."""
+    path = root / relative
+    for parent in (*reversed(path.parents), path):
+        if parent.is_symlink():
+            raise RuntimeError(f"Refusing symlink in managed DNF path: {parent}")
+    return path
+
+
+def manage(action, destdir, source):
+    """Create absent defaults or remove only an unchanged recorded installation."""
+    root = Path(destdir or "/").absolute()
+    target = root / "usr/share/dnf5/libdnf.conf.d/40-dwm-titus.conf"
+    # An existing file (including a symlink) belongs to its administrator until
+    # a prior installation record proves otherwise. Never adopt it on install.
+    if action == "install" and os.path.lexists(target):
+        print(f"Preserving existing {target}")
+        return
+    state = checked_path(root, "var/lib/dwm-titus/dnf-defaults")
+    record = checked_path(root, "var/lib/dwm-titus/dnf-defaults/sha256")
+    if action == "uninstall" and not record.exists():
+        return
+    state.mkdir(parents=True, exist_ok=True, mode=0o755)
+    lock = os.open(state, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        if action == "install":
+            if os.path.lexists(target):
+                return
+            checked_path(root, "usr/share/dnf5/libdnf.conf.d/40-dwm-titus.conf")
+            target.parent.mkdir(parents=True, exist_ok=True)
+            payload = Path(source).read_bytes()
+            # Exclusive creation closes the race with another installer.
+            with target.open("xb") as output:
+                output.write(payload)
+                os.fchmod(output.fileno(), 0o644)
+            try:
+                with record.open("w") as output:
+                    output.write(hashlib.sha256(payload).hexdigest() + "\n")
+                    os.fchmod(output.fileno(), 0o644)
+            except OSError:
+                target.unlink()
+                raise
+            print(f"Installed managed DNF5 defaults: {target}")
+            return
+        if not record.exists():
+            return
+        metadata = record.stat()
+        if metadata.st_uid != os.geteuid() or metadata.st_mode & 0o022:
+            raise RuntimeError(f"Untrusted DNF ownership record: {record}")
+        if target.is_symlink():
+            print(f"Preserving administrator replacement: {target}")
+        elif target.is_file():
+            checked_path(root, "usr/share/dnf5/libdnf.conf.d/40-dwm-titus.conf")
+            digest = hashlib.sha256(target.read_bytes()).hexdigest()
+            if digest == record.read_text().strip():
+                target.unlink()
+                print(f"Removed managed DNF5 defaults: {target}")
+            else:
+                print(f"Preserving modified DNF5 defaults: {target}")
+        # Release ownership even if an administrator replaced the original.
+        record.unlink()
+    finally:
+        os.close(lock)
+
+
+def main():
+    """Parse the install/uninstall lifecycle and optional staging root."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("action", choices=("install", "uninstall"))
+    parser.add_argument("--destdir", default="")
+    parser.add_argument("--source", default="config/dnf/40-dwm-titus.conf")
+    args = parser.parse_args()
+    manage(args.action, args.destdir, args.source)
+
+
+if __name__ == "__main__":
+    main()

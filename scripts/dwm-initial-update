@@ -14,10 +14,12 @@ HELPER = Path(__file__).resolve().parents[1] / "libexec/dwm-titus/dwm-initial-up
 
 
 def pending():
+    """Return whether the image still needs its initial package update."""
     return PENDING.is_file() and not COMPLETE.exists()
 
 
 def trusted(path):
+    """Require the helper and its ancestors to be root-owned and non-writable."""
     for item in (path, *path.parents):
         info = item.lstat()
         if (info.st_uid != 0 or info.st_mode & 0o022 or
@@ -26,6 +28,7 @@ def trusted(path):
 
 
 def terminal():
+    """Request polkit authorization and keep transaction results visible."""
     if not pending():
         print("No initial image update is pending. Use Settings > System for package updates.")
         return 0
@@ -43,11 +46,13 @@ def terminal():
 
 
 def open_terminal():
+    """Launch the installed updater in the configured desktop terminal."""
     return subprocess.Popen([str(Path(__file__).resolve().parent / "dwm-terminal"),
                              "-e", str(Path(__file__).resolve())], start_new_session=True)
 
 
 def watch():
+    """Offer once per login after a bounded repository probe succeeds."""
     if not pending():
         return 0
     import gi
@@ -75,6 +80,7 @@ def watch():
     busy = False
 
     def finished(ready):
+        """Handle probe completion on the GTK thread without overlapping offers."""
         nonlocal busy
         # Gtk.Dialog.run starts a nested loop. Keep probes suppressed while an
         # offer is visible, including during another NetworkManager signal.
@@ -100,6 +106,7 @@ def watch():
         return False
 
     def check(*_args):
+        """Start a non-overlapping probe or stop after another session completes."""
         nonlocal busy
         if not pending():
             loop.quit()
@@ -108,6 +115,7 @@ def watch():
             busy = True
 
             def worker():
+                """Probe off the GTK thread and deliver only its readiness result."""
                 try:
                     result = subprocess.run([str(HELPER), "probe"], timeout=55,
                                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -133,6 +141,7 @@ def watch():
 
 
 def main():
+    """Dispatch the session watcher or an interactive update terminal."""
     if sys.argv[1:] == ["--watch"]:
         return watch()
     if sys.argv[1:]:

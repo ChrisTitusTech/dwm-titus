@@ -352,6 +352,7 @@ uninstall:
 	/usr/bin/python3 -I scripts/dwm-desktop-update guard-system-install --destdir "${DESTDIR}" -- $(MAKE) uninstall-files
 
 uninstall-files:
+	/usr/bin/python3 -I scripts/dwm-dnf-defaults uninstall --destdir "${DESTDIR}"
 	rm -rf "${DESTDIR}${DATADIR}/themes/"Dwm-*
 	rm -f "${DESTDIR}${DATADIR}/qt5ct/colors/"Dwm-*.conf "${DESTDIR}${DATADIR}/qt6ct/colors/"Dwm-*.conf
 	rm -f "${DESTDIR}${PREFIX}/bin/dwm" \
@@ -705,6 +706,7 @@ check-app-themes:
 	$(call run_managed_test,xvfb-run -a python3 tests/test-app-themes.py)
 
 check-initial-update:
+	$(call run_managed_test,python3 tests/test-dnf-defaults.py)
 	$(call run_managed_test,python3 tests/test-initial-update.py)
 	$(call run_managed_test,dbus-run-session -- xvfb-run -a /usr/bin/python3 tests/test-initial-update-ui.py)
 

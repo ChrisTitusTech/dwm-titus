@@ -120,3 +120,32 @@ and power loss during an RPM transaction. A failed repository and retry were
 exercised in the VM; signed cancellation/contention and proxy transport were
 exercised in disposable Fedora containers. No host installation, merge, tag or
 release publication was performed.
+
+## Hosted feedback follow-up
+
+The hosted reviews identified fallback-probe suppression, DNF defaults remaining
+after uninstall, and mirror ranking that did not use the recorded latency.
+The fixes try three distinct probe endpoints within the shared deadline, track
+ownership of installed DNF defaults, and compare a fixed 1 MiB transfer estimate
+using TCP connection time and measured payload throughput. Payload timing excludes
+connection setup; a 10% estimated-time reduction is required to reorder mirrors.
+The original VM measurement table above predates this ranking refinement.
+
+The expanded tests cover unavailable first mirrors, deadline exhaustion,
+high-latency candidates, the noise band, payload timing, and seven lifecycle
+cases including staged `make uninstall` and administrator replacements. A fresh
+live measurement run completed against six Fedora/RPM Fusion repositories.
+The user-requested independent skeptic reviewed the complete PR and follow-up
+changes with no actionable defects. Earlier signed transaction and standard VM
+failure/retry/reboot evidence is reused for unchanged transaction and session
+behavior; image artifacts must still be rebuilt from the final merged revision.
+
+The final Codex pass also found non-HTTPS ordinary repositories were excluded
+from connectivity probing. HTTP/file sources now use the same bounded native
+DNF path as custom transports. All 26 updater unit cases and the GTK test passed;
+a clean Fedora 44 container proved both authenticated proxy access and an
+ordinary file repository as the unprivileged `nobody` user.
+
+The skeptic also verified mixed HTTPS/HTTP mirror lists: failed HTTPS checks
+and discovery now fall back to native DNF within the same deadline, allowing
+DNF to use reachable endpoints excluded from mirror measurement.

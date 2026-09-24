@@ -3,6 +3,7 @@
 import fcntl
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import platform
@@ -28,10 +29,12 @@ BUDGET = 90
 
 
 def say(message):
+    """Print progress immediately in the authorized update terminal."""
     print(message, flush=True)
 
 
 def trusted(path):
+    """Reject symlinks and paths writable by anyone other than root."""
     path = Path(path)
     info = path.lstat()
     if (info.st_uid != 0 or info.st_mode & 0o022 or
@@ -42,6 +45,7 @@ def trusted(path):
 
 
 def option(config, name, default=""):
+    """Read a libdnf5 option while accepting an unset optional value."""
     import libdnf5
     try:
         return getattr(config, "get_" + name + "_option")().get_value()
@@ -50,6 +54,7 @@ def option(config, name, default=""):
 
 
 def repositories():
+    """Read enabled repositories with effective DNF variables and transport policy."""
     import libdnf5
     base = libdnf5.base.Base()
     base.load_config()
@@ -76,6 +81,7 @@ def repositories():
 
 
 def https(url):
+    """Allow only credential-free HTTPS URLs for mirror measurement."""
     parsed = urllib.parse.urlsplit(url)
     return (parsed.scheme == "https" and bool(parsed.hostname) and
             not parsed.username and not parsed.password and
@@ -83,6 +89,7 @@ def https(url):
 
 
 def fetch(url, directory, deadline, sample=False):
+    """Download bounded HTTPS data and curl metrics within the shared deadline."""
     if not https(url):
         raise ValueError("Measurement requires a credential-free HTTPS endpoint")
     remaining = min(5, deadline - time.monotonic())
@@ -108,10 +115,12 @@ def fetch(url, directory, deadline, sample=False):
 
 
 def local_name(element):
+    """Read an XML element name independently of its namespace."""
     return element.tag.rsplit("}", 1)[-1]
 
 
 def mirror_document(repo, directory, deadline):
+    """Fetch trusted mirror candidates and preserve metalink verification data."""
     kind = "metalink" if repo["metalink"] else "mirrorlist"
     if not repo[kind] or repo["custom"]:
         return None
@@ -138,6 +147,7 @@ def mirror_document(repo, directory, deadline):
 
 
 def measure_mirror(url, hashes, directory, deadline):
+    """Validate metadata and sample payload throughput and TCP connection time."""
     metadata, _ = fetch(url, directory, deadline)
     for algorithm in ("sha256", "sha512"):
         if hashes.get(algorithm) and hashlib.new(algorithm, metadata).hexdigest() != hashes[algorithm]:
@@ -152,11 +162,24 @@ def measure_mirror(url, hashes, directory, deadline):
     _, metrics = fetch(base + location, directory, deadline, sample=True)
     if metrics["size_download"] < 32768:
         raise ValueError("Too little data for a useful throughput sample")
+    receive_seconds = metrics["time_total"] - metrics["time_starttransfer"]
+    if not math.isfinite(receive_seconds) or receive_seconds <= 0:
+        raise ValueError("Invalid transfer duration")
+    transfer_rate = metrics["size_download"] / receive_seconds
+    if not math.isfinite(transfer_rate) or transfer_rate <= 0:
+        raise ValueError("Invalid transfer rate")
     return {"url": url, "bytes_per_second": metrics["speed_download"],
+            "transfer_bytes_per_second": transfer_rate,
             "connect_seconds": metrics["time_connect"], "bytes": metrics["size_download"]}
 
 
+def mirror_cost(value):
+    """Estimate a fixed 1 MiB fetch using TCP connection plus payload time."""
+    return value["connect_seconds"] + LIMIT / value["transfer_bytes_per_second"]
+
+
 def optimize(repos, directory, budget=BUDGET):
+    """Prefer a materially faster estimated fetch while retaining every fallback."""
     deadline = time.monotonic() + budget
     arguments, reports = [], []
     for repo in repos:
@@ -180,9 +203,11 @@ def optimize(repos, directory, budget=BUDGET):
                 say("  No reliable measurements; keeping repository defaults.")
                 continue
             baseline = measurements[0]
-            best = max(measurements, key=lambda value: value["bytes_per_second"])
+            best = min(measurements, key=mirror_cost)
             report = {"repository": repo["id"], "baseline_bytes_per_second": baseline["bytes_per_second"],
                       "selected_bytes_per_second": best["bytes_per_second"],
+                      "baseline_estimated_seconds": mirror_cost(baseline),
+                      "selected_estimated_seconds": mirror_cost(best),
                       "samples": [{key: value for key, value in item.items() if key != "url"}
                                   for item in measurements]}
             reports.append(report)
@@ -190,8 +215,8 @@ def optimize(repos, directory, budget=BUDGET):
                 baseline["bytes_per_second"] / 1024, best["bytes_per_second"] / 1024,
                 best["connect_seconds"]))
             # Avoid reshuffling for noise. Keep all original mirrors as fallback.
-            if best["bytes_per_second"] < baseline["bytes_per_second"] * 1.10:
-                say("  No measured improvement above 10%; keeping defaults.")
+            if mirror_cost(best) > mirror_cost(baseline) * 0.90:
+                say("  No estimated fetch-time reduction of 10%; keeping defaults.")
                 continue
             target = directory / ("mirrors-" + str(len(arguments)))
             if kind == "metalink":
@@ -227,32 +252,44 @@ def native_probe(repo, directory, deadline):
 
 
 def probe():
-    """A real repomd response, not merely NetworkManager's link status."""
+    """Prove repository access with bounded HTTPS checks and native fallback."""
     deadline = time.monotonic() + 45
     with tempfile.TemporaryDirectory(prefix="dwm-repo-probe-") as name:
         directory = Path(name)
         for repo in repositories():
+            if time.monotonic() >= deadline:
+                return 1
+            source = repo.get("metalink") or repo.get("mirrorlist")
+            endpoints = [source] if source else repo.get("baseurl", [])
+            if not repo["custom"] and all(https(url) for url in endpoints):
+                try:
+                    document = mirror_document(repo, directory, deadline)
+                    urls = document[2] if document else [url.rstrip("/") + "/repodata/repomd.xml"
+                                                        for url in repo["baseurl"]]
+                    for url in list(dict.fromkeys(urls))[:3]:
+                        if time.monotonic() >= deadline:
+                            return 1
+                        try:
+                            data, _ = fetch(url, directory, deadline)
+                            if local_name(ET.fromstring(data)) == "repomd":
+                                return 0
+                        except (ValueError, OSError, subprocess.SubprocessError, ET.ParseError):
+                            continue
+                except (ValueError, OSError, subprocess.SubprocessError, ET.ParseError):
+                    pass
+            # DNF can use transports filtered out by measurement, including an
+            # HTTP fallback in a mixed list, or its custom TLS/proxy policy.
+            # Discovery or curl failure must not silently discard these paths.
             try:
-                # Optimization eligibility and repository access are separate.
-                # curl intentionally skips custom transports; DNF must still
-                # be allowed to prove access using its configured credentials.
-                if repo["custom"]:
-                    if native_probe(repo, directory, deadline):
-                        return 0
-                    continue
-                document = mirror_document(repo, directory, deadline)
-                urls = document[2] if document else [url.rstrip("/") + "/repodata/repomd.xml"
-                                                    for url in repo["baseurl"]]
-                for url in urls[:1]:
-                    data, _ = fetch(url, directory, deadline)
-                    if local_name(ET.fromstring(data)) == "repomd":
-                        return 0
-            except (ValueError, OSError, subprocess.SubprocessError, ET.ParseError):
+                if native_probe(repo, directory, deadline):
+                    return 0
+            except (ValueError, OSError, subprocess.SubprocessError):
                 continue
     return 1
 
 
 def update(repos, directory, state=STATE, run=subprocess.run):
+    """Validate repositories and record completion only after a successful upgrade."""
     if not repos:
         raise RuntimeError("No enabled repositories; the initial update remains pending.")
     arguments, reports = optimize(repos, directory)
@@ -289,6 +326,7 @@ def update(repos, directory, state=STATE, run=subprocess.run):
 
 
 def main():
+    """Dispatch unprivileged probes or the installed interactive root transaction."""
     if len(sys.argv) != 2 or sys.argv[1] not in ("run", "probe", "measure"):
         raise RuntimeError("usage: dwm-initial-update-root run|probe|measure")
     if sys.argv[1] == "probe":

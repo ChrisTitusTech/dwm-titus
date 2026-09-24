@@ -62,7 +62,7 @@ PY
 [[ -z $(find /usr/share/dwm-titus-image \( -name '.env' -o -name '.env.*' -o -name '.envrc' \) -print -quit) ]]
 missing=0
 # maim uses libslop for region selection; RPM resolves its shared dependencies.
-for command in dwm quickshell alacritty fastfetch starship herdr brave-origin celluloid mpv sxiv maim xclip xdotool xrandr xset xinput \
+for command in dwm quickshell fastfetch starship herdr brave-origin celluloid mpv sxiv maim xclip xdotool xrandr xset xinput \
 	setxkbmap xkbset notify-send xdg-open xdg-mime xdg-user-dir \
 	picom feh dex-autostart xsettingsd light-locker light-locker-command \
 	nmcli bluetoothctl wpctl pactl playerctl brightnessctl amixer protonrestart \
