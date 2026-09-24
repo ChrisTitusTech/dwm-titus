@@ -10,6 +10,12 @@ eyebrow: Start here
 > **dwm-titus is Fedora-only.** Fedora Linux with Xorg is required for every
 > supported installation, package, test, and release path.
 
+## Dependencies
+
+See [Desktop Dependencies](/dependencies.html) for a component-by-component
+breakdown of the window manager, shell, services, applications, build tools,
+and the differences between installation profiles and image variants.
+
 ## Fedora ISO (Recommended for a New Installation)
 
 The current offline images install a complete Fedora 44 x86_64

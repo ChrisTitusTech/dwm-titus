@@ -108,6 +108,12 @@ remain disabled; invoking one makes `dwm-screenshot` exit with
 `dwm-screenshot: maim is not installed`. `xclip` and `xdotool` remain required
 runtime dependencies for the X11 desktop and its other managed helpers.
 
+## Dependencies
+
+See [Desktop Dependencies](https://dwm.christitus.com/dependencies.html) for the
+packages behind each desktop component, installation-profile differences, and
+build, gaming, and image-specific dependencies.
+
 ## First Login
 
 **Super** is the Windows key on most keyboards.
