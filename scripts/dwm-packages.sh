@@ -31,7 +31,7 @@ dwm_packages() {
 		;;
 	fedora:image-desktop)
 		# Dedicated image defaults; existing-system installs retain user choices.
-		printf '%s\n' brave-origin
+		printf '%s\n' brave-origin fastfetch python3-libdnf5
 		;;
 	fedora:media)
 		printf '%s\n' celluloid mpv sxiv python3 desktop-file-utils

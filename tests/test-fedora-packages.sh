@@ -29,6 +29,8 @@ mapfile -t packages < <(
 		dwm_packages fedora required
 		dwm_packages fedora image-factory
 		dwm_packages fedora image-boot
+		# Official image additions; brave-origin is resolved by factory repos.
+		dwm_packages fedora image-desktop | awk '$0 != "brave-origin"'
 		dwm_packages fedora desktop
 		dwm_packages fedora system-management
 		dwm_packages fedora system-management-optional

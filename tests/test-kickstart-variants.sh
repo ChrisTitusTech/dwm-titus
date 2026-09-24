@@ -31,6 +31,8 @@ required_repos=(
 )
 
 required_packages=(
+	fastfetch
+	python3-libdnf5
 	flatpak
 	maim
 	steam

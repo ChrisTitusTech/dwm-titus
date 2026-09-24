@@ -1,0 +1,331 @@
+#!/usr/bin/python3 -I
+"""Fresh-image DNF update and bounded, transaction-local mirror selection."""
+import fcntl
+import hashlib
+import json
+import os
+from pathlib import Path
+import platform
+import re
+import stat
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.parse
+import xml.etree.ElementTree as ET
+
+# librepo's metalink parser requires the original default namespace, rather
+# than ElementTree's generated ns0 element prefix.
+ET.register_namespace("", "http://www.metalinker.org/")
+
+PREFIX = Path("@PREFIX@")
+STATE = Path("/var/lib/dwm-titus/initial-update")
+PENDING = STATE / "pending.json"
+DNF = "/usr/bin/dnf5"
+LIMIT = 1024 * 1024
+BUDGET = 90
+
+
+def say(message):
+    print(message, flush=True)
+
+
+def trusted(path):
+    path = Path(path)
+    info = path.lstat()
+    if (info.st_uid != 0 or info.st_mode & 0o022 or
+            not (stat.S_ISREG(info.st_mode) or stat.S_ISDIR(info.st_mode))):
+        raise RuntimeError("Untrusted installed path: " + str(path))
+    if path != Path("/"):
+        trusted(path.parent)
+
+
+def option(config, name, default=""):
+    import libdnf5
+    try:
+        return getattr(config, "get_" + name + "_option")().get_value()
+    except libdnf5.exception.OptionValueNotSetError:
+        return default
+
+
+def repositories():
+    import libdnf5
+    base = libdnf5.base.Base()
+    base.load_config()
+    base.setup()
+    base.get_repo_sack().create_repos_from_system_configuration()
+    query = libdnf5.repo.RepoQuery(base)
+    query.filter_enabled(True)
+    result = []
+    for repo in query:
+        config = repo.get_config()
+        name = repo.get_id()
+        if not re.fullmatch(r"[A-Za-z0-9_.:+-]+", name):
+            raise RuntimeError("Unsupported repository ID")
+        # Credentials and custom TLS/proxy policy belong to DNF. Do not copy
+        # them into curl arguments, logs, or a partially equivalent downloader.
+        custom = any(option(config, key) for key in (
+            "proxy", "username", "password", "sslclientcert", "sslclientkey", "sslcacert"))
+        result.append({"id": name, "custom": custom,
+                       "metalink": base.get_vars().substitute(option(config, "metalink")),
+                       "mirrorlist": base.get_vars().substitute(option(config, "mirrorlist")),
+                       "baseurl": [base.get_vars().substitute(url)
+                                   for url in option(config, "baseurl", [])]})
+    return sorted(result, key=lambda item: item["id"])
+
+
+def https(url):
+    parsed = urllib.parse.urlsplit(url)
+    return (parsed.scheme == "https" and bool(parsed.hostname) and
+            not parsed.username and not parsed.password and
+            not any(char.isspace() for char in url))
+
+
+def fetch(url, directory, deadline, sample=False):
+    if not https(url):
+        raise ValueError("Measurement requires a credential-free HTTPS endpoint")
+    remaining = min(5, deadline - time.monotonic())
+    if remaining <= 0:
+        raise TimeoutError("Mirror measurement budget exhausted")
+    target = directory / "download"
+    command = ["/usr/bin/curl", "--disable", "--silent", "--fail", "--location",
+               "--proto", "=https", "--proto-redir", "=https", "--connect-timeout", "2",
+               "--max-time", str(remaining), "--max-filesize", str(LIMIT),
+               "--output", str(target), "--write-out", "%{json}"]
+    if sample:
+        command += ["--range", "0-" + str(LIMIT - 1)]
+    # Repository query strings can contain credentials. Keep URLs out of argv
+    # (and CalledProcessError), using curl's quoted stdin configuration instead.
+    curl_input = 'url = "' + url.replace("\\", "\\\\").replace('"', '\\"') + '"\n'
+    result = subprocess.run(command + ["--config", "-"], input=curl_input.encode(),
+                            capture_output=True, timeout=remaining + 1, check=True)
+    metrics = json.loads(result.stdout)
+    data = target.read_bytes()
+    if not data:
+        raise ValueError("Empty repository response")
+    return data, metrics
+
+
+def local_name(element):
+    return element.tag.rsplit("}", 1)[-1]
+
+
+def mirror_document(repo, directory, deadline):
+    kind = "metalink" if repo["metalink"] else "mirrorlist"
+    if not repo[kind] or repo["custom"]:
+        return None
+    data, _ = fetch(repo[kind], directory, deadline)
+    if kind == "metalink":
+        tree = ET.fromstring(data)
+        files = [item for item in tree.iter() if local_name(item) == "file"
+                 and item.get("name") == "repomd.xml"]
+        if len(files) != 1:
+            raise ValueError("Missing repomd.xml metalink")
+        nodes = [item for item in files[0].iter() if local_name(item) == "url"]
+        urls = [item.text.strip() for item in nodes if item.text and
+                https(item.text.strip()) and item.text.strip().endswith("/repodata/repomd.xml")]
+        hashes = {item.get("type"): (item.text or "").strip()
+                  for item in files[0] if local_name(item) == "verification"
+                  for item in item if local_name(item) == "hash"}
+        if not (hashes.get("sha256") or hashes.get("sha512")):
+            raise ValueError("Metalink lacks a strong metadata checksum")
+        return kind, tree, urls, hashes
+    urls = [line.strip().rstrip("/") + "/repodata/repomd.xml"
+            for line in data.decode().splitlines()
+            if line.strip() and not line.lstrip().startswith("#") and https(line.strip())]
+    return kind, data.decode(), urls, {}
+
+
+def measure_mirror(url, hashes, directory, deadline):
+    metadata, _ = fetch(url, directory, deadline)
+    for algorithm in ("sha256", "sha512"):
+        if hashes.get(algorithm) and hashlib.new(algorithm, metadata).hexdigest() != hashes[algorithm]:
+            raise ValueError("Mirror metadata checksum mismatch")
+    tree = ET.fromstring(metadata)
+    primary = next(item for item in tree if local_name(item) == "data" and item.get("type") == "primary")
+    location = next(item.get("href", "") for item in primary if local_name(item) == "location")
+    # Never follow metadata to a different origin, credentials, or arbitrary URL.
+    if not location.startswith("repodata/") or ".." in location.split("/"):
+        raise ValueError("Unexpected primary metadata location")
+    base = url[:-len("repodata/repomd.xml")]
+    _, metrics = fetch(base + location, directory, deadline, sample=True)
+    if metrics["size_download"] < 32768:
+        raise ValueError("Too little data for a useful throughput sample")
+    return {"url": url, "bytes_per_second": metrics["speed_download"],
+            "connect_seconds": metrics["time_connect"], "bytes": metrics["size_download"]}
+
+
+def optimize(repos, directory, budget=BUDGET):
+    deadline = time.monotonic() + budget
+    arguments, reports = [], []
+    for repo in repos:
+        if time.monotonic() >= deadline:
+            say("Mirror measurement time limit reached; remaining repositories keep defaults.")
+            break
+        say("Checking mirrors for " + repo["id"] + "...")
+        try:
+            document = mirror_document(repo, directory, deadline)
+            if document is None:
+                say("  Keeping repository defaults (fixed endpoint or custom transport).")
+                continue
+            kind, original, urls, hashes = document
+            measurements = []
+            for url in list(dict.fromkeys(urls))[:3]:
+                try:
+                    measurements.append(measure_mirror(url, hashes, directory, deadline))
+                except (ValueError, OSError, subprocess.SubprocessError, ET.ParseError, StopIteration):
+                    continue
+            if not measurements:
+                say("  No reliable measurements; keeping repository defaults.")
+                continue
+            baseline = measurements[0]
+            best = max(measurements, key=lambda value: value["bytes_per_second"])
+            report = {"repository": repo["id"], "baseline_bytes_per_second": baseline["bytes_per_second"],
+                      "selected_bytes_per_second": best["bytes_per_second"],
+                      "samples": [{key: value for key, value in item.items() if key != "url"}
+                                  for item in measurements]}
+            reports.append(report)
+            say("  Baseline %.0f KiB/s; best %.0f KiB/s; connection %.3f s." % (
+                baseline["bytes_per_second"] / 1024, best["bytes_per_second"] / 1024,
+                best["connect_seconds"]))
+            # Avoid reshuffling for noise. Keep all original mirrors as fallback.
+            if best["bytes_per_second"] < baseline["bytes_per_second"] * 1.10:
+                say("  No measured improvement above 10%; keeping defaults.")
+                continue
+            target = directory / ("mirrors-" + str(len(arguments)))
+            if kind == "metalink":
+                for element in original.iter():
+                    if local_name(element) == "url":
+                        previous = min(99, max(1, int(element.get("preference", "1"))))
+                        element.set("preference", "100" if (element.text or "").strip() == best["url"] else str(previous))
+                ET.ElementTree(original).write(target, encoding="utf-8", xml_declaration=True)
+            else:
+                selected = best["url"][:-len("/repodata/repomd.xml")]
+                target.write_text(selected + "\n" + original)
+            arguments += ["--setopt=" + repo["id"] + "." + kind + "=" + target.as_uri(),
+                          "--setopt=" + repo["id"] + ".fastestmirror=False"]
+        except (ValueError, OSError, subprocess.SubprocessError, ET.ParseError):
+            say("  Mirror discovery failed; keeping repository defaults.")
+    return arguments, reports
+
+
+def native_probe(repo, directory, deadline):
+    """Let DNF apply proxy/authentication/TLS policy without copying secrets."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return False
+    result = subprocess.run(
+        [DNF, "--quiet", "--assumeno", "--repo=" + repo["id"],
+         "--setopt=cachedir=" + str(directory / "cache"),
+         "--setopt=logdir=" + str(directory / "logs"),
+         "--setopt=skip_if_unavailable=False", "--setopt=*.skip_if_unavailable=False",
+         "--setopt=timeout=5", "--setopt=retries=1", "--setopt=exit_on_lock=True",
+         "--refresh", "makecache"], stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=remaining)
+    return result.returncode == 0
+
+
+def probe():
+    """A real repomd response, not merely NetworkManager's link status."""
+    deadline = time.monotonic() + 45
+    with tempfile.TemporaryDirectory(prefix="dwm-repo-probe-") as name:
+        directory = Path(name)
+        for repo in repositories():
+            try:
+                # Optimization eligibility and repository access are separate.
+                # curl intentionally skips custom transports; DNF must still
+                # be allowed to prove access using its configured credentials.
+                if repo["custom"]:
+                    if native_probe(repo, directory, deadline):
+                        return 0
+                    continue
+                document = mirror_document(repo, directory, deadline)
+                urls = document[2] if document else [url.rstrip("/") + "/repodata/repomd.xml"
+                                                    for url in repo["baseurl"]]
+                for url in urls[:1]:
+                    data, _ = fetch(url, directory, deadline)
+                    if local_name(ET.fromstring(data)) == "repomd":
+                        return 0
+            except (ValueError, OSError, subprocess.SubprocessError, ET.ParseError):
+                continue
+    return 1
+
+
+def update(repos, directory, state=STATE, run=subprocess.run):
+    if not repos:
+        raise RuntimeError("No enabled repositories; the initial update remains pending.")
+    arguments, reports = optimize(repos, directory)
+    (state / "measurements.json").write_text(json.dumps(reports, indent=2) + "\n")
+    common = [DNF, "--setopt=skip_if_unavailable=False", "--setopt=*.skip_if_unavailable=False",
+              "--setopt=timeout=10", "--setopt=retries=2", "--setopt=exit_on_lock=True"]
+    say("Validating all enabled repositories before upgrading...")
+    for attempt in range(2):
+        try:
+            result = run(common + arguments + ["--refresh", "makecache"], timeout=180)
+            valid = result.returncode == 0
+        except subprocess.TimeoutExpired:
+            valid = False
+        if valid:
+            break
+        if arguments and attempt == 0:
+            say("Selected mirrors failed validation; retrying with repository defaults.")
+            arguments = []
+        else:
+            raise RuntimeError("Repository validation failed, timed out, or is locked; retry later.")
+    say("Starting the initial package upgrade. Review DNF's transaction and confirm to continue.")
+    result = run(common + arguments + ["--setopt=assumeyes=False", "--setopt=assumeno=False",
+                                     "upgrade"])
+    if result.returncode:
+        raise RuntimeError("Upgrade did not complete. No success was recorded; retry dwm-initial-update.")
+    # Atomic completion, shared across all users and subsequent logins.
+    temporary = state / "complete.tmp"
+    with temporary.open("w") as stream:
+        stream.write(json.dumps({"completed_at": int(time.time())}) + "\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+    temporary.replace(state / "complete.json")
+    say("Initial update completed. Restart when convenient to activate kernel/system updates. No automatic reboot.")
+
+
+def main():
+    if len(sys.argv) != 2 or sys.argv[1] not in ("run", "probe", "measure"):
+        raise RuntimeError("usage: dwm-initial-update-root run|probe|measure")
+    if sys.argv[1] == "probe":
+        return probe()
+    if sys.argv[1] == "measure":
+        with tempfile.TemporaryDirectory(prefix="dwm-mirrors-") as name:
+            _, report = optimize(repositories(), Path(name))
+            say(json.dumps(report, indent=2))
+        return 0
+    if os.geteuid() != 0 or not sys.stdin.isatty():
+        raise RuntimeError("Run through dwm-initial-update in an interactive terminal.")
+    installed = PREFIX / "libexec/dwm-titus/dwm-initial-update-root"
+    if Path(__file__).resolve() != installed:
+        raise RuntimeError("Only the installed root-owned helper may be elevated.")
+    trusted(installed)
+    if platform.freedesktop_os_release().get("ID") != "fedora":
+        raise RuntimeError("The initial update supports Fedora only.")
+    trusted(PENDING)
+    if not STATE.exists():
+        STATE.mkdir(parents=True, mode=0o755)
+    trusted(STATE)
+    with (STATE / "lock").open("w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if (STATE / "complete.json").exists():
+            say("The initial update has already completed. Use Settings for further updates.")
+            return 0
+        os.environ.clear()
+        os.environ.update(PATH="/usr/sbin:/usr/bin:/sbin:/bin", HOME="/root", LANG="C.UTF-8")
+        os.chdir("/")
+        with tempfile.TemporaryDirectory(prefix="dwm-initial-update-", dir="/run") as name:
+            update(repositories(), Path(name))
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except (RuntimeError, OSError, ValueError) as error:
+        say(str(error))
+        sys.exit(1)

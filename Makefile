@@ -34,6 +34,7 @@ INSTALL_COMMANDS = \
 	scripts/dwm-diagnostics \
 	scripts/dwm-display-profile \
 	scripts/dwm-display-setup \
+	scripts/dwm-initial-update \
 	scripts/dwm-keybinds \
 	scripts/dwm-lock \
 	scripts/dwm-lock-watch \
@@ -84,7 +85,7 @@ INSTALL_COMMANDS = \
 	scripts/xdg-enable-autostart.sh \
 	scripts/xscreensaver-setup.sh
 INSTALL_COMMAND_NAMES = $(notdir ${INSTALL_COMMANDS})
-PRIVILEGED_HELPERS = scripts/dwm-settings-display-root scripts/dwm-desktop-update-root
+PRIVILEGED_HELPERS = scripts/dwm-settings-display-root scripts/dwm-desktop-update-root scripts/dwm-initial-update-root
 PRIVILEGED_HELPER_DIR = ${PREFIX}/libexec/dwm-titus
 
 RELEASE_NAME = dwm-titus-${VERSION}
@@ -365,6 +366,7 @@ uninstall-files:
 	done
 	rm -f "${DESTDIR}${PRIVILEGED_HELPER_DIR}/dwm-settings-display-root"
 	rm -f "${DESTDIR}${PRIVILEGED_HELPER_DIR}/dwm-desktop-update-root"
+	rm -f "${DESTDIR}${PRIVILEGED_HELPER_DIR}/dwm-initial-update-root"
 	rm -f "${DESTDIR}${PREFIX}/share/dwm-titus/desktop-install.json"
 
 release: dwm
@@ -617,6 +619,7 @@ check-install-manifest: all
 			usr/bin/dwm \
 			usr/libexec/dwm-titus/dwm-settings-display-root \
 			usr/libexec/dwm-titus/dwm-desktop-update-root \
+			usr/libexec/dwm-titus/dwm-initial-update-root \
 			usr/share/dwm-titus/desktop-install.json \
 			usr/share/man/man1/dwm.1 \
 			usr/share/xsessions/dwm.desktop; \
@@ -701,7 +704,12 @@ check-picom-xvfb:
 check-app-themes:
 	$(call run_managed_test,xvfb-run -a python3 tests/test-app-themes.py)
 
+check-initial-update:
+	$(call run_managed_test,python3 tests/test-initial-update.py)
+	$(call run_managed_test,dbus-run-session -- xvfb-run -a /usr/bin/python3 tests/test-initial-update-ui.py)
+
 check: check-picom check-picom-xvfb
+	$(MAKE) check-initial-update
 	$(MAKE) check-app-themes
 	$(MAKE) check-desktop-update
 	$(MAKE) clean
@@ -764,7 +772,7 @@ check: check-picom check-picom-xvfb
 	$(MAKE) check-lightdm-config
 	$(MAKE) release-check
 
-.PHONY: install-files install-user-files install-system-files clean all check check-desktop-update check-picom check-picom-xvfb check-accessibility check-appearance check-phase5-optional-components check-build-config check-build-deps check-default-apps check-xdg-autostart check-dev-sync-install \
+.PHONY: check-initial-update install-files install-user-files install-system-files clean all check check-desktop-update check-picom check-picom-xvfb check-accessibility check-appearance check-phase5-optional-components check-build-config check-build-deps check-default-apps check-xdg-autostart check-dev-sync-install \
 	check-cursor-reload \
 	check-test-runner \
 	check-display-profile check-display-setup check-fedora-iso-builder check-fedora-packages check-fedora-platform check-format check-install \
