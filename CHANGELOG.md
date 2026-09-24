@@ -8,6 +8,15 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Capture the Xvfb runtime test's intentional invalid-config notifications so
+  validation never sends false "dwm: bad config" warnings to the live desktop.
+
+- Let desktop updates add managed themes, palettes, commands and helpers, remove
+  unchanged retired files, and install changed build dependencies in the same
+  authorized transaction. Preserve rollback for file migrations and reject
+  unmanaged collisions. Older updaters need one complete source update to
+  receive this migration support.
+
 - Keep light-preset hover surfaces light and hovered/selected shell labels
   readable (issue #349). Install offline GTK 2/3/4 themes and Qt palettes for
   all 15 presets, including Dracula, with update verification and backup coverage.

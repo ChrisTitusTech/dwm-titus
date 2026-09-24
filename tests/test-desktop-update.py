@@ -687,9 +687,41 @@ class DesktopUpdate(unittest.TestCase):
                 elif mutation == "revision":
                     candidate["revision"] = "main;echo unsafe"
                 else:
-                    candidate["packages"] = ["extra-package"]
+                    candidate["packages"] = ["--installroot=/tmp/unsafe"]
                 with self.assertRaises(RuntimeError):
                     privileged.validate_candidate(candidate, self.manifest)
+
+    def test_candidate_allows_managed_additions_and_removals(self):
+        candidate = copy.deepcopy(self.manifest)
+        candidate["files"] = {"/usr/share/themes/Dwm-New/gtk-4.0/gtk.css": {"sha256": "c" * 64, "mode": 0o644}}
+        candidate["packages"] = ["git"]
+        privileged.validate_candidate(candidate, self.manifest)
+
+    def test_candidate_rejects_paths_outside_owned_namespaces(self):
+        for name in ("/etc/shadow", "/usr/share/themes/Other/gtk.css",
+                     "/usr/share/themes/Dwm-New/../../../etc/shadow",
+                     "/usr/share/qt6ct/colors/Other.conf", str(self.base / "bin/unrelated")):
+            with self.subTest(name=name):
+                candidate = copy.deepcopy(self.manifest)
+                candidate["files"][name] = {"sha256": "c" * 64, "mode": 0o644}
+                with self.assertRaises(RuntimeError):
+                    privileged.validate_candidate(candidate, self.manifest)
+
+    def test_new_managed_links_require_a_local_payload_target(self):
+        candidate = copy.deepcopy(self.manifest)
+        root = "/usr/share/icons/Capitaine-Cursors-New/cursors/"
+        candidate["files"][root + "default"] = {"sha256": "c" * 64, "mode": 0o644}
+        candidate["files"][root + "left_ptr"] = {"link": "default"}
+        privileged.validate_candidate(candidate, self.manifest)
+        for target in ("/etc/shadow", "../outside", "missing", "left_ptr", ".", "..", 1):
+            candidate["files"][root + "left_ptr"] = {"link": target}
+            with self.subTest(target=target), self.assertRaises(RuntimeError):
+                privileged.validate_candidate(candidate, self.manifest)
+
+    def test_package_plan_rejects_flags_urls_and_capability_expressions(self):
+        for packages in (["-y"], ["https://example.test/a.rpm"], ["local.rpm"], ["name >= 1"], ["x", "x"], "gcc", [1]):
+            with self.subTest(packages=packages), self.assertRaises(RuntimeError):
+                privileged.validate_packages(packages)
 
     def test_user_owned_manifest_cannot_select_a_privileged_helper(self):
         if os.geteuid() == 0:
@@ -742,7 +774,7 @@ class DesktopUpdate(unittest.TestCase):
             update.start_activation(self.base, "a" * 32)
 
     def test_worker_success_failure_denial_and_interruption(self):
-        for scenario, expected, code in (("success", "restart-required", 0), ("build-failure", "failed", 1),
+        for scenario, expected, code in (("success", "restart-required", 0), ("migration", "restart-required", 0), ("build-failure", "failed", 1),
                                          ("denied", "failed", 1), ("begin-denied", "failed", 1), ("sandbox-failure", "failed", 1), ("cleanup-completion-denied", "interrupted", 1), ("apply-failure", "interrupted", 1),
                                          ("killed", "installing", 9), ("activation-success", "current", 0),
                                          ("activation-stale", "restart-required", 0),
@@ -761,7 +793,7 @@ class DesktopUpdate(unittest.TestCase):
                     self.assertFalse((directory / "state/reserved").exists())
                 self.assertEqual(value["state"], expected, value)
                 self.assertEqual((directory / "config/dwm-titus/themes.toml").read_text(), "personal theme")
-                if scenario == "success" or scenario.startswith("activation-"):
+                if scenario in ("success", "migration") or scenario.startswith("activation-"):
                     self.assertEqual((directory / "state/elevations").read_text().splitlines(), ["one approval"])
                     self.assertEqual((directory / "config/quickshell/file").read_text(), "new shell")
                     self.assertEqual((directory / "prefix/bin/dwm").read_text(), "new binary")

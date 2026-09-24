@@ -570,8 +570,12 @@ failure stops the update instead of running an unconfined build. Git checkouts
 must be clean, on `main`, and fast-forwardable;
 linked worktrees require the documented source update procedure.
 
-A root-owned installed helper accepts only the destinations, file types, modes,
-link targets, and dependency capabilities recorded by the installed manifest.
+A root-owned installed helper accepts existing managed destinations and additions
+within its desktop-owned namespaces: dwm-prefixed commands and helpers, Dwm
+application themes and Qt palettes, Capitaine cursors, and dwm-titus licenses.
+New files must not overwrite an unmanaged destination. Retired files are removed
+only if they still match the previous receipt. Missing trusted directories are
+created as root-owned 0755 directories; recovery may leave empty directories.
 Administrator approval authorizes replacement contents at those destinations,
 including the dwm binary, commands, and privileged helpers. Candidate hashes
 verify the new payload; they do not have to match the previous installation.
@@ -580,8 +584,11 @@ the previous files and manifest for rollback. Each authorized apply is bound to
 its prepared archive digest and confirmed revision; substitutions during
 authorization are rejected.
 It never executes a staged Makefile or repository helper as root. Changes to
-that installation layout or dependency allowlist require the source installer
-to establish the new contract. Authorization uses polkit and requires one visible approval per update or
+installation roots still require the source installer. Changes to the release's
+build/source-update package list are handled within the reserved transaction:
+only validated RPM names are passed to DNF, and the resulting manifest must
+match that prepared list. DNF owns package recovery; desktop rollback does not
+uninstall packages. Authorization uses polkit and requires one visible approval per update or
 explicit recovery operation. A root-owned helper retains that approval only
 for the transaction. Updates bind the operation, generation, and selected
 revision; recovery remains limited to the original operation and its owner.

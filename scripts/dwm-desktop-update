@@ -594,6 +594,7 @@ class PrivilegedSession:
 
 def authorize(state, value, privileged, action, *arguments, timeout=60):
     labels = {"begin": "prepare the desktop update", "dependencies": "install required packages",
+              "packages": "install updated required packages",
               "apply": "install desktop files", "rollback": "recover the desktop update",
               "complete": "finish the desktop transaction"}
     first = not privileged.started
@@ -1066,7 +1067,11 @@ def worker(operation):
                 for profile in ("build", "source-update"):
                     required.extend(sandbox_run([source / "scripts/dwm-packages.sh", "fedora", profile], readonly=(source,), cwd=source).splitlines())
                 if sorted(set(required)) != installed["packages"]:
-                    raise RuntimeError("Desktop dependencies changed; use the documented source installer for this update")
+                    required = sorted(set(required))
+                    save_status(state, value, state="dependencies", percent=-1,
+                                detail="Preparing updated desktop dependencies: " + ", ".join(required))
+                    authorize(state, value, privileged, "packages", preview["generation"], operation,
+                              json.dumps(required), timeout=1800)
                 save_status(state, value, state="building", detail="Building the desktop update...", percent=-1)
                 config_source = Path(user_receipt.get("checkout") or str(data)) / "config.h"
                 if not config_source.is_file():
@@ -1080,7 +1085,7 @@ def worker(operation):
                      "MANPREFIX=" + layout["manprefix"], "XSESSIONSDIR=" + layout["xsessions"], "DATADIR=" + layout["datadir"]],
                     writable=(source, stage), cwd=source, timeout=180, capture=False)
                 candidate = read_json(stage / str(prefix / "share/dwm-titus/desktop-install.json").lstrip("/"))
-                if (set(candidate["files"]) != set(installed["files"]) or candidate["layout"] != installed["layout"]):
+                if candidate["layout"] != installed["layout"]:
                     raise RuntimeError("Desktop file layout changed; use the documented source installer for this update")
                 make_bundle(stage, candidate, directory / "bundle.tar")
                 bundle_digest = digest(directory / "bundle.tar")

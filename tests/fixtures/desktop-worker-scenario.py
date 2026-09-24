@@ -78,6 +78,8 @@ source, stage = directory / "source", directory / "stage"
 
 def boundary(args, cwd=None, timeout=60, capture=True):
     args = [str(arg) for arg in args]
+    if args[0].endswith("dwm-packages.sh") and scenario == "migration":
+        return "rpm\n"
     if args[:2] == ["git", "init"]:
         (source / "config/quickshell").mkdir(parents=True)
         (source / "scripts").mkdir()
@@ -97,6 +99,14 @@ def boundary(args, cwd=None, timeout=60, capture=True):
         staged_binary.chmod(0o755)
         candidate = {**manifest, "revision": "b" * 40,
                      "files": {str(binary): update.fingerprint(staged_binary)}}
+        if scenario == "migration":
+            added = prefix / "share/themes/Dwm-New/gtk-3.0/gtk.css"
+            staged = stage / str(added).lstrip("/")
+            staged.parent.mkdir(parents=True)
+            staged.write_text("new theme")
+            staged.chmod(0o644)
+            candidate["files"][str(added)] = update.fingerprint(staged)
+            candidate["packages"] = ["rpm"]
         update.write_json(stage / str(manifest_path).lstrip("/"), candidate)
     elif args[0] == "/usr/bin/pkexec":
         status = update.read_json(state / "status.json")
@@ -109,6 +119,9 @@ def boundary(args, cwd=None, timeout=60, capture=True):
             if scenario == "begin-denied":
                 raise update.CommandFailure("authorization denied", 126)
             (state / "reserved").write_text("reserved")
+            return ""
+        if args[2] == "packages":
+            assert json.loads(args[5]) == ["rpm"]
             return ""
         if args[2] == "rollback":
             assert status["state"] == "recovering", status
@@ -126,8 +139,12 @@ def boundary(args, cwd=None, timeout=60, capture=True):
         if scenario == "apply-failure":
             raise update.CommandFailure("application interrupted", 1)
         with tarfile.open(directory / "bundle.tar") as bundle:
-            binary.write_bytes(bundle.extractfile("0").read())
             candidate = json.loads(bundle.extractfile("manifest.json").read())
+            for index, (name, record) in enumerate(sorted(candidate["files"].items())):
+                target = Path(name)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(bundle.extractfile(str(index)).read())
+                target.chmod(record["mode"])
         update.write_json(manifest_path, candidate)
         if scenario == "killed":
             os._exit(9)

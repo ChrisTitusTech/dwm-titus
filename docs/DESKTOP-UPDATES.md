@@ -53,10 +53,13 @@ branches, tracked or untracked changes, ignored files inside `config` or
 `scripts`, linked worktrees, and divergent history are blocked
 with instructions to use the source workflow.
 
-The installed manifest fixes the authorized system-file destinations, file
-types and modes, cursor link targets, and package capability list. An update
-that changes that contract stops before installation and asks for the source
-installer. This limits replacement to the existing managed installation.
+The installed manifest fixes the installation roots. Updates can add files in
+the desktop-owned namespaces for dwm-prefixed commands/helpers, Dwm themes and
+Qt palettes, Capitaine cursors, and dwm-titus licenses. They can also remove
+retired files that still match the old receipt. Unmanaged file collisions,
+unsafe paths and modes, and modified retired files stop the transaction before
+replacement. New cursor aliases must resolve to a regular payload file in the same directory;
+escaping, missing, and cyclic targets are rejected.
 Administrator approval permits new contents at those destinations, including
 the dwm session binary, commands, privileged helpers, and shared assets. The
 button replaces changed system files and records their new hashes after
@@ -67,14 +70,29 @@ these managed paths; the helper does not independently attest their source.
 Authorization carries the prepared archive's digest and
 confirmed revision; the root-owned copy must match both before installation,
 preventing archive substitution while the authorization prompt is open.
-Missing system directories also require that installer
-and are not offered as automatic file repairs. Compiler overrides (`CC`,
+Missing directories for new files are created with root ownership and mode
+0755 after checking their ancestors. Rollback restores removed files and deletes
+new files; empty directories may remain. Compiler overrides (`CC`,
 `CFLAGS`, `CPPFLAGS`, and `LDFLAGS`) supplied to the updater are carried into its
 worker and passed to the build.
 Unsafe installed file modes or modified user-owned system files require the
 source installer; recovery never restores special or writable mode bits.
-Missing known build/source-update packages can be installed after confirmation;
-the package manager owns its transaction and package locks.
+The confirmed update can install missing build/source-update packages from the
+new release's package map, including changed dependency lists. The helper accepts
+only RPM names, binds the list to the reserved operation, and checks that the
+staged manifest matches it. The package manager owns its transaction and locks;
+desktop rollback does not remove installed packages.
+
+### Upgrading an older updater
+
+Older installed updaters reject any change to the system file list, including
+new GTK/Qt themes, before they can install this fix. Bootstrap once using the
+complete [source update procedure](src/content/install.md#source-updates-and-recovery),
+then use Settings for future updates.
+A failed preparation reporting `Preparation canceled; no system files were
+replaced` has already released its reservation. If the status instead requires
+recovery, complete that recovery before source installation. The GUI never
+bypasses the installed privileged helper by elevating a repository copy.
 
 When the dwm executable changes, **Installed - log out to finish** means the
 files are verified but the running session still uses the previous executable.
