@@ -376,12 +376,15 @@ def record_system(args):
     stage = Path(args.destdir) if args.destdir else Path("/")
     layout = {key: str(Path(getattr(args, key)).absolute()) for key in ("prefix", "manprefix", "xsessions", "datadir")}
     prefix = Path(layout["prefix"])
-    dnf5confdir = Path(getattr(args, "dnf5confdir", "/usr/share/dnf5/libdnf.conf.d")).absolute()
+    dnf5confdir = getattr(args, "dnf5confdir", None)
+    if dnf5confdir is not None:
+        dnf5confdir = Path(dnf5confdir).absolute()
     files = [prefix / "bin" / name for name in ["dwm", *args.commands]]
     files += [prefix / "libexec/dwm-titus" / name for name in args.helpers]
     files += [Path(layout["manprefix"]) / "man1/dwm.1", Path(layout["xsessions"]) / "dwm.desktop",
-              Path(layout["datadir"]) / "licenses/dwm-titus/capitaine-cursors/COPYING",
-              dnf5confdir / "50-dwm-titus.conf"]
+              Path(layout["datadir"]) / "licenses/dwm-titus/capitaine-cursors/COPYING"]
+    if dnf5confdir is not None:
+        files.append(dnf5confdir / "50-dwm-titus.conf")
     for theme in sorted((source / "assets/cursors").glob("Capitaine-Cursors*")):
         files += [Path(layout["datadir"]) / "icons" / theme.name / path.relative_to(theme)
                   for path in theme.rglob("*") if path.is_file() or path.is_symlink()]
@@ -392,9 +395,10 @@ def record_system(args):
               for theme in (source / "assets/themes").glob("Dwm-*")
               for backend in ("qt5ct", "qt6ct")]
     manifest = {"schema": 1, "source": SOURCE, "revision": source_revision(source),
-                "dnf5confdir": str(dnf5confdir),
                 "layout": layout, "packages": sorted(set(args.packages)),
                 "files": {str(path): fingerprint(stage / str(path).lstrip("/")) for path in sorted(files)}}
+    if dnf5confdir is not None:
+        manifest["dnf5confdir"] = str(dnf5confdir)
     target = stage / str(prefix / "share/dwm-titus/desktop-install.json").lstrip("/")
     target.parent.mkdir(parents=True, exist_ok=True, mode=0o755)
     os.chmod(target.parent, 0o755)
@@ -1002,6 +1006,18 @@ def make_bundle(stage, candidate, destination):
             bundle.addfile(header, io.BytesIO(content))
 
 
+def install_system_command(stage, layout, installed):
+    command = ["make", "install-system", "DESTDIR=" + str(stage),
+               "PREFIX=" + layout["prefix"], "MANPREFIX=" + layout["manprefix"],
+               "XSESSIONSDIR=" + layout["xsessions"], "DATADIR=" + layout["datadir"]]
+    if "dnf5confdir" in installed:
+        dnf5confdir = installed["dnf5confdir"]
+        if not isinstance(dnf5confdir, str) or not Path(dnf5confdir).is_absolute():
+            raise RuntimeError("Invalid DNF configuration destination in installed manifest")
+        command.extend(["TRACK_DNF5CONF=yes", "DNF5CONFDIR=" + dnf5confdir])
+    return command
+
+
 def running_dwm_matches(binary):
     try:
         result = subprocess.run(["pgrep", "-u", str(os.getuid()), "-x", "dwm"], capture_output=True, text=True)
@@ -1079,9 +1095,7 @@ def worker(operation):
                 build_overrides = [key + "=" + os.environ[key] for key in ("CC", "CFLAGS", "CPPFLAGS", "LDFLAGS") if key in os.environ]
                 sandbox_run(["make", "clean", "all", *build_overrides], writable=(source, stage), cwd=source, timeout=300, capture=False)
                 layout = installed["layout"]
-                sandbox_run(["make", "install-system", "DESTDIR=" + str(stage), "PREFIX=" + layout["prefix"],
-                     "MANPREFIX=" + layout["manprefix"], "XSESSIONSDIR=" + layout["xsessions"], "DATADIR=" + layout["datadir"],
-                     "DNF5CONFDIR=" + installed.get("dnf5confdir", "/usr/share/dnf5/libdnf.conf.d")],
+                sandbox_run(install_system_command(stage, layout, installed),
                     writable=(source, stage), cwd=source, timeout=180, capture=False)
                 candidate = read_json(stage / str(prefix / "share/dwm-titus/desktop-install.json").lstrip("/"))
                 if (set(candidate["files"]) != set(installed["files"]) or candidate["layout"] != installed["layout"]):
@@ -1340,7 +1354,7 @@ def main():
     system.add_argument("--destdir", default="")
     for name in ("prefix", "manprefix", "xsessions", "datadir"):
         system.add_argument("--" + name, required=True)
-    system.add_argument("--dnf5confdir", default="/usr/share/dnf5/libdnf.conf.d")
+    system.add_argument("--dnf5confdir")
     for name in ("commands", "helpers", "packages"):
         system.add_argument("--" + name, nargs="+", required=True)
     user = commands.add_parser("record-user")

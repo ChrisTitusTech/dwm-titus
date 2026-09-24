@@ -10,7 +10,9 @@ versions from `config.mk`.
 
 - Default interactive DNF confirmations to Yes on Fedora while preserving an
   explicit No. Keep Fedora 44's measured download concurrency and mirror
-  selection defaults instead of applying unverified tuning (issue #346).
+  selection defaults instead of applying unverified tuning. Install the DNF
+  drop-in outside the updater-managed manifest for new installations while
+  preserving compatibility with receipts that already track it (issue #346).
 
 ### Fixed
 

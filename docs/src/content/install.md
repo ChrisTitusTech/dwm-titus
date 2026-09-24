@@ -172,9 +172,9 @@ default, set `defaultyes=False` in the existing `[main]` section of
 setting also overrides the shipped distribution default. Source installation
 and uninstall never rewrite files under `/etc/dnf`.
 
-Installations created before this DNF default must use the documented source
-installer once to add the managed drop-in. The desktop updater rejects changes
-to its managed system-file layout.
+The desktop updater leaves this drop-in unchanged on installations that do not
+already track it. To add the DNF default to an existing installation, run the
+documented source installer once. Later desktop updates preserve the drop-in.
 
 If a v0.6.0 Fedora image left the default XDG parents owned by root, first
 verify that none of them is a symbolic link, then repair only those parents and

@@ -293,6 +293,31 @@ class DesktopUpdate(unittest.TestCase):
         manifest = json.loads((stage / 'usr/share/dwm-titus/desktop-install.json').read_text())
         self.assertIn('/usr/share/themes/Dwm-dracula/gtk-3.0/gtk.css', manifest['files'])
         self.assertFalse(any('Personal' in path for path in manifest['files']))
+        self.assertNotIn('/usr/share/dnf5/libdnf.conf.d/50-dwm-titus.conf', manifest['files'])
+        self.assertNotIn('dnf5confdir', manifest)
+
+    def test_legacy_dnf_manifest_can_be_reproduced_for_updates(self):
+        stage = self.base / 'legacy-stage'
+        args = SimpleNamespace(source_dir=str(self.base), destdir=str(stage), prefix='/usr',
+                               manprefix='/usr/share/man', xsessions='/usr/share/xsessions', datadir='/usr/share',
+                               dnf5confdir='/opt/dnf config', commands=[], helpers=[], packages=[])
+        with patch.object(update, 'fingerprint', return_value={'mode': 0o644, 'sha256': 'a' * 64}):
+            update.record_system(args)
+        manifest = json.loads((stage / 'usr/share/dwm-titus/desktop-install.json').read_text())
+        self.assertEqual(manifest['dnf5confdir'], '/opt/dnf config')
+        self.assertIn('/opt/dnf config/50-dwm-titus.conf', manifest['files'])
+
+    def test_update_install_command_preserves_dnf_only_for_tracked_installations(self):
+        stage = self.base / 'stage'
+        layout = {'prefix': '/usr', 'manprefix': '/usr/share/man',
+                  'xsessions': '/usr/share/xsessions', 'datadir': '/usr/share'}
+        old_install = update.install_system_command(stage, layout, {})
+        self.assertNotIn('TRACK_DNF5CONF=yes', old_install)
+        self.assertFalse(any(value.startswith('DNF5CONFDIR=') for value in old_install))
+        tracked_install = update.install_system_command(
+            stage, layout, {'dnf5confdir': '/opt/dnf config'})
+        self.assertIn('TRACK_DNF5CONF=yes', tracked_install)
+        self.assertIn('DNF5CONFDIR=/opt/dnf config', tracked_install)
 
     def test_manifest_directory_uses_trusted_mode_under_group_umask(self):
         stage = self.base / "stage"
@@ -673,11 +698,14 @@ class DesktopUpdate(unittest.TestCase):
         candidate["files"][str(self.binary)]["sha256"] = "c" * 64
         privileged.validate_candidate(candidate, self.manifest)
 
-    def test_root_candidate_preserves_dnf5_configuration_destination(self):
+    def test_root_candidate_preserves_tracked_dnf_configuration_destination(self):
         installed = copy.deepcopy(self.manifest)
         installed["dnf5confdir"] = "/usr/share/dnf5/libdnf.conf.d"
+        installed["files"]["/usr/share/dnf5/libdnf.conf.d/50-dwm-titus.conf"] = {
+            "mode": 0o644, "sha256": "a" * 64}
         candidate = copy.deepcopy(installed)
         candidate["revision"] = "b" * 40
+        candidate["files"]["/usr/share/dnf5/libdnf.conf.d/50-dwm-titus.conf"]["sha256"] = "c" * 64
         privileged.validate_candidate(candidate, installed)
         candidate["dnf5confdir"] = "/etc/dnf/libdnf5.conf.d"
         with self.assertRaises(RuntimeError):

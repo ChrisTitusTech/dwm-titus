@@ -15,6 +15,7 @@ CFG_DIR   := ${XDG_CONFIG_HOME}
 DATADIR   ?= ${PREFIX}/share
 SYSTEMDUSERDIR ?= ${PREFIX}/lib/systemd/user
 DNF5CONFDIR ?= /usr/share/dnf5/libdnf.conf.d
+TRACK_DNF5CONF ?= no
 CAPITAINE_DARK_THEME = Capitaine-Cursors
 CAPITAINE_LIGHT_THEME = Capitaine-Cursors-White
 CAPITAINE_LICENSE_DIR = ${DATADIR}/licenses/dwm-titus/capitaine-cursors
@@ -214,7 +215,8 @@ install-system-files:
 	install -d -m755 "${DESTDIR}${PREFIX}/share/dwm-titus"
 	/usr/bin/python3 -I "${DESTDIR}${PREFIX}/bin/dwm-desktop-update" record-system --source-dir . \
 		--destdir "${DESTDIR}" --prefix "${PREFIX}" --manprefix "${MANPREFIX}" \
-		--xsessions "${XSESSIONSDIR}" --datadir "${DATADIR}" --dnf5confdir "${DNF5CONFDIR}" \
+		--xsessions "${XSESSIONSDIR}" --datadir "${DATADIR}" \
+		$(if $(filter yes,${TRACK_DNF5CONF}),--dnf5confdir "${DNF5CONFDIR}") \
 		--commands ${INSTALL_COMMAND_NAMES} --helpers $(notdir ${PRIVILEGED_HELPERS}) \
 		--packages $$("${DESTDIR}${PREFIX}/bin/dwm-packages.sh" fedora build) $$("${DESTDIR}${PREFIX}/bin/dwm-packages.sh" fedora source-update)
 
@@ -612,8 +614,8 @@ check-install-manifest: all
 	expected="$$(mktemp)"; \
 	dnf_main="$$(mktemp)"; \
 	dnf_admin="$$(mktemp)"; \
-	dnf_managed="$$(mktemp)"; \
-	trap 'rm -rf "$$stage" "$$before" "$$after" "$$actual" "$$expected" "$$dnf_main" "$$dnf_admin" "$$dnf_managed"' EXIT; \
+	dnf_config_copy="$$(mktemp)"; \
+	trap 'rm -rf "$$stage" "$$before" "$$after" "$$actual" "$$expected" "$$dnf_main" "$$dnf_admin" "$$dnf_config_copy"' EXIT; \
 	install -Dm644 /dev/null "$$stage/pre-existing"; \
 	printf '[main]\ndefaultyes=False\n' | \
 		install -Dm644 /dev/stdin "$$stage/etc/dnf/dnf.conf"; \
@@ -665,12 +667,14 @@ check-install-manifest: all
 	test "$$(stat -c %a "$$stage/usr/share/dnf5/libdnf.conf.d/50-dwm-titus.conf")" = 644; \
 	cmp "$$dnf_main" "$$stage/etc/dnf/dnf.conf"; \
 	cmp "$$dnf_admin" "$$stage/etc/dnf/libdnf5.conf.d/80-admin.conf"; \
-	python3 -c 'import json, pathlib, sys; m = json.loads(pathlib.Path(sys.argv[1]).read_text()); p = "/usr/share/dnf5/libdnf.conf.d/50-dwm-titus.conf"; assert p in m["files"]' \
+	python3 -c 'import json, pathlib, sys; m = json.loads(pathlib.Path(sys.argv[1]).read_text()); p = "/usr/share/dnf5/libdnf.conf.d/50-dwm-titus.conf"; assert p not in m["files"]; assert "dnf5confdir" not in m' \
 		"$$stage/usr/share/dwm-titus/desktop-install.json"; \
-	cp "$$stage/usr/share/dnf5/libdnf.conf.d/50-dwm-titus.conf" "$$dnf_managed"; \
+	cp "$$stage/usr/share/dnf5/libdnf.conf.d/50-dwm-titus.conf" "$$dnf_config_copy"; \
 	$(MAKE) install-system \
-		DESTDIR="$$stage" PREFIX=/usr XSESSIONSDIR=/usr/share/xsessions; \
-	cmp "$$dnf_managed" "$$stage/usr/share/dnf5/libdnf.conf.d/50-dwm-titus.conf"; \
+		DESTDIR="$$stage" PREFIX=/usr XSESSIONSDIR=/usr/share/xsessions TRACK_DNF5CONF=yes; \
+	cmp "$$dnf_config_copy" "$$stage/usr/share/dnf5/libdnf.conf.d/50-dwm-titus.conf"; \
+	python3 -c 'import json, pathlib, sys; m = json.loads(pathlib.Path(sys.argv[1]).read_text()); p = "/usr/share/dnf5/libdnf.conf.d/50-dwm-titus.conf"; assert p in m["files"]; assert m["dnf5confdir"] == "/usr/share/dnf5/libdnf.conf.d"' \
+		"$$stage/usr/share/dwm-titus/desktop-install.json"; \
 	cmp "$$dnf_main" "$$stage/etc/dnf/dnf.conf"; \
 	cmp "$$dnf_admin" "$$stage/etc/dnf/libdnf5.conf.d/80-admin.conf"; \
 	grep -Fqx 'Exec=/usr/bin/dwm' \
