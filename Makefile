@@ -14,6 +14,7 @@ DATA_DIR  := ${XDG_DATA_HOME}/dwm-titus
 CFG_DIR   := ${XDG_CONFIG_HOME}
 DATADIR   ?= ${PREFIX}/share
 SYSTEMDUSERDIR ?= ${PREFIX}/lib/systemd/user
+DNF5CONFDIR ?= /usr/share/dnf5/libdnf.conf.d
 CAPITAINE_DARK_THEME = Capitaine-Cursors
 CAPITAINE_LIGHT_THEME = Capitaine-Cursors-White
 CAPITAINE_LICENSE_DIR = ${DATADIR}/licenses/dwm-titus/capitaine-cursors
@@ -196,6 +197,8 @@ install-system-files:
 	@echo ""
 	@echo "==> Installing system files..."
 	install -Dm755 dwm "${DESTDIR}${PREFIX}/bin/dwm"
+	install -Dm644 dnf/50-dwm-titus.conf \
+		"${DESTDIR}${DNF5CONFDIR}/50-dwm-titus.conf"
 	sed "s/VERSION/${VERSION}/g" dwm.1 | install -Dm644 /dev/stdin "${DESTDIR}${MANPREFIX}/man1/dwm.1"
 	sed "s|@PREFIX@|${PREFIX}|g" dwm.desktop | \
 		install -Dm644 /dev/stdin "${DESTDIR}${XSESSIONSDIR}/dwm.desktop"
@@ -211,7 +214,7 @@ install-system-files:
 	install -d -m755 "${DESTDIR}${PREFIX}/share/dwm-titus"
 	/usr/bin/python3 -I "${DESTDIR}${PREFIX}/bin/dwm-desktop-update" record-system --source-dir . \
 		--destdir "${DESTDIR}" --prefix "${PREFIX}" --manprefix "${MANPREFIX}" \
-		--xsessions "${XSESSIONSDIR}" --datadir "${DATADIR}" \
+		--xsessions "${XSESSIONSDIR}" --datadir "${DATADIR}" --dnf5confdir "${DNF5CONFDIR}" \
 		--commands ${INSTALL_COMMAND_NAMES} --helpers $(notdir ${PRIVILEGED_HELPERS}) \
 		--packages $$("${DESTDIR}${PREFIX}/bin/dwm-packages.sh" fedora build) $$("${DESTDIR}${PREFIX}/bin/dwm-packages.sh" fedora source-update)
 
@@ -365,6 +368,7 @@ uninstall-files:
 	done
 	rm -f "${DESTDIR}${PRIVILEGED_HELPER_DIR}/dwm-settings-display-root"
 	rm -f "${DESTDIR}${PRIVILEGED_HELPER_DIR}/dwm-desktop-update-root"
+	rm -f "${DESTDIR}${DNF5CONFDIR}/50-dwm-titus.conf"
 	rm -f "${DESTDIR}${PREFIX}/share/dwm-titus/desktop-install.json"
 
 release: dwm
@@ -375,7 +379,7 @@ release: dwm
 	install -Dm755 dwm "$$root/dwm"; \
 	install -Dm644 scripts/.xinitrc "$$root/.xinitrc"; \
 	sed "s|@PREFIX@|${PREFIX}|g" dwm.desktop > "$$root/dwm.desktop"; \
-	cp -a assets config scripts "$$root/"; \
+	cp -a assets config dnf scripts "$$root/"; \
 	find "$$root" -exec touch -h -d "@${SOURCE_DATE_EPOCH}" {} +; \
 	tar --sort=name \
 		--mtime="@${SOURCE_DATE_EPOCH}" \
@@ -606,17 +610,29 @@ check-install-manifest: all
 	after="$$(mktemp)"; \
 	actual="$$(mktemp)"; \
 	expected="$$(mktemp)"; \
-	trap 'rm -rf "$$stage" "$$before" "$$after" "$$actual" "$$expected"' EXIT; \
+	dnf_main="$$(mktemp)"; \
+	dnf_admin="$$(mktemp)"; \
+	dnf_managed="$$(mktemp)"; \
+	trap 'rm -rf "$$stage" "$$before" "$$after" "$$actual" "$$expected" "$$dnf_main" "$$dnf_admin" "$$dnf_managed"' EXIT; \
 	install -Dm644 /dev/null "$$stage/pre-existing"; \
+	printf '[main]\ndefaultyes=False\n' | \
+		install -Dm644 /dev/stdin "$$stage/etc/dnf/dnf.conf"; \
+	printf '[main]\nmax_parallel_downloads=7\n' | \
+		install -Dm644 /dev/stdin "$$stage/etc/dnf/libdnf5.conf.d/80-admin.conf"; \
+	cp "$$stage/etc/dnf/dnf.conf" "$$dnf_main"; \
+	cp "$$stage/etc/dnf/libdnf5.conf.d/80-admin.conf" "$$dnf_admin"; \
 	find "$$stage" \( -type f -o -type l \) -printf '%P\n' | sort > "$$before"; \
 	$(MAKE) install-system \
 		DESTDIR="$$stage" PREFIX=/usr XSESSIONSDIR=/usr/share/xsessions; \
 	{ \
 		printf '%s\n' \
+			etc/dnf/dnf.conf \
+			etc/dnf/libdnf5.conf.d/80-admin.conf \
 			pre-existing \
 			usr/bin/dwm \
 			usr/libexec/dwm-titus/dwm-settings-display-root \
 			usr/libexec/dwm-titus/dwm-desktop-update-root \
+			usr/share/dnf5/libdnf.conf.d/50-dwm-titus.conf \
 			usr/share/dwm-titus/desktop-install.json \
 			usr/share/man/man1/dwm.1 \
 			usr/share/xsessions/dwm.desktop; \
@@ -644,6 +660,19 @@ check-install-manifest: all
 		test -x "$$stage/usr/bin/$$name"; \
 	done; \
 	test -x "$$stage/usr/libexec/dwm-titus/dwm-settings-display-root"; \
+	python3 -c 'import configparser, pathlib, sys; p = pathlib.Path(sys.argv[1]); c = configparser.ConfigParser(); assert c.read(p) == [str(p)]; assert dict(c["main"]) == {"defaultyes": "True"}' \
+		"$$stage/usr/share/dnf5/libdnf.conf.d/50-dwm-titus.conf"; \
+	test "$$(stat -c %a "$$stage/usr/share/dnf5/libdnf.conf.d/50-dwm-titus.conf")" = 644; \
+	cmp "$$dnf_main" "$$stage/etc/dnf/dnf.conf"; \
+	cmp "$$dnf_admin" "$$stage/etc/dnf/libdnf5.conf.d/80-admin.conf"; \
+	python3 -c 'import json, pathlib, sys; m = json.loads(pathlib.Path(sys.argv[1]).read_text()); p = "/usr/share/dnf5/libdnf.conf.d/50-dwm-titus.conf"; assert p in m["files"]' \
+		"$$stage/usr/share/dwm-titus/desktop-install.json"; \
+	cp "$$stage/usr/share/dnf5/libdnf.conf.d/50-dwm-titus.conf" "$$dnf_managed"; \
+	$(MAKE) install-system \
+		DESTDIR="$$stage" PREFIX=/usr XSESSIONSDIR=/usr/share/xsessions; \
+	cmp "$$dnf_managed" "$$stage/usr/share/dnf5/libdnf.conf.d/50-dwm-titus.conf"; \
+	cmp "$$dnf_main" "$$stage/etc/dnf/dnf.conf"; \
+	cmp "$$dnf_admin" "$$stage/etc/dnf/libdnf5.conf.d/80-admin.conf"; \
 	grep -Fqx 'Exec=/usr/bin/dwm' \
 		"$$stage/usr/share/xsessions/dwm.desktop"; \
 	test -f "$$stage/usr/share/icons/${CAPITAINE_DARK_THEME}/cursors/default"; \
@@ -684,6 +713,7 @@ release-check: all
 	grep -Fqx '${RELEASE_NAME}/config/' "$$listing"; \
 	grep -Fqx '${RELEASE_NAME}/scripts/' "$$listing"; \
 	grep -Fqx '${RELEASE_NAME}/assets/' "$$listing"; \
+	grep -Fqx '${RELEASE_NAME}/dnf/50-dwm-titus.conf' "$$listing"; \
 	if grep -Eq '(^|/)config\.h$$|\.o$$' "$$listing"; then \
 		echo "Release archive contains local configuration or object files." >&2; \
 		exit 1; \

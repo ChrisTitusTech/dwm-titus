@@ -673,6 +673,16 @@ class DesktopUpdate(unittest.TestCase):
         candidate["files"][str(self.binary)]["sha256"] = "c" * 64
         privileged.validate_candidate(candidate, self.manifest)
 
+    def test_root_candidate_preserves_dnf5_configuration_destination(self):
+        installed = copy.deepcopy(self.manifest)
+        installed["dnf5confdir"] = "/usr/share/dnf5/libdnf.conf.d"
+        candidate = copy.deepcopy(installed)
+        candidate["revision"] = "b" * 40
+        privileged.validate_candidate(candidate, installed)
+        candidate["dnf5confdir"] = "/etc/dnf/libdnf5.conf.d"
+        with self.assertRaises(RuntimeError):
+            privileged.validate_candidate(candidate, installed)
+
     def test_root_candidate_rejects_changed_destinations_modes_and_links(self):
         privileged.validate_candidate(self.manifest, self.manifest)
         for mutation in ("destination", "mode", "hash", "revision", "packages"):

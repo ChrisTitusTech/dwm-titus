@@ -29,7 +29,7 @@ with tempfile.TemporaryDirectory(prefix="desktop-integration-", dir="/opt") as t
     os.chown(user_tmp, uid, uid)
     os.environ["TMPDIR"] = str(user_tmp)
     for name in (".gitignore", "Makefile", "config.mk", "config.def.h", "dwm.c", "drw.c", "util.c", "tomlparser.c",
-                 "drw.h", "util.h", "tomlparser.h", "dwm.1", "dwm.desktop", "scripts", "config", "assets"):
+                 "drw.h", "util.h", "tomlparser.h", "dwm.1", "dwm.desktop", "scripts", "config", "assets", "dnf"):
         if (repo / name).is_dir():
             shutil.copytree(repo / name, source / name, symlinks=True)
         else:
@@ -68,13 +68,15 @@ with tempfile.TemporaryDirectory(prefix="desktop-integration-", dir="/opt") as t
     for target in ("install-system", "install"):
         user("make", target, "PREFIX=" + str(local_prefix),
              "XSESSIONSDIR=" + str(local_prefix / "share/xsessions"),
+             "DNF5CONFDIR=" + str(local_prefix / "share/dnf5/libdnf.conf.d"),
              "OWNER=desktop-test", "USER_HOME=/home/desktop-test")
         assert (local_prefix / "bin/dwm").stat().st_uid == uid
     print("Unprivileged local-prefix install-system and complete install: PASS", flush=True)
     # Image/bootstrap installations have no logind-created runtime directory.
     assert not (Path("/run/user") / str(uid)).exists()
     subprocess.run(["make", "install", "PREFIX=" + str(prefix), "OWNER=desktop-test",
-                    "USER_HOME=/home/desktop-test", "XDG_STATE_HOME=" + env["XDG_STATE_HOME"]],
+                    "USER_HOME=/home/desktop-test", "XDG_STATE_HOME=" + env["XDG_STATE_HOME"],
+                    "DNF5CONFDIR=" + str(prefix / "share/dnf5/libdnf.conf.d")],
                    cwd=source, check=True)
     config = Path("/home/desktop-test/.config")
     data = Path("/home/desktop-test/.local/share/dwm-titus")

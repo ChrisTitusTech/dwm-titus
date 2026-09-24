@@ -376,10 +376,12 @@ def record_system(args):
     stage = Path(args.destdir) if args.destdir else Path("/")
     layout = {key: str(Path(getattr(args, key)).absolute()) for key in ("prefix", "manprefix", "xsessions", "datadir")}
     prefix = Path(layout["prefix"])
+    dnf5confdir = Path(getattr(args, "dnf5confdir", "/usr/share/dnf5/libdnf.conf.d")).absolute()
     files = [prefix / "bin" / name for name in ["dwm", *args.commands]]
     files += [prefix / "libexec/dwm-titus" / name for name in args.helpers]
     files += [Path(layout["manprefix"]) / "man1/dwm.1", Path(layout["xsessions"]) / "dwm.desktop",
-              Path(layout["datadir"]) / "licenses/dwm-titus/capitaine-cursors/COPYING"]
+              Path(layout["datadir"]) / "licenses/dwm-titus/capitaine-cursors/COPYING",
+              dnf5confdir / "50-dwm-titus.conf"]
     for theme in sorted((source / "assets/cursors").glob("Capitaine-Cursors*")):
         files += [Path(layout["datadir"]) / "icons" / theme.name / path.relative_to(theme)
                   for path in theme.rglob("*") if path.is_file() or path.is_symlink()]
@@ -390,6 +392,7 @@ def record_system(args):
               for theme in (source / "assets/themes").glob("Dwm-*")
               for backend in ("qt5ct", "qt6ct")]
     manifest = {"schema": 1, "source": SOURCE, "revision": source_revision(source),
+                "dnf5confdir": str(dnf5confdir),
                 "layout": layout, "packages": sorted(set(args.packages)),
                 "files": {str(path): fingerprint(stage / str(path).lstrip("/")) for path in sorted(files)}}
     target = stage / str(prefix / "share/dwm-titus/desktop-install.json").lstrip("/")
@@ -1077,7 +1080,8 @@ def worker(operation):
                 sandbox_run(["make", "clean", "all", *build_overrides], writable=(source, stage), cwd=source, timeout=300, capture=False)
                 layout = installed["layout"]
                 sandbox_run(["make", "install-system", "DESTDIR=" + str(stage), "PREFIX=" + layout["prefix"],
-                     "MANPREFIX=" + layout["manprefix"], "XSESSIONSDIR=" + layout["xsessions"], "DATADIR=" + layout["datadir"]],
+                     "MANPREFIX=" + layout["manprefix"], "XSESSIONSDIR=" + layout["xsessions"], "DATADIR=" + layout["datadir"],
+                     "DNF5CONFDIR=" + installed.get("dnf5confdir", "/usr/share/dnf5/libdnf.conf.d")],
                     writable=(source, stage), cwd=source, timeout=180, capture=False)
                 candidate = read_json(stage / str(prefix / "share/dwm-titus/desktop-install.json").lstrip("/"))
                 if (set(candidate["files"]) != set(installed["files"]) or candidate["layout"] != installed["layout"]):
@@ -1336,6 +1340,7 @@ def main():
     system.add_argument("--destdir", default="")
     for name in ("prefix", "manprefix", "xsessions", "datadir"):
         system.add_argument("--" + name, required=True)
+    system.add_argument("--dnf5confdir", default="/usr/share/dnf5/libdnf.conf.d")
     for name in ("commands", "helpers", "packages"):
         system.add_argument("--" + name, nargs="+", required=True)
     user = commands.add_parser("record-user")

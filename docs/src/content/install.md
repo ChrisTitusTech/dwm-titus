@@ -157,6 +157,21 @@ units are disabled from early startup but otherwise preserved.
 System files are installed with `sudo`, while configuration and data under the
 user's XDG directories are installed as that user.
 
+### DNF defaults
+
+dwm-titus installs `/usr/share/dnf5/libdnf.conf.d/50-dwm-titus.conf` with
+`defaultyes=True`. Interactive DNF transactions therefore select Yes when you
+press Enter; entering No still cancels. The project does not enable
+`fastestmirror` or increase `max_parallel_downloads`: Fedora 44 testing found
+no throughput improvement from those changes, and `fastestmirror` ranks TCP
+latency rather than measured download throughput.
+
+Administrator configuration remains under `/etc/dnf`. To restore DNF5's No
+default, set `defaultyes=False` in the existing `[main]` section of
+`/etc/dnf/dnf.conf`; do not add a second `[main]` section. A later administrator
+setting also overrides the shipped distribution default. Source installation
+and uninstall never rewrite files under `/etc/dnf`.
+
 If a v0.6.0 Fedora image left the default XDG parents owned by root, first
 verify that none of them is a symbolic link, then repair only those parents and
 rerun the installer:

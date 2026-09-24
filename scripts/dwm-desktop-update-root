@@ -141,11 +141,16 @@ def restore(backup, journal):
 
 
 def validate_candidate(candidate, installed):
+    fields = {"schema", "source", "revision", "layout", "packages", "files"}
+    dnf5confdir = candidate.get("dnf5confdir", "/usr/share/dnf5/libdnf.conf.d") if isinstance(candidate, dict) else None
+    installed_dnf5confdir = installed.get("dnf5confdir", "/usr/share/dnf5/libdnf.conf.d")
     if (not isinstance(candidate, dict)
-            or set(candidate) != {"schema", "source", "revision", "layout", "packages", "files"}
+            or set(candidate) not in (fields, fields | {"dnf5confdir"})
             or len((json.dumps(candidate, sort_keys=True) + "\n").encode()) > 4 * 1024 * 1024
             or not isinstance(candidate.get("files"), dict)
             or not isinstance(candidate.get("revision"), str)
+            or not isinstance(dnf5confdir, str) or not Path(dnf5confdir).is_absolute()
+            or dnf5confdir != installed_dnf5confdir
             or candidate.get("schema") != 1 or candidate.get("source") != installed["source"]
             or candidate.get("layout") != installed["layout"]
             or candidate.get("packages") != installed["packages"]

@@ -6,6 +6,12 @@ versions from `config.mk`.
 
 ## [Unreleased]
 
+### Changed
+
+- Default interactive DNF confirmations to Yes on Fedora while preserving an
+  explicit No. Keep Fedora 44's measured download concurrency and mirror
+  selection defaults instead of applying unverified tuning (issue #346).
+
 ### Fixed
 
 - Keep light-preset hover surfaces light and hovered/selected shell labels

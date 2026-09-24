@@ -21,6 +21,7 @@ prefix="$work/prefix with space"
 manprefix="$prefix/share/man"
 xsessions_dir="$work/xsessions"
 data_root="$work/system data"
+dnf5confdir="$work/dnf5 config"
 config_home="$test_home/.config"
 xdg_data_home="$test_home/.local/share"
 state_home="$test_home/.local/state"
@@ -40,6 +41,7 @@ cp -a \
 	"$repo_dir/dwm.1" \
 	"$repo_dir/dwm.desktop" \
 	"$repo_dir/config" \
+	"$repo_dir/dnf" \
 	"$repo_dir/scripts" \
 	"$repo_dir/assets" \
 	"$test_repo/"
@@ -82,13 +84,15 @@ for cursor_source in "$test_repo"/assets/cursors/Capitaine-Cursors*; do
 done
 install -Dm644 "$test_repo/assets/cursors/COPYING" \
 	"$data_root/licenses/dwm-titus/capitaine-cursors/COPYING"
+install -Dm644 "$test_repo/dnf/50-dwm-titus.conf" \
+	"$dnf5confdir/50-dwm-titus.conf"
 set --
 while IFS= read -r install_source; do
 	set -- "$@" "${install_source##*/}"
 done <"$install_sources"
 python3 "$test_repo/scripts/dwm-desktop-update" record-system --source-dir "$test_repo" \
 	--prefix "$prefix" --manprefix "$manprefix" --xsessions "$xsessions_dir" \
-	--datadir "$data_root" --commands "$@" \
+	--datadir "$data_root" --dnf5confdir "$dnf5confdir" --commands "$@" \
 	--helpers dwm-settings-display-root dwm-desktop-update-root --packages gcc xsettingsd xkbset bubblewrap libseccomp
 HOME="$test_home" XDG_CONFIG_HOME="$config_home" XDG_DATA_HOME="$xdg_data_home" \
 	XDG_STATE_HOME="$state_home" python3 "$test_repo/scripts/dwm-desktop-update" record-user "$test_repo"
