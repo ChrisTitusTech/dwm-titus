@@ -117,6 +117,18 @@ class Security(unittest.TestCase):
         self.assertEqual(self.binary.read_bytes(), b"original")
         self.assertEqual(json.loads(self.manifest_path.read_text())["revision"], "a" * 40)
 
+    def test_migration_directories_remain_readable_with_restrictive_caller_umask(self):
+        self.migration_archive()
+        previous_umask = os.umask(0o077)
+        try:
+            result = self.apply()
+        finally:
+            os.umask(previous_umask)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for path in (self.added.parent, self.added.parent.parent, self.added.parent.parent.parent):
+            self.assertEqual(path.stat().st_uid, 0)
+            self.assertEqual(path.stat().st_mode & 0o7777, 0o755)
+
     def test_migration_rejects_unmanaged_collision(self):
         self.migration_archive()
         self.added.parent.mkdir(parents=True)

@@ -8,6 +8,9 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Capture the Xvfb runtime test's intentional invalid-config notifications so
+  validation never sends false "dwm: bad config" warnings to the live desktop.
+
 - Let desktop updates add managed themes, palettes, commands and helpers, remove
   unchanged retired files, and install changed build dependencies in the same
   authorized transaction. Preserve rollback for file migrations and reject

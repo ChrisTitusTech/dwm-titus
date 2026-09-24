@@ -223,6 +223,21 @@ wait_for_client_window() {
 	return 1
 }
 
+wait_for_config_notifications() {
+	expected=$1
+	i=0
+	while [ "$i" -lt 100 ]; do
+		count=$(grep -Fxc -- '-u critical dwm: bad config hotkeys.toml: invalid config - loaded defaults' "$work/notifications.log" || true)
+		if [ "$count" -ge "$expected" ]; then
+			return 0
+		fi
+		i=$((i + 1))
+		sleep 0.05
+	done
+	printf '%s\n' "missing captured invalid-config notification: $expected" >&2
+	return 1
+}
+
 require_cmd Xvfb awk cc pkg-config xdotool xprop sed grep tail
 pkg-config --exists x11
 
@@ -230,6 +245,16 @@ work=$(mktemp -d)
 trap 'set +e; [ -n "${swallow_client_pid:-}" ] && kill "$swallow_client_pid" 2>/dev/null; [ -n "${many_state_client_pid:-}" ] && kill "$many_state_client_pid" 2>/dev/null; [ -n "${fullscreen_client_pid:-}" ] && kill "$fullscreen_client_pid" 2>/dev/null; [ -n "${panel_pid:-}" ] && kill "$panel_pid" 2>/dev/null; [ -n "${popup_client_pid:-}" ] && kill "$popup_client_pid" 2>/dev/null; [ -n "${second_above_client_pid:-}" ] && kill "$second_above_client_pid" 2>/dev/null; [ -n "${stack_client_pid:-}" ] && kill "$stack_client_pid" 2>/dev/null; [ -n "${above_client_pid:-}" ] && kill "$above_client_pid" 2>/dev/null; [ -n "${floating_peer_pid:-}" ] && kill "$floating_peer_pid" 2>/dev/null; [ -n "${second_client_pid:-}" ] && kill "$second_client_pid" 2>/dev/null; [ -n "${client_pid:-}" ] && kill "$client_pid" 2>/dev/null; [ -n "${dwm_pid:-}" ] && kill "$dwm_pid" 2>/dev/null; [ -n "${xvfb_pid:-}" ] && kill "$xvfb_pid" 2>/dev/null; rm -rf "$work"' EXIT HUP INT TERM
 
 home="$work/home"
+# A separate X display still inherits the caller's notification bus. Capture
+# notify-send before it can reach the real desktop, while testing its payload.
+mkdir -p "$work/bin"
+: >"$work/notifications.log"
+cat >"$work/bin/notify-send" <<'EOF'
+#!/bin/sh
+set -eu
+printf '%s\n' "$*" >>"${DWM_XVFB_NOTIFICATION_LOG:?}"
+EOF
+chmod 755 "$work/bin/notify-send"
 mkdir -p "$home/.config/dwm-titus" "$home/.local/share/dwm-titus/config"
 cp "$repo_dir/config/hotkeys.toml" "$home/.config/dwm-titus/hotkeys.toml"
 cp "$repo_dir/config/themes.toml" "$home/.config/dwm-titus/themes.toml"
@@ -584,7 +609,8 @@ DISPLAY=$display \
 	HOME=$home \
 	XDG_CONFIG_HOME="$home/.config" \
 	XDG_DATA_HOME="$home/.local/share" \
-	PATH="$repo_dir:$PATH" \
+	PATH="$work/bin:$repo_dir:$PATH" \
+	DWM_XVFB_NOTIFICATION_LOG="$work/notifications.log" \
 	"$repo_dir/dwm" >"$work/dwm.log" 2>&1 &
 dwm_pid=$!
 
@@ -787,8 +813,14 @@ wait_for_current_desktop 4
 DISPLAY=$display xdotool key Super+1
 wait_for_current_desktop 0
 
+[ ! -s "$work/notifications.log" ] || {
+	printf '%s\n' 'valid test configuration emitted a notification' >&2
+	exit 1
+}
 printf '%s\n' '=' >"$home/.config/dwm-titus/hotkeys.toml"
+wait_for_config_notifications 1
 kill -USR1 "$dwm_pid"
+wait_for_config_notifications 2
 sleep 0.2
 DISPLAY=$display xdotool key Super+u
 wait_for_current_desktop 4
