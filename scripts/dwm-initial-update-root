@@ -256,21 +256,26 @@ def probe():
     deadline = time.monotonic() + 45
     with tempfile.TemporaryDirectory(prefix="dwm-repo-probe-") as name:
         directory = Path(name)
-        for repo in repositories():
-            if time.monotonic() >= deadline:
+        repos = repositories()
+        for index, repo in enumerate(repos):
+            now = time.monotonic()
+            if now >= deadline:
                 return 1
+            # Share remaining time so a stalled repository cannot consume every
+            # later repository's opportunity to prove connectivity.
+            repo_deadline = now + (deadline - now) / (len(repos) - index)
             source = repo.get("metalink") or repo.get("mirrorlist")
             endpoints = [source] if source else repo.get("baseurl", [])
             if not repo["custom"] and all(https(url) for url in endpoints):
                 try:
-                    document = mirror_document(repo, directory, deadline)
+                    document = mirror_document(repo, directory, repo_deadline)
                     urls = document[2] if document else [url.rstrip("/") + "/repodata/repomd.xml"
                                                         for url in repo["baseurl"]]
                     for url in list(dict.fromkeys(urls))[:3]:
-                        if time.monotonic() >= deadline:
-                            return 1
+                        if time.monotonic() >= repo_deadline:
+                            break
                         try:
-                            data, _ = fetch(url, directory, deadline)
+                            data, _ = fetch(url, directory, repo_deadline)
                             if local_name(ET.fromstring(data)) == "repomd":
                                 return 0
                         except (ValueError, OSError, subprocess.SubprocessError, ET.ParseError):
@@ -281,7 +286,7 @@ def probe():
             # HTTP fallback in a mixed list, or its custom TLS/proxy policy.
             # Discovery or curl failure must not silently discard these paths.
             try:
-                if native_probe(repo, directory, deadline):
+                if native_probe(repo, directory, repo_deadline):
                     return 0
             except (ValueError, OSError, subprocess.SubprocessError):
                 continue

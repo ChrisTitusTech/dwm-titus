@@ -5,6 +5,7 @@ import argparse
 import fcntl
 import hashlib
 import os
+import tempfile
 from pathlib import Path
 
 
@@ -19,7 +20,7 @@ def checked_path(root, relative):
 
 def manage(action, destdir, source):
     """Create absent defaults or remove only an unchanged recorded installation."""
-    root = Path(destdir or "/").absolute()
+    root = Path(os.path.abspath(destdir or "/"))
     target = root / "usr/share/dnf5/libdnf.conf.d/40-dwm-titus.conf"
     # An existing file (including a symlink) belongs to its administrator until
     # a prior installation record proves otherwise. Never adopt it on install.
@@ -40,17 +41,33 @@ def manage(action, destdir, source):
             checked_path(root, "usr/share/dnf5/libdnf.conf.d/40-dwm-titus.conf")
             target.parent.mkdir(parents=True, exist_ok=True)
             payload = Path(source).read_bytes()
-            # Exclusive creation closes the race with another installer.
-            with target.open("xb") as output:
-                output.write(payload)
-                os.fchmod(output.fileno(), 0o644)
+            staged = []
+            published = False
             try:
-                with record.open("w") as output:
-                    output.write(hashlib.sha256(payload).hexdigest() + "\n")
-                    os.fchmod(output.fileno(), 0o644)
+                for path, contents in (
+                    (target, payload),
+                    (record, (hashlib.sha256(payload).hexdigest() + "\n").encode()),
+                ):
+                    with tempfile.NamedTemporaryFile(
+                        dir=path.parent, prefix=".dwm-dnf-", delete=False
+                    ) as output:
+                        staged.append(Path(output.name))
+                        output.write(contents)
+                        output.flush()
+                        os.fchmod(output.fileno(), 0o644)
+                        os.fsync(output.fileno())
+                # Publish a complete file without replacing a concurrent
+                # administrator-created target. Both staging files are closed.
+                os.link(staged[0], target)
+                published = True
+                os.replace(staged[1], record)
             except OSError:
-                target.unlink()
+                if published:
+                    target.unlink()
                 raise
+            finally:
+                for path in staged:
+                    path.unlink(missing_ok=True)
             print(f"Installed managed DNF5 defaults: {target}")
             return
         if not record.exists():
@@ -81,6 +98,18 @@ def main():
     parser.add_argument("--destdir", default="")
     parser.add_argument("--source", default="config/dnf/40-dwm-titus.conf")
     args = parser.parse_args()
+    if os.geteuid() == 0:
+        installed = Path(os.path.abspath(args.destdir or "/")) / "@PREFIX@/libexec/dwm-titus/dwm-dnf-defaults".lstrip("/")
+        executable = Path(__file__).absolute()
+        if executable != installed or executable.is_symlink():
+            raise RuntimeError("Run the installed DNF defaults helper")
+        # A staged installation may have user-owned outer workspace parents;
+        # its payload is never executed against the live system.
+        paths = (executable,) if args.destdir else (executable, *executable.parents)
+        for path in paths:
+            metadata = path.stat()
+            if metadata.st_uid != 0 or metadata.st_mode & 0o022:
+                raise RuntimeError("The DNF defaults helper must be root-owned and non-writable")
     manage(args.action, args.destdir, args.source)
 
 

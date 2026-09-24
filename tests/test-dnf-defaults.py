@@ -3,13 +3,24 @@
 
 from pathlib import Path
 import subprocess
+import os
+import importlib.machinery
+import importlib.util
+from unittest import mock
 import tempfile
 import unittest
+import sys
+
+sys.dont_write_bytecode = True
 
 
 REPO = Path(__file__).resolve().parents[1]
 HELPER = REPO / "scripts/dwm-dnf-defaults"
 SOURCE = REPO / "config/dnf/40-dwm-titus.conf"
+loader = importlib.machinery.SourceFileLoader("dnf_defaults", str(HELPER))
+spec = importlib.util.spec_from_loader(loader.name, loader)
+module = importlib.util.module_from_spec(spec)
+loader.exec_module(module)
 
 
 class DefaultsTests(unittest.TestCase):
@@ -20,11 +31,78 @@ class DefaultsTests(unittest.TestCase):
         self.target = self.root / "usr/share/dnf5/libdnf.conf.d/40-dwm-titus.conf"
         self.record = self.root / "var/lib/dwm-titus/dnf-defaults/sha256"
         self.target.parent.mkdir(parents=True)
+        self.helper = self.root / "usr/local/libexec/dwm-titus/dwm-dnf-defaults"
+        self.helper.parent.mkdir(parents=True)
+        self.helper.write_text(HELPER.read_text().replace("@PREFIX@", "/usr/local"))
+        self.helper.chmod(0o755)
 
-    def run_helper(self, action):
-        subprocess.run(["/usr/bin/python3", "-I", str(HELPER), action,
-                        "--destdir", str(self.root), "--source", str(SOURCE)],
+    def run_helper(self, action, destdir=None):
+        subprocess.run(["/usr/bin/python3", "-I", str(self.helper), action,
+                        "--destdir", destdir or str(self.root), "--source", str(SOURCE)],
                        check=True, capture_output=True, text=True)
+
+    def assert_no_partial_install(self):
+        self.assertFalse(self.target.exists())
+        self.assertFalse(self.record.exists())
+        self.assertEqual(list(self.root.rglob(".dwm-dnf-*")), [])
+
+    def test_flush_failure_does_not_publish_defaults(self):
+        with mock.patch.object(module.os, "fsync", side_effect=OSError("disk full")):
+            with self.assertRaises(OSError):
+                module.manage("install", str(self.root), SOURCE)
+        self.assert_no_partial_install()
+
+    def test_record_publish_failure_rolls_back_defaults(self):
+        with mock.patch.object(module.os, "replace", side_effect=OSError("record failure")):
+            with self.assertRaises(OSError):
+                module.manage("install", str(self.root), SOURCE)
+        self.assert_no_partial_install()
+
+    def test_write_failure_does_not_publish_defaults(self):
+        original = module.tempfile.NamedTemporaryFile
+
+        def failing_file(**kwargs):
+            output = original(**kwargs)
+            output.write = mock.Mock(side_effect=OSError("write failure"))
+            return output
+
+        with mock.patch.object(module.tempfile, "NamedTemporaryFile", side_effect=failing_file):
+            with self.assertRaises(OSError):
+                module.manage("install", str(self.root), SOURCE)
+        self.assert_no_partial_install()
+
+    def test_close_failure_does_not_publish_defaults(self):
+        original = module.tempfile.NamedTemporaryFile
+
+        class FailingClose:
+            def __enter__(self):
+                self.file = original(dir=self_dir, prefix=".dwm-dnf-", delete=False)
+                return self.file
+
+            def __exit__(self, *_args):
+                self.file.close()
+                raise OSError("close failure")
+
+        self_dir = self.target.parent
+        with mock.patch.object(module.tempfile, "NamedTemporaryFile", return_value=FailingClose()):
+            with self.assertRaises(OSError):
+                module.manage("install", str(self.root), SOURCE)
+        self.assert_no_partial_install()
+
+    @unittest.skipUnless(os.geteuid() == 0, "Root-only installed helper boundary")
+    def test_root_rejects_repository_copy(self):
+        result = subprocess.run(
+            ["/usr/bin/python3", "-I", str(HELPER), "install",
+             "--destdir", str(self.root), "--source", str(SOURCE)],
+            capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Run the installed DNF defaults helper", result.stderr)
+        self.assert_no_partial_install()
+
+    def test_relative_staging_root(self):
+        self.run_helper("install", os.path.relpath(self.root))
+        self.run_helper("uninstall", os.path.relpath(self.root))
+        self.assertFalse(self.target.exists())
 
     def test_created_defaults_removed_after_repeated_install(self):
         self.run_helper("install")

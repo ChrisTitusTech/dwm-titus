@@ -149,3 +149,18 @@ ordinary file repository as the unprivileged `nobody` user.
 The skeptic also verified mixed HTTPS/HTTP mirror lists: failed HTTPS checks
 and discovery now fall back to native DNF within the same deadline, allowing
 DNF to use reachable endpoints excluded from mirror measurement.
+
+A subsequent hosted pass identified repository-budget starvation, a trust test
+that depended on checkout ownership, the lifecycle helper's elevation path,
+and partial-write cleanup. The final fixes share remaining probe time across
+repositories, use an explicitly writable trust fixture, invoke the installed
+root-owned lifecycle helper, and stage/fsync/close complete files before
+no-clobber publication. Tests cover write, close, fsync, ownership-publication
+failures, and relative DESTDIR installation/removal. The suite now has 27
+updater cases and 13 defaults lifecycle cases.
+
+The additional complete `scripts/run-tests` run passed, including all 689
+system-management backend tests, the complete QML/X11 matrix, install
+preservation, and release-archive validation. Changed installation and probe
+checks were repeated afterward; unchanged full-suite coverage was reused.
+The final independent skeptic review reported no actionable findings.

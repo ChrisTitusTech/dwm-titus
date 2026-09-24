@@ -101,9 +101,12 @@ class InitialUpdateTests(unittest.TestCase):
             complete.touch()
             self.assertFalse(client.pending())
 
-    def test_repository_copy_cannot_be_elevated(self):
+    def test_writable_helper_cannot_be_elevated(self):
+        helper = self.work / "writable-helper"
+        helper.write_text("untrusted fixture")
+        helper.chmod(0o666)
         with self.assertRaises(RuntimeError):
-            client.trusted(ROOT / "scripts/dwm-initial-update-root")
+            client.trusted(helper)
 
     def test_authorization_denial_keeps_update_pending(self):
         with patch.object(client, "pending", return_value=True), patch.object(client, "trusted"), \
@@ -235,6 +238,24 @@ class InitialUpdateTests(unittest.TestCase):
                     mirrors.return_value = discovery
                 self.assertEqual(worker.probe(), 0)
                 native.assert_called_once()
+
+    def test_stalled_repository_reserves_time_for_next_repository(self):
+        repos = [{"id": name, "custom": True} for name in ("offline", "reachable")]
+        clock = [0]
+        deadlines = []
+
+        def native(repo, _directory, deadline):
+            deadlines.append(deadline)
+            if repo["id"] == "offline":
+                clock[0] = deadline
+                raise subprocess.TimeoutExpired("dnf", deadline)
+            return True
+
+        with patch.object(worker, "repositories", return_value=repos), \
+                patch.object(worker.time, "monotonic", side_effect=lambda: clock[0]), \
+                patch.object(worker, "native_probe", side_effect=native):
+            self.assertEqual(worker.probe(), 0)
+        self.assertEqual(deadlines, [22.5, 45])
 
     def test_non_https_repositories_use_native_connectivity_without_measurement(self):
         repos = [{"id": "fixture", "custom": False, "baseurl": ["http://intranet.test/repo"]},

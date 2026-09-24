@@ -748,7 +748,8 @@ sudo make install \
 # Install a low-priority DNF5 default without replacing administrator settings.
 # The main /etc/dnf/dnf.conf and later drop-ins keep precedence.
 info "Installing DNF5 defaults while preserving administrator settings."
-sudo /usr/bin/python3 -I "$REPO_DIR/scripts/dwm-dnf-defaults" install --source "$REPO_DIR/config/dnf/40-dwm-titus.conf"
+dnf_defaults_helper=$(make -s --no-print-directory print-dnf-defaults-helper)
+sudo /usr/bin/python3 -I "$dnf_defaults_helper" install --source "$REPO_DIR/config/dnf/40-dwm-titus.conf"
 # Seed before Gear Lever creates its AppImage MIME preference file.
 bash "$REPO_DIR/scripts/seed-default-apps.sh"
 if install_recommended_profile; then

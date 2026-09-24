@@ -166,3 +166,9 @@ ineligible for the HTTPS-only mirror optimizer.
 
 Failed HTTPS probes or mirror discovery also fall back to native DNF within
 the shared deadline, including mixed lists with a reachable HTTP fallback.
+
+The 45-second probe budget is shared across the remaining repositories so a
+stalled first repository cannot consume every later repository's opportunity.
+The defaults lifecycle helper is installed under the configured prefix's
+`libexec/dwm-titus/` directory before elevation. Defaults and their ownership
+record are staged completely before publication; failed writes roll back.
