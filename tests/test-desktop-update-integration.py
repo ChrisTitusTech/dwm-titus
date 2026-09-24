@@ -98,7 +98,7 @@ with tempfile.TemporaryDirectory(prefix="desktop-integration-", dir="/opt") as t
             os.chown(target, uid, uid)
     user("python3", source / "scripts/dwm-desktop-update", "record-user", source)
     # A real new commit changes managed QML, the session binary, commands, and
-    # the privileged helper itself without changing the installed layout.
+    # the privileged helper itself, adds a palette, and retires a managed asset.
     before_manifest = json.loads((prefix / "share/dwm-titus/desktop-install.json").read_text())
     changed_commands = ("dwm-settings-wallpaper", "dwm-xsettings", "dwm-desktop-update")
     for name in (*changed_commands, "dwm-desktop-update-root"):
@@ -113,7 +113,12 @@ with tempfile.TemporaryDirectory(prefix="desktop-integration-", dir="/opt") as t
     directory_link = marker.parent / "update-integration-dir-link"
     file_link.symlink_to(marker.name)
     directory_link.symlink_to("settings")
-    user("git", "add", "config/quickshell", "scripts", "dwm.c")
+    theme = source / "assets/themes/Dwm-Integration"
+    shutil.copytree(source / "assets/themes/Dwm-dracula", theme)
+    retired = source / "assets/themes/Dwm-dracula/gtk-2.0/gtkrc"
+    retired.unlink()
+    subprocess.run(["chown", "-R", "desktop-test:desktop-test", theme], check=True)
+    user("git", "add", "config/quickshell", "scripts", "dwm.c", "assets/themes")
     user("git", "commit", "-m", "Update managed shell and system executables")
     revision = subprocess.check_output(["git", "-c", "safe.directory=" + str(source), "-C", source, "rev-parse", "HEAD"], text=True).strip()
     rule = Path("/etc/polkit-1/rules.d/00-desktop-update-test.rules")
@@ -172,6 +177,9 @@ sys.exit(result)
         assert status["state"] == "restart-required", status
         after_manifest = json.loads((prefix / "share/dwm-titus/desktop-install.json").read_text())
         assert after_manifest["revision"] == revision
+        assert str(prefix / "share/themes/Dwm-Integration/gtk-3.0/gtk.css") in after_manifest["files"]
+        assert (prefix / "share/themes/Dwm-Integration/gtk-3.0/gtk.css").is_file()
+        assert not (prefix / "share/themes/Dwm-dracula/gtk-2.0/gtkrc").exists()
         changed_system = [prefix / "bin" / name for name in ("dwm", *changed_commands)]
         changed_system.append(Path(helper))
         for path in changed_system:

@@ -1,5 +1,5 @@
 #!/usr/bin/python3 -I
-"""Polkit entry point: replace only files in the installed desktop manifest.
+"""Polkit entry point: transactionally update the managed desktop file namespaces.
 
 Never execute a staged installer, Makefile, hook, or caller-selected command.
 The archive is copied to root-owned storage before it is validated or applied.
@@ -114,7 +114,7 @@ def restore(backup, journal):
         path = Path(entry["path"])
         current = fingerprint(path) if os.path.lexists(path) else None
         current_uid = path.lstat().st_uid if current is not None else None
-        matches_new = current == candidate["files"][entry["path"]] and current_uid == 0
+        matches_new = current == candidate["files"].get(entry["path"]) and (current is None or current_uid == 0)
         matches_old = (journal["state"] in ("applying", "rolling-back") and current == entry["old"]
                        and (current is None or current_uid in (0, entry.get("oldUid", 0))))
         if not matches_new and not matches_old:
@@ -140,6 +140,60 @@ def restore(backup, journal):
     write_json(backup / "journal.json", journal)
 
 
+def managed_destination(name, installed):
+    """Allow additions only in desktop-owned namespaces, never arbitrary paths."""
+    path = Path(name)
+    if not path.is_absolute() or str(path) != name or ".." in path.parts:
+        return False
+    if name in installed["files"]:
+        return True
+    layout = installed["layout"]
+    prefix = Path(layout["prefix"])
+    if path.parent in (prefix / "bin", prefix / "libexec/dwm-titus"):
+        return re.fullmatch(r"dwm-[A-Za-z0-9_.-]+", path.name) is not None
+    data = Path(layout.get("datadir", "/usr/share"))
+    try:
+        relative = path.relative_to(data)
+    except ValueError:
+        return False
+    parts = relative.parts
+    return ((len(parts) >= 3 and parts[0] == "themes" and re.fullmatch(r"Dwm-[A-Za-z0-9_-]+", parts[1]) is not None)
+            or (len(parts) >= 3 and parts[0] == "icons" and re.fullmatch(r"Capitaine-Cursors[A-Za-z0-9_-]*", parts[1]) is not None)
+            or (len(parts) == 3 and parts[0] in ("qt5ct", "qt6ct") and parts[1] == "colors"
+                and re.fullmatch(r"Dwm-[A-Za-z0-9_-]+\.conf", parts[2]) is not None)
+            or (len(parts) >= 3 and parts[:2] == ("licenses", "dwm-titus")))
+
+
+def trusted_parent(path, create=False):
+    """Check each ancestor before creating a missing directory; reject symlinks."""
+    if not path.exists() and not path.is_symlink():
+        trusted_parent(path.parent, create)
+        if create:
+            path.mkdir(mode=0o755)
+            sync_directory(path.parent)
+        return
+    trusted(path, True)
+
+
+def validate_packages(packages):
+    if (not isinstance(packages, list) or len(packages) > 256
+            or any(not isinstance(item, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9+_.-]{0,127}", item)
+                   or item.endswith(".rpm") for item in packages) or packages != sorted(set(packages))):
+        fail("Invalid desktop package names")
+
+
+def install_packages(packages):
+    validate_packages(packages)
+    missing = [package for package in packages if subprocess.run(
+        ["/usr/bin/rpm", "-q", "--quiet", "--", package], stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL, timeout=10).returncode != 0]
+    if missing:
+        print("Installing required desktop packages: " + ", ".join(missing), flush=True)
+        subprocess.run(["/usr/bin/dnf", "install", "-y", "--", *missing], check=True,
+                       env={"PATH": "/usr/bin:/bin", "HOME": "/root", "LANG": "C.UTF-8"},
+                       stdin=subprocess.DEVNULL, cwd="/", timeout=1800)
+
+
 def validate_candidate(candidate, installed):
     if (not isinstance(candidate, dict)
             or set(candidate) != {"schema", "source", "revision", "layout", "packages", "files"}
@@ -148,22 +202,40 @@ def validate_candidate(candidate, installed):
             or not isinstance(candidate.get("revision"), str)
             or candidate.get("schema") != 1 or candidate.get("source") != installed["source"]
             or candidate.get("layout") != installed["layout"]
-            or candidate.get("packages") != installed["packages"]
-            or set(candidate.get("files", {})) != set(installed["files"])
             or not re.fullmatch(r"[0-9a-f]{40}", candidate.get("revision", ""))):
         fail("Desktop install layout changed; use the documented source installer")
+    validate_packages(candidate["packages"])
     for name, record in candidate["files"].items():
-        old = installed["files"][name]
+        if not managed_destination(name, installed):
+            fail("Destination is outside the managed desktop: " + name)
+        if any(str(parent) in candidate["files"] for parent in Path(name).parents):
+            fail("Managed file overlaps a directory")
+        old = installed["files"].get(name, {})
         # Approval permits new contents at installed destinations. Hashes bind
         # the payload to this update, not to the previous installation.
         if not isinstance(record, dict):
             fail("Invalid managed file metadata")
-        if "link" in old:
+        if "link" in record:
             if record != old:
-                fail("Managed link layout changed; use the source installer")
+                # New aliases must end at a regular payload file in the same
+                # directory. Never allow an absolute, escaping, or cyclic link.
+                seen = {name}
+                link = record
+                while "link" in link:
+                    target = link["link"]
+                    if (set(link) != {"link"} or not isinstance(target, str)
+                            or not target or Path(target).name != target or target in (".", "..")):
+                        fail("Unsafe managed link target")
+                    destination = str(Path(name).parent / target)
+                    if destination in seen or destination not in candidate["files"]:
+                        fail("Managed link target is missing or cyclic")
+                    seen.add(destination)
+                    link = candidate["files"][destination]
+                    if not isinstance(link, dict):
+                        fail("Invalid managed link metadata")
         elif (set(record) != {"sha256", "mode"} or not isinstance(record.get("sha256"), str)
               or not re.fullmatch(r"[0-9a-f]{64}", record.get("sha256", ""))
-              or record.get("mode") != old["mode"] or record["mode"] not in (0o644, 0o755)):
+              or record.get("mode") not in (0o644, 0o755)):
             fail("Invalid managed file metadata")
 
 
@@ -173,11 +245,13 @@ def apply_archive(archive, expected, operation, uid, bundle_digest, revision):
     if hashlib.sha256(manifest_path.read_bytes()).hexdigest() != expected:
         fail("Installed desktop changed after preview; check again")
     backup = STATE / operation
+    approved_packages = installed["packages"]
     if backup.exists():
         reservation = read_json(backup / "journal.json")
         if (reservation.get("state") != "preparing" or reservation.get("uid") != uid
                 or reservation.get("generation") != expected):
             fail("Desktop operation is not reserved by this user")
+        approved_packages = reservation.get("packages", approved_packages)
     else:
         backup.mkdir(mode=0o700)
     descriptor = os.open(archive, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
@@ -205,12 +279,10 @@ def apply_archive(archive, expected, operation, uid, bundle_digest, revision):
         members = []
         for member in bundle:
             members.append(member)
-            if len(members) > len(installed["files"]) + 1:
+            if len(members) > 100000:
                 fail("Too many update bundle members")
-        if len(members) != len(installed["files"]) + 1:
-            fail("Incomplete update bundle")
         names = [member.name for member in members]
-        if len(set(names)) != len(names) or set(names) != {"manifest.json", *(str(i) for i in range(len(installed["files"])))}:
+        if len(set(names)) != len(names) or set(names) != {"manifest.json", *(str(i) for i in range(len(members) - 1))}:
             fail("Unexpected bundle members")
         total = 0
         for member in members:
@@ -224,27 +296,41 @@ def apply_archive(archive, expected, operation, uid, bundle_digest, revision):
     sync_directory(payload)
     candidate = read_json(payload / "manifest.json")
     validate_candidate(candidate, installed)
+    if candidate["packages"] != approved_packages:
+        fail("Desktop packages differ from the prepared dependency plan")
+    if len(members) != len(candidate["files"]) + 1:
+        fail("Incomplete update bundle")
     if candidate["revision"] != revision:
         fail("Update bundle does not match the confirmed revision")
     for index, name in enumerate(sorted(candidate["files"])):
         record = candidate["files"][name]
         if "sha256" in record and hashlib.sha256((payload / str(index)).read_bytes()).hexdigest() != record["sha256"]:
             fail("Update bundle checksum mismatch")
-        trusted(Path(name).parent, True)
+        trusted_parent(Path(name).parent)
+        if name not in installed["files"] and os.path.lexists(name):
+            fail("New managed destination already exists: " + name)
+    removed = sorted(set(installed["files"]) - set(candidate["files"]))
+    for name in removed:
+        trusted_parent(Path(name).parent)
+        if os.path.lexists(name) and (fingerprint(Path(name)) != installed["files"][name]
+                                     or Path(name).lstat().st_uid != 0):
+            fail("Retired managed file was modified: " + name)
     copy_saved(manifest_path, backup / "manifest.json")
     journal = {"state": "applying", "replaced": [], "uid": uid, "operation": operation,
                "afterManifest": hashlib.sha256((json.dumps(candidate, sort_keys=True) + "\n").encode()).hexdigest()}
     write_json(backup / "journal.json", journal)
     write_json(STATE / "latest.json", {"operation": operation})
     try:
-        for index, name in enumerate(sorted(candidate["files"])):
+        for index, name in enumerate([*sorted(candidate["files"]), *removed]):
             path = Path(name)
+            trusted_parent(path.parent, create=True)
+            replacement = candidate["files"].get(name)
             old = fingerprint(path) if os.path.lexists(path) else None
             if old is not None and "sha256" in old:
                 if (old["mode"] not in (0o644, 0o755)
-                        or (path.lstat().st_uid != 0 and old != installed["files"][name])):
+                        or (path.lstat().st_uid != 0 and old != installed["files"].get(name))):
                     fail("Unsafe installed file cannot be saved for recovery; use the source installer")
-            if old == candidate["files"][name] and path.lstat().st_uid == 0:
+            if old == replacement and (old is None or path.lstat().st_uid == 0):
                 continue
             blob = "old-" + str(index)
             if old is not None and "link" not in old:
@@ -252,7 +338,11 @@ def apply_archive(archive, expected, operation, uid, bundle_digest, revision):
             journal["replaced"].append({"path": name, "old": old, "blob": blob,
                                         "oldUid": path.lstat().st_uid if old is not None else None})
             write_json(backup / "journal.json", journal)
-            replace(path, payload / str(index), candidate["files"][name])
+            if replacement is None:
+                path.unlink(missing_ok=True)
+                sync_directory(path.parent)
+            else:
+                replace(path, payload / str(index), replacement)
         for name, record in candidate["files"].items():
             if fingerprint(Path(name)) != record or Path(name).lstat().st_uid != 0:
                 fail("Installed file verification failed")
@@ -286,7 +376,7 @@ def main():
 
 
 def perform(args, uid):
-    if len(args) not in (2, 3, 6):
+    if len(args) not in (2, 3, 4, 6):
         fail("Expected begin GENERATION OPERATION, apply BUNDLE GENERATION OPERATION DIGEST REVISION, dependencies GENERATION, rollback OPERATION, or complete OPERATION")
     STATE.mkdir(parents=True, exist_ok=True, mode=0o700)
     trusted(STATE, True)
@@ -370,6 +460,21 @@ def perform(args, uid):
                 fail("System installation or rollback must finish before completion")
             journal["state"] = "rolled-back" if journal["state"].startswith("rolled-back") else "complete"
             write_json(backup / "journal.json", journal)
+        elif args[0] == "packages" and len(args) == 4:
+            if not re.fullmatch(r"[0-9a-f]{32}", args[2]):
+                fail("Invalid desktop operation")
+            backup = STATE / args[2]
+            journal = read_json(backup / "journal.json")
+            manifest_path = PREFIX / "share/dwm-titus/desktop-install.json"
+            if (journal.get("state") != "preparing" or journal.get("uid") != uid
+                    or journal.get("generation") != args[1]
+                    or hashlib.sha256(manifest_path.read_bytes()).hexdigest() != args[1]):
+                fail("Dependency plan does not match the reserved operation")
+            packages = json.loads(args[3])
+            validate_packages(packages)
+            install_packages(packages)
+            journal["packages"] = packages
+            write_json(backup / "journal.json", journal)
         elif args[0] == "dependencies" and len(args) == 2:
             for journal_path in STATE.glob("*/journal.json"):
                 journal = read_json(journal_path)
@@ -379,16 +484,7 @@ def perform(args, uid):
             manifest = read_json(manifest_path)
             if hashlib.sha256(manifest_path.read_bytes()).hexdigest() != args[1]:
                 fail("Dependency preview changed; check again")
-            packages = manifest["packages"]
-            if not packages or any(not re.fullmatch(r"[A-Za-z0-9+_.-]+", item) for item in packages):
-                fail("Invalid installed dependency allowlist")
-            missing = [package for package in packages if subprocess.run(
-                ["/usr/bin/rpm", "-q", "--quiet", "--", package], stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL, timeout=10).returncode != 0]
-            if missing:
-                subprocess.run(["/usr/bin/dnf", "install", "-y", "--", *missing], check=True,
-                               env={"PATH": "/usr/bin:/bin", "HOME": "/root", "LANG": "C.UTF-8"},
-                               stdin=subprocess.DEVNULL, timeout=1800)
+            install_packages(manifest["packages"])
         else:
             fail("Unsupported desktop update action")
 
@@ -424,10 +520,13 @@ def session(mode, operation, generation, revision, uid):
                     phase = "dependencies"
                 elif args == ["begin", generation, operation] and phase in ("update", "dependencies"):
                     phase = "preparing"
+                elif (action == "packages" and len(args) == 4 and args[1:3] == [generation, operation]
+                      and phase == "preparing"):
+                    phase = "prepared"
                 elif (action == "apply" and len(args) == 6 and args[2:4] == [generation, operation]
-                      and args[5] == revision and phase == "preparing"):
+                      and args[5] == revision and phase in ("preparing", "prepared")):
                     phase = "applied"
-                elif args == ["rollback", operation] and phase in ("preparing", "applied", "recover"):
+                elif args == ["rollback", operation] and phase in ("preparing", "prepared", "applied", "recover"):
                     phase = "rolled-back"
                 elif args == ["complete", operation] and phase in ("applied", "rolled-back", "recover"):
                     phase = "complete"

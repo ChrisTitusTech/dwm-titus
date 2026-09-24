@@ -63,6 +63,106 @@ class Security(unittest.TestCase):
                 archive.addfile(item, io.BytesIO(content))
         os.chown(self.bundle, 1000, 1000)
 
+    def migration_archive(self):
+        candidate = copy.deepcopy(self.manifest)
+        candidate["revision"] = "b" * 40
+        self.added = self.prefix / "share/themes/Dwm-New/gtk-3.0/gtk.css"
+        self.alias = self.added.with_name("gtk-dark.css")
+        candidate["files"] = {str(self.added): {"mode": 0o644, "sha256": hashlib.sha256(b"theme").hexdigest()},
+                              str(self.alias): {"link": "gtk.css"}}
+        self.manifest["layout"]["datadir"] = str(self.prefix / "share")
+        self.manifest["files"][str(self.binary)]["sha256"] = hashlib.sha256(b"original").hexdigest()
+        self.manifest_path.write_text(json.dumps(self.manifest))
+        candidate["layout"] = self.manifest["layout"]
+        with tarfile.open(self.bundle, "w:") as archive:
+            for name, content in (("manifest.json", json.dumps(candidate).encode()), ("0", b""), ("1", b"theme")):
+                item = tarfile.TarInfo(name)
+                item.size = len(content)
+                archive.addfile(item, io.BytesIO(content))
+        os.chown(self.bundle, 1000, 1000)
+
+    def test_added_theme_and_removed_command_roll_back(self):
+        self.migration_archive()
+        original = self.manifest_path.read_bytes()
+        result = self.apply()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.added.read_bytes(), b"theme")
+        self.assertEqual(self.added.stat().st_uid, 0)
+        self.assertTrue(self.alias.is_symlink())
+        self.assertEqual(self.alias.read_bytes(), b"theme")
+        self.assertFalse(self.binary.exists())
+        result = self.command("rollback", self.operation)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(self.added.exists())
+        self.assertFalse(self.alias.is_symlink())
+        self.assertEqual(self.binary.read_bytes(), b"original")
+        self.assertEqual(self.manifest_path.read_bytes(), original)
+
+    def test_failed_migration_restores_added_and_removed_files(self):
+        self.migration_archive()
+        module = runpy.run_path(str(self.helper))
+        apply = module["apply_archive"]
+        module["STATE"].mkdir(parents=True, exist_ok=True, mode=0o700)
+        original_write = apply.__globals__["write_json"]
+        def fail_manifest(path, value):
+            if path == self.manifest_path and value.get("revision") == "b" * 40:
+                raise OSError("injected migration publication failure")
+            original_write(path, value)
+        with patch.dict(apply.__globals__, {"write_json": fail_manifest}):
+            with self.assertRaisesRegex(OSError, "migration publication"):
+                apply(self.bundle, hashlib.sha256(self.manifest_path.read_bytes()).hexdigest(), self.operation,
+                      1000, hashlib.sha256(self.bundle.read_bytes()).hexdigest(), "b" * 40)
+        self.assertFalse(self.added.exists())
+        self.assertFalse(self.alias.is_symlink())
+        self.assertEqual(self.binary.read_bytes(), b"original")
+        self.assertEqual(json.loads(self.manifest_path.read_text())["revision"], "a" * 40)
+
+    def test_migration_rejects_unmanaged_collision(self):
+        self.migration_archive()
+        self.added.parent.mkdir(parents=True)
+        self.added.write_bytes(b"user theme")
+        result = self.apply()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("already exists", result.stderr)
+        self.assertEqual(self.added.read_bytes(), b"user theme")
+        self.assertEqual(self.binary.read_bytes(), b"original")
+
+    def test_migration_rejects_symlink_parent(self):
+        self.migration_archive()
+        self.added.parent.parent.parent.mkdir(parents=True)
+        self.added.parent.parent.symlink_to(self.prefix, target_is_directory=True)
+        result = self.apply()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Untrusted", result.stderr)
+        self.assertEqual(self.binary.read_bytes(), b"original")
+
+    def test_migration_preserves_modified_retired_file(self):
+        self.migration_archive()
+        self.binary.write_bytes(b"administrator edit")
+        result = self.apply()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Retired managed file was modified", result.stderr)
+        self.assertFalse(self.added.exists())
+
+    def test_changed_dependencies_require_reserved_plan(self):
+        self.archive(lambda value: value.update(packages=["git"]))
+        result = self.apply()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("prepared dependency plan", result.stderr)
+
+    def test_session_installs_changed_package_plan(self):
+        # rpm is already installed in Fedora: exercise the plan without network.
+        self.archive(lambda value: value.update(packages=["rpm"]))
+        generation = hashlib.sha256(self.manifest_path.read_bytes()).hexdigest()
+        result = self.session_command([["begin", generation, self.operation],
+                                      ["packages", generation, self.operation, '["rpm"]'],
+                                      ["apply", str(self.bundle), generation, self.operation,
+                                       hashlib.sha256(self.bundle.read_bytes()).hexdigest(), "b" * 40],
+                                      ["complete", self.operation]])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(all(json.loads(line)["ok"] for line in result.stdout.splitlines()), result.stdout)
+        self.assertEqual(json.loads(self.manifest_path.read_text())["packages"], ["rpm"])
+
     def command(self, *args, helper=None, uid=1000):
         return subprocess.run([str(helper or self.helper), *args], capture_output=True, text=True,
                               env={**os.environ, "PKEXEC_UID": str(uid), "PYTHONPATH": str(self.prefix)})
@@ -424,7 +524,7 @@ raise SystemExit(17)
         self.archive(lambda value: value["files"].update({"/etc/shadow": value["files"].pop(str(self.binary))}))
         result = self.apply()
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("layout changed", result.stderr)
+        self.assertIn("outside the managed desktop", result.stderr)
         self.assertEqual(self.binary.read_bytes(), b"original")
 
     def assert_changed_payload_installed_and_restored(self, target):
