@@ -540,6 +540,8 @@ if command -v picom >/dev/null 2>&1; then
 	"$picom_helper" start >/dev/null 2>&1 &
 fi
 
+# Only freshly provisioned images have a pending initial package update.
+start_detached dwm-initial-update --watch
 # dwm root-window status publisher for Quickshell's event-driven panel.
 start_detached_display_command_once dwm-status
 

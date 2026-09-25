@@ -45,10 +45,24 @@ mapfile -t packages < <({
 } | sort -u)
 rpm -q "${packages[@]}" >/dev/null
 python3 /usr/share/dwm-titus-image/scripts/image/check-packagekit.py
+[[ -f /usr/share/dnf5/libdnf.conf.d/40-dwm-titus.conf ]]
+[[ -x /usr/local/libexec/dwm-titus/dwm-initial-update-root ]]
+[[ -f /var/lib/dwm-titus/initial-update/pending.json ]]
+[[ ! -e /var/lib/dwm-titus/initial-update/complete.json ]]
+python3 - <<'PY'
+import libdnf5
+base = libdnf5.base.Base()
+base.load_config()
+config = base.get_config()
+assert config.get_defaultyes_option().get_value()
+assert not config.get_assumeyes_option().get_value()
+assert not config.get_fastestmirror_option().get_value()
+assert config.get_pkg_gpgcheck_option().get_value()
+PY
 [[ -z $(find /usr/share/dwm-titus-image \( -name '.env' -o -name '.env.*' -o -name '.envrc' \) -print -quit) ]]
 missing=0
 # maim uses libslop for region selection; RPM resolves its shared dependencies.
-for command in dwm quickshell alacritty starship herdr brave-origin celluloid mpv sxiv maim xclip xdotool xrandr xset xinput \
+for command in dwm quickshell fastfetch starship herdr brave-origin celluloid mpv sxiv maim xclip xdotool xrandr xset xinput \
 	setxkbmap xkbset notify-send xdg-open xdg-mime xdg-user-dir \
 	picom feh dex-autostart xsettingsd light-locker light-locker-command \
 	nmcli bluetoothctl wpctl pactl playerctl brightnessctl amixer protonrestart \

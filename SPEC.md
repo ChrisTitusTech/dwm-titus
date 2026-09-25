@@ -648,6 +648,23 @@ Settings closes; no recurring compositor-state poll is required.
 
 ### 5.11 Fedora Image Contract
 
+Fresh standard and NVIDIA images must include fastfetch and DNF5 defaults that
+make interactive update/upgrade confirmation default to Yes without enabling
+blanket `assumeyes`. Existing administrator configuration retains precedence.
+
+The first package update is offered after real repository access becomes
+available, preserving offline installation and a usable offline desktop. It
+requires visible authorization and DNF transaction confirmation, reports
+progress/failure, and records completion only after success. Failure, denied
+authorization, package-manager contention and interrupted connectivity permit
+retry. Completion persists across logins; reboot is never automatic.
+
+Before that update, bounded mirror measurements must consider throughput and
+connection time on the installed user's network. Select only mirrors from the
+configured repository service, preserve signature verification and fallback
+mirrors, and retain defaults for unsupported or failed measurements. Never
+capture builder-specific mirror selections. See [INITIAL-UPDATE.md](docs/INITIAL-UPDATE.md).
+
 Released Fedora images must be based on the Fedora Server Network Install ISO,
 not a Live ISO. The image builder embeds this repository and the selected
 Kickstart while preserving the upstream Anaconda installation environment.

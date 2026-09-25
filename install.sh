@@ -745,6 +745,11 @@ sudo make install \
 	XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}" \
 	XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}" \
 	XDG_STATE_HOME="${XDG_STATE_HOME:-$HOME/.local/state}"
+# Install a low-priority DNF5 default without replacing administrator settings.
+# The main /etc/dnf/dnf.conf and later drop-ins keep precedence.
+info "Installing DNF5 defaults while preserving administrator settings."
+dnf_defaults_helper=$(make -s --no-print-directory print-dnf-defaults-helper)
+sudo /usr/bin/python3 -I "$dnf_defaults_helper" install --source "$REPO_DIR/config/dnf/40-dwm-titus.conf"
 # Seed before Gear Lever creates its AppImage MIME preference file.
 bash "$REPO_DIR/scripts/seed-default-apps.sh"
 if install_recommended_profile; then

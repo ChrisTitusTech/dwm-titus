@@ -1,0 +1,159 @@
+#!/usr/bin/python3 -I
+"""Offer the image's initial package update without blocking desktop startup."""
+import fcntl
+import os
+from pathlib import Path
+import stat
+import subprocess
+import sys
+import threading
+
+PENDING = Path("/var/lib/dwm-titus/initial-update/pending.json")
+COMPLETE = Path("/var/lib/dwm-titus/initial-update/complete.json")
+HELPER = Path(__file__).resolve().parents[1] / "libexec/dwm-titus/dwm-initial-update-root"
+
+
+def pending():
+    """Return whether the image still needs its initial package update."""
+    return PENDING.is_file() and not COMPLETE.exists()
+
+
+def trusted(path):
+    """Require the helper and its ancestors to be root-owned and non-writable."""
+    for item in (path, *path.parents):
+        info = item.lstat()
+        if (info.st_uid != 0 or info.st_mode & 0o022 or
+                not (stat.S_ISREG(info.st_mode) or stat.S_ISDIR(info.st_mode))):
+            raise RuntimeError("Initial update requires the installed root-owned helper.")
+
+
+def terminal():
+    """Request polkit authorization and keep transaction results visible."""
+    if not pending():
+        print("No initial image update is pending. Use Settings > System for package updates.")
+        return 0
+    trusted(HELPER)
+    print("Initial Fedora update: measure mirrors, validate repositories, then upgrade packages.", flush=True)
+    print("Administrator authorization and DNF confirmation are required. You can decline either.", flush=True)
+    result = subprocess.run(["/usr/bin/pkexec", str(HELPER), "run"])
+    if result.returncode:
+        print("Initial update remains pending. Close other package managers and retry dwm-initial-update.")
+    try:
+        input("Press Enter to close this window.")
+    except EOFError:
+        pass
+    return result.returncode
+
+
+def open_terminal():
+    """Launch the installed updater in the configured desktop terminal."""
+    return subprocess.Popen([str(Path(__file__).resolve().parent / "dwm-terminal"),
+                             "-e", str(Path(__file__).resolve())], start_new_session=True)
+
+
+def watch():
+    """Offer once per login after a bounded repository probe succeeds."""
+    if not pending():
+        return 0
+    import gi
+    gi.require_version("Gtk", "3.0")
+    gi.require_version("Gdk", "3.0")
+    from gi.repository import Gdk, Gio, GLib, Gtk
+
+    if not Gtk.init_check()[0]:
+        return 0
+
+    runtime = Path(os.environ["XDG_RUNTIME_DIR"])
+    info = runtime.lstat()
+    if info.st_uid != os.getuid() or not stat.S_ISDIR(info.st_mode) or info.st_mode & 0o077:
+        raise RuntimeError("Unsafe session runtime directory")
+    lock = (runtime / "dwm-initial-update.lock").open("w")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        return 0
+    trusted(HELPER)
+    loop = GLib.MainLoop()
+    # Keep the watcher tied to this X session, including startx logouts where
+    # the enclosing TTY and user manager remain alive.
+    Gdk.Display.get_default().connect("closed", lambda *_args: loop.quit())
+    busy = False
+
+    def finished(ready):
+        """Handle probe completion on the GTK thread without overlapping offers."""
+        nonlocal busy
+        # Gtk.Dialog.run starts a nested loop. Keep probes suppressed while an
+        # offer is visible, including during another NetworkManager signal.
+        busy = ready
+        if not pending():
+            loop.quit()
+        elif ready:
+            dialog = Gtk.MessageDialog(
+                message_type=Gtk.MessageType.QUESTION, buttons=Gtk.ButtonsType.NONE,
+                text="Update your new Fedora desktop?")
+            dialog.format_secondary_text(
+                "Repositories are reachable. Measure download mirrors and install current packages "
+                "in a terminal. Administrator authorization and transaction confirmation follow. "
+                "You can keep working, retry later with dwm-initial-update, and restart when convenient.")
+            dialog.add_button("Later", Gtk.ResponseType.CANCEL)
+            dialog.add_button("Open update", Gtk.ResponseType.OK)
+            response = dialog.run()
+            dialog.destroy()
+            if response == Gtk.ResponseType.OK:
+                open_terminal()
+            # One offer per login, including a deliberate deferral.
+            loop.quit()
+        return False
+
+    def check(*_args):
+        """Start a non-overlapping probe or stop after another session completes."""
+        nonlocal busy
+        if not pending():
+            loop.quit()
+            return False
+        if not busy:
+            busy = True
+
+            def worker():
+                """Probe off the GTK thread and deliver only its readiness result."""
+                try:
+                    result = subprocess.run([str(HELPER), "probe"], timeout=55,
+                                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    ready = result.returncode == 0
+                except (OSError, subprocess.TimeoutExpired):
+                    ready = False
+                GLib.idle_add(finished, ready)
+
+            threading.Thread(target=worker, daemon=True).start()
+        return True
+
+    bus = Gio.bus_get_sync(Gio.BusType.SYSTEM, None)
+    bus.signal_subscribe("org.freedesktop.NetworkManager", "org.freedesktop.DBus.Properties",
+                         "PropertiesChanged", "/org/freedesktop/NetworkManager", None,
+                         Gio.DBusSignalFlags.NONE, check)
+    # Repository recovery has no client-side event. One bounded, non-overlapping
+    # retry every five minutes covers outages while NM connectivity is unchanged.
+    GLib.timeout_add_seconds(300, check)
+    check()
+    loop.run()
+    lock.close()
+    return 0
+
+
+def main():
+    """Dispatch the session watcher or an interactive update terminal."""
+    if sys.argv[1:] == ["--watch"]:
+        return watch()
+    if sys.argv[1:]:
+        raise RuntimeError("usage: dwm-initial-update [--watch]")
+    if sys.stdin.isatty():
+        return terminal()
+    return open_terminal().wait()
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except (RuntimeError, OSError, KeyError) as error:
+        print(str(error), file=sys.stderr)
+        sys.exit(1)

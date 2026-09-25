@@ -1,32 +1,28 @@
-# Desktop Update Roadmap
+# Fedora 0.7.2 Roadmap
 
 ## Current scope
 
-Add a complete desktop source update workflow at the top of Settings > System.
-The user approved implementation and a new ready-for-review PR on 2026-09-13.
-Merge and release are outside this change.
+Address issues #347, #344, #346 and #345 in one ready-for-review PR, as requested
+on 2026-09-24. Version 0.7.2 covers the initial Fedora image update workflow,
+DNF defaults and mirror measurement, and offline fastfetch provisioning.
+Merge, tag publication, release assets and live deployment are outside this PR.
 
-Phase 8 performance and fresh-install qualification remains complete within its
-recorded environment. Preserve its evidence in [P8-IMPLEMENTATION-PLAN.md](docs/P8-IMPLEMENTATION-PLAN.md)
-and [P8-QUALIFICATION.md](docs/P8-QUALIFICATION.md). Earlier outcomes remain in
-[COMPLETED-ROADMAP-20260911.md](docs/COMPLETED-ROADMAP-20260911.md).
+## Implementation and qualification
 
-## Desktop updates
+1. Audit effective Fedora 44 DNF5 configuration and provision conservative,
+   interactive defaults without replacing administrator overrides.
+2. Include fastfetch and mirror-measurement runtime dependencies in both images.
+3. Offer the initial update after repository access, measure trusted mirrors,
+   authorize a visible transaction, preserve retry, and persist only success.
+4. Validate ordering, mirror fallback and security, actual DNF prompts, clean
+   Fedora build/staged installation, image invariants and desktop behavior.
+5. Run repository gates and independent review, document exact image-validation
+   limits, and publish a ready-for-review PR against main.
 
-1. Record installed revisions and managed file hashes; detect upstream changes,
-   file drift, unsupported sources, and incomplete installations.
-2. Build a confirmed revision without elevation and stage the full managed
-   installation. Authorize only the root-owned manifest's system-file layout.
-3. Display update discovery, confirmation, streamed progress, retained results,
-   and restart guidance in the first System card.
-4. Preserve personal configuration and recover interrupted replacement without
-   overwriting newer installations or subsequent user changes.
-5. Validate focused worker and UI scenarios, privileged boundaries in a disposable
-   Fedora container, complete repository gates, and the actual managed X11 shell.
-6. Complete independent review, address findings, publish the branch, and open a
-   ready-for-review PR with validation evidence and any explicit runtime limits.
+Prior desktop-update work is documented in [DESKTOP-UPDATES.md](docs/DESKTOP-UPDATES.md)
+and PR #318. Preserve earlier qualification in
+[P8-QUALIFICATION.md](docs/P8-QUALIFICATION.md).
 
-Exit: checks distinguish outdated source from stale installed files; a confirmed
-update is backed up, staged, verified, and visible across Settings closure;
-installation and activation are reported separately; recovery and authorization
-failure are tested; the PR contains the required local review and validation.
+Exit: all four issue behaviors are implemented; validation evidence distinguishes
+focused/container/runtime checks from full offline image qualification. Do not
+claim a released or hardware-qualified image from static checks alone.

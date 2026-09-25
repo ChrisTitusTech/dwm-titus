@@ -74,6 +74,12 @@ no Internet connection or software selection. The images include Quickshell,
 Gear Lever, `maim`, region capture and clipboard tools. Internet access is needed
 later for updates and additional software.
 
+Images built from 0.7.2 also include `fastfetch` and offer a visible initial
+package update once repositories are reachable. The flow measures mirrors, asks
+for authorization, and preserves DNF confirmation; Enter accepts and No cancels.
+See [initial updates and DNF defaults](docs/INITIAL-UPDATE.md) for retry and
+configuration overrides.
+
 See the [installation guide](https://dwm.christitus.com/install.html#fedora-iso-recommended-for-a-new-installation)
 and [current build qualification](https://downloads.christitus.com/iso/BUILD-NOTES.md)
 for tested firmware modes and hardware limits, including NVIDIA and Secure Boot.

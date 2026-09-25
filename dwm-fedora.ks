@@ -105,6 +105,8 @@ PackageKit-glib
 python3
 python3-gobject
 python3-rpm
+python3-libdnf5
+fastfetch
 accountsservice
 cups
 system-config-printer
@@ -245,4 +247,7 @@ fi
 systemctl enable power-profiles-daemon.service
 systemctl enable lightdm.service
 systemctl set-default graphical.target
+# Arm only fresh image installations, never existing-system source updates.
+install -d -m 0755 /var/lib/dwm-titus/initial-update
+printf '{ "variant": "standard", "schema": 1 }\n' > /var/lib/dwm-titus/initial-update/pending.json
 %end

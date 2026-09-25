@@ -6,7 +6,27 @@ versions from `config.mk`.
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-09-24
+
+### Added
+
+- Offer a visible, authorized initial Fedora package update after repository
+  access becomes available on fresh standard and NVIDIA images (#344). Keep
+  offline startup usable and allow retry without recording false completion.
+- Measure mirror throughput and connection time within a bounded budget before
+  the initial upgrade; retain trusted repository fallback lists and signature
+  checks without shipping builder-specific mirror selections (#347).
+
+### Changed
+
+- Ship interactive Yes-default DNF5 prompts while preserving local overrides.
+  Retain repository ordering instead of assuming low latency means high
+  throughput; document the Fedora 44 configuration audit (#346).
+
 ### Fixed
+
+- Include fastfetch in both image variants and the shared image package map,
+  and require it during offline image capture validation (#345).
 
 - Capture the Xvfb runtime test's intentional invalid-config notifications so
   validation never sends false "dwm: bad config" warnings to the live desktop.
