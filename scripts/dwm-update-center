@@ -454,9 +454,10 @@ def snapshot(path, scanners, *, force=False, provider=None, now=None):
         try:
             with cache_commit_lock(Path(path).parent):
                 latest = {result.identifier: result for result in read_cache(path) or [] if result.identifier in active}
-                latest.update({key: result for key, result in updates.items() if result.error_code != "busy"})
+                cache_updates = {key: result for key, result in updates.items() if result.error_code != "busy"}
+                latest.update(cache_updates)
                 ordered_cache = [latest[meta.identifier] for meta in REGISTRY if meta.identifier in latest]
-                if ordered_cache:
+                if ordered_cache and cache_updates:
                     write_cache(path, ordered_cache)
                 results = {**latest, **updates}
         except (OSError, ValueError):
@@ -482,15 +483,7 @@ def scan_lock(identifier):
 
 
 def coordination_path():
-    """Provider exclusion must not depend on optional cache persistence."""
-    runtime = os.environ.get("XDG_RUNTIME_DIR")
-    if runtime:
-        try:
-            with cache_directory(runtime) as fd:
-                if fd is not None and not os.fstat(fd).st_mode & 0o077:
-                    return Path(runtime) / "dwm-titus/update-center"
-        except (ValueError, OSError):
-            pass
+    """One state domain per user; runtime/cache availability cannot split locks."""
     state = os.environ.get("XDG_STATE_HOME") or str(Path.home() / ".local/state")
     return Path(state) / "dwm-titus/update-center"
 

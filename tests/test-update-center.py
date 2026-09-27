@@ -415,16 +415,60 @@ class ScanIsolationTests(CacheTests):
         self.assertEqual(self.scan(force=True)[0].freshness, "fresh")
         self.assertEqual(list(self.path.parent.iterdir()), [])
 
-    def test_runtime_coordination_is_private_and_unsafe_runtime_falls_back_to_state(self):
+    def test_runtime_environment_does_not_change_state_coordination(self):
         from unittest.mock import patch
         runtime = Path(self.temp.name) / "runtime"
         runtime.mkdir(mode=0o700)
         with patch.dict(os.environ, {"XDG_RUNTIME_DIR": str(runtime)}):
             self.scan(force=True)
-            self.assertTrue((runtime / "dwm-titus/update-center/.scan-fedora").exists())
+            self.assertEqual(list(runtime.iterdir()), [])
             runtime.chmod(0o777)
             self.assertEqual(self.scan(force=True)[0].freshness, "fresh")
         self.assertTrue((Path(os.environ["XDG_STATE_HOME"]) / "dwm-titus/update-center/.scan-fedora").exists())
+
+    def test_cross_process_runtime_variation_never_splits_scanner_or_cache_ownership(self):
+        import select
+        from unittest.mock import patch
+        runtime = Path(self.temp.name) / "runtime"
+        alternate = Path(self.temp.name) / "alternate-runtime"
+        runtime.mkdir(mode=0o700)
+        alternate.mkdir(mode=0o700)
+        code = ("import runpy,sys;from dataclasses import replace;api=runpy.run_path(sys.argv[1]);\n"
+                "def scan():\n print('scanning',flush=True);sys.stdin.read(1);return replace(api['parse_fedora_snapshot'](sys.argv[3]),pending=0,items=())\n"
+                "api['snapshot'](sys.argv[2],{'fedora':scan},force=True,now=200)")
+        for changed in (None, str(alternate)):
+            with self.subTest(runtime=changed):
+                self.scan(force=True)
+                before = self.path.read_bytes()
+                before_metadata = (self.path.stat().st_ino, self.path.stat().st_mtime_ns)
+                child = subprocess.Popen([sys.executable, "-B", "-c", code, str(HELPER), str(self.path), source(ROW)],
+                    env={**os.environ, "XDG_RUNTIME_DIR": str(runtime)}, stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                try:
+                    self.assertTrue(select.select([child.stdout], [], [], 3)[0], "child scan did not start")
+                    self.assertEqual(child.stdout.readline(), "scanning\n")
+                    environment = {key: value for key, value in os.environ.items() if key != "XDG_RUNTIME_DIR"}
+                    if changed is not None:
+                        environment["XDG_RUNTIME_DIR"] = changed
+                    calls = []
+                    def second():
+                        calls.append("scanned")
+                        return self.good
+                    with patch.dict(os.environ, environment, clear=True):
+                        result = self.scan({"fedora": second}, force=True)[0]
+                    self.assertEqual(result.error_code, "busy")
+                    self.assertEqual(calls, [])
+                    self.assertEqual(self.path.read_bytes(), before)
+                    self.assertEqual((self.path.stat().st_ino, self.path.stat().st_mtime_ns), before_metadata)
+                finally:
+                    try:
+                        _, stderr = child.communicate("x", timeout=3)
+                    except subprocess.TimeoutExpired:
+                        child.kill()
+                        child.communicate()
+                        raise
+                self.assertEqual(child.returncode, 0, stderr)
+                self.assertEqual(self.api["read_cache"](self.path)[0].pending, 0)
 
     def test_unsafe_state_coordination_is_rejected_without_following_symlinks(self):
         state = Path(os.environ["XDG_STATE_HOME"])
