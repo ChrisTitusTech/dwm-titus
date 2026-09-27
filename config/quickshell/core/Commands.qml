@@ -167,4 +167,12 @@ Singleton {
     function accessibilitySettingsCommand(action, args) {
         return helperCommand("dwm-accessibility-settings", action, args, true);
     }
+
+    function updateCenterCommand(action, args) {
+        return helperCommand("dwm-update-center", action, args, true);
+    }
+
+    function updateCenterSettingsCommand(action, args) {
+        return helperCommand("dwm-update-center-settings", action, args, true);
+    }
 }
