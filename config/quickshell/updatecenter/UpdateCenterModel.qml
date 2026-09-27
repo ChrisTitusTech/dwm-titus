@@ -23,6 +23,7 @@ Scope {
     property string settingsBaseline: "absent"
     property bool initialCacheLoaded: false
     property bool initialLiveScanComplete: false
+    property bool connectivityReady: false
     property bool pendingForceRefresh: false
     property string pendingTerminalClose: ""
     readonly property bool online: root.connectivitySource.connectivity === NetworkConnectivity.Full
@@ -191,6 +192,7 @@ Scope {
     }
 
     onOnlineChanged: {
+        if (!root.connectivityReady) return;
         if (online) {
             root.scheduledRefresh();
             if (!startupTimer.running) refreshTimer.start();
@@ -203,6 +205,7 @@ Scope {
         root.refreshOperation();
         root.refresh(false);
         startupTimer.start();
+        root.connectivityReady = true;
     }
 
     Timer {

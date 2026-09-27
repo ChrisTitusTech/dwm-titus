@@ -18,9 +18,19 @@ ShellRoot {
         property int connectivity: NetworkConnectivity.None
     }
 
+    QtObject {
+        id: initiallyFullConnectivity
+        property int connectivity: NetworkConnectivity.Full
+    }
+
     UpdateCenterModel {
         id: model
         connectivitySource: connectivity
+    }
+
+    UpdateCenterModel {
+        id: initiallyFullModel
+        connectivitySource: initiallyFullConnectivity
     }
 
     Loader {
@@ -41,7 +51,11 @@ ShellRoot {
                 test.require(test.ticks < 750, "model test timed out at step " + test.step
                     + " detail=" + (model.providers.length ? model.providers[0].detail : "none")
                     + " pending=" + model.pendingForceRefresh + " message=" + model.message);
-                if (test.step === 0 && model.initialCacheLoaded && model.savedRefreshSeconds === 600) {
+                if (test.step === 0 && test.ticks > 10 && model.initialCacheLoaded
+                        && initiallyFullModel.initialCacheLoaded && model.savedRefreshSeconds === 600) {
+                    test.require(initiallyFullModel.providers[0].detail === "cache" && !initiallyFullModel.scanning
+                            && !initiallyFullModel.initialLiveScanComplete,
+                        "initially-Full connectivity must not bypass the 30-second startup delay");
                     test.require(model.providers[0].detail === "cache", "cached state must load immediately while offline");
                     const prior = model.providers;
                     const valid = "update-center-protocol\t1\t0\nprovider\tfedora\tFedora\tavailable\t1\t1\tfresh\t10\tyes\t\tReady\nitem\tfedora\tupdate\tPackage\t1\t2\tpkg\tsystem\thttps://example.test/release\ncomplete\tsnapshot\n";
