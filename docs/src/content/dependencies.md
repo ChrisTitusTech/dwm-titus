@@ -66,7 +66,7 @@ helpers and service APIs perform the underlying operations.
 | --- | --- | --- |
 | Audio engine | `pipewire`, `wireplumber`, `pipewire-pulseaudio` | Desktop. Audio processing, device/session policy, and PulseAudio compatibility. |
 | Audio tools | `alsa-utils`, `pulseaudio-utils`, `pavucontrol` | Desktop. Mixer commands, audio controls, and a standalone configuration interface. |
-| Network connections | `NetworkManager` | Full package group. Backend for networking controls; it may already be present on an existing Fedora system. |
+| Network connections | `NetworkManager`, `NetworkManager-wifi` | Full package group. Backend for networking controls, including the Wi-Fi device plugin. `NetworkManager` alone leaves Wi-Fi interfaces unmanaged. It may already be present on an existing Fedora system. |
 | Bluetooth | `bluez`, `blueman` | Desktop. Bluetooth services and device-management tools. |
 | Battery and power profiles | `upower`, `power-profiles-daemon` | Desktop. Battery state and performance/power profiles. The installer retains an installed provider of `ppd-service` rather than replacing it. |
 | Brightness | `brightnessctl` | Desktop. Backlight control where supported by the hardware. |
@@ -121,7 +121,8 @@ selected advanced operations to the relevant tools.
 | File synchronization | `rsync` | Full optional group; also used by image-building tooling. |
 
 The source-update reconciliation group is deliberately smaller than a complete
-installation profile: `xsettingsd`, `xkbset`, `bubblewrap`, and `libseccomp`.
+installation profile: `xsettingsd`, `xkbset`, `bubblewrap`, `libseccomp`, and
+`NetworkManager-wifi`.
 Rerun the installer with `recommended` or `full` to add that profile's complete
 system-management prerequisites to an older installation.
 

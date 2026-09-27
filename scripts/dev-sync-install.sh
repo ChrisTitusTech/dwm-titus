@@ -157,7 +157,8 @@ source_update_dependencies_ready() {
 		command -v dump_xsettings >/dev/null 2>&1 &&
 		command -v xkbset >/dev/null 2>&1 &&
 		command -v bwrap >/dev/null 2>&1 &&
-		/usr/bin/python3 -c 'import ctypes; ctypes.CDLL("libseccomp.so.2")' >/dev/null 2>&1
+		/usr/bin/python3 -c 'import ctypes; ctypes.CDLL("libseccomp.so.2")' >/dev/null 2>&1 &&
+		rpm -q NetworkManager-wifi >/dev/null 2>&1
 }
 
 source_update_dependencies_needed() {
