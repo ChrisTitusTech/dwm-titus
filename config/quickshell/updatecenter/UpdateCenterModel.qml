@@ -25,10 +25,13 @@ Scope {
     property bool initialLiveScanComplete: false
     property bool connectivityReady: false
     property bool pendingForceRefresh: false
+    property bool pendingSettingsReload: false
     property string pendingTerminalClose: ""
     readonly property bool online: root.connectivitySource.connectivity === NetworkConnectivity.Full
     readonly property bool busy: root.activeOperation !== null
     readonly property bool scanning: scanProcess.running
+    readonly property bool settingsLoading: settingsStatusProcess.running
+    readonly property bool periodicRefreshRunning: refreshTimer.running
     readonly property int refreshIntervalMilliseconds: root.savedRefreshSeconds * 1000
 
     function hasExceptionalState() {
@@ -70,7 +73,8 @@ Scope {
     function startupElapsed() {
         startupTimer.stop();
         const started = root.scheduledRefresh();
-        refreshTimer.start();
+        if (root.online) refreshTimer.start();
+        else refreshTimer.stop();
         return started;
     }
 
@@ -168,6 +172,23 @@ Scope {
         return true;
     }
 
+    function refreshSettings() {
+        if (settingsStatusProcess.running) {
+            root.pendingSettingsReload = true;
+            return false;
+        }
+        root.pendingSettingsReload = false;
+        settingsStatusProcess.running = true;
+        return true;
+    }
+
+    function drainSettingsQueue() {
+        if (!root.pendingSettingsReload || settingsStatusProcess.running) return false;
+        root.pendingSettingsReload = false;
+        settingsStatusProcess.running = true;
+        return true;
+    }
+
     function showSettings() {
         root.settingsMode = true;
         root.discardSettings();
@@ -201,7 +222,7 @@ Scope {
     }
 
     Component.onCompleted: {
-        settingsStatusProcess.running = true;
+        root.refreshSettings();
         root.refreshOperation();
         root.refresh(false);
         startupTimer.start();
@@ -245,14 +266,24 @@ Scope {
         onTriggered: root.drainOperationQueue()
     }
 
+    Timer {
+        id: settingsDrainTimer
+        interval: 0
+        repeat: false
+        onTriggered: root.drainSettingsQueue()
+    }
+
     Process {
         id: scanProcess
         command: Commands.updateCenterCommand("snapshot", [])
         running: false
         property bool liveRequest: false
-        stdout: StdioCollector { onStreamFinished: root.acceptSnapshot(this.text) }
+        stdout: StdioCollector { id: scanOutput }
         stderr: StdioCollector { onStreamFinished: if (this.text.trim().length > 0) root.message = this.text.trim() }
-        onExited: scanDrainTimer.start() // qmllint disable signal-handler-parameters
+        onExited: (exitCode, exitStatus) => { // qmllint disable signal-handler-parameters
+            if (exitStatus === 0 && exitCode === 0) root.acceptSnapshot(scanOutput.text);
+            scanDrainTimer.start();
+        }
     }
 
     Process {
@@ -262,11 +293,11 @@ Scope {
         property string requestKind: "active"
         property bool responseAccepted: false
         property bool needsAuthoritativeRefresh: false
-        stdout: StdioCollector {
-            onStreamFinished: operationProcess.responseAccepted = root.reconcileOperation(this.text, operationProcess.requestKind)
-        }
+        stdout: StdioCollector { id: operationOutput }
         stderr: StdioCollector { onStreamFinished: if (this.text.trim().length > 0) root.message = this.text.trim() }
         onExited: (exitCode, exitStatus) => { // qmllint disable signal-handler-parameters
+            if (exitStatus === 0 && exitCode === 0)
+                operationProcess.responseAccepted = root.reconcileOperation(operationOutput.text, operationProcess.requestKind);
             if ((operationProcess.requestKind === "launch" || operationProcess.requestKind === "recover")
                     && (!operationProcess.responseAccepted || exitStatus !== 0 || exitCode !== 0))
                 operationProcess.needsAuthoritativeRefresh = true;
@@ -278,7 +309,11 @@ Scope {
         id: settingsStatusProcess
         command: Commands.updateCenterSettingsCommand("status", [])
         running: false
-        stdout: StdioCollector { onStreamFinished: root.loadSettings(this.text) }
+        stdout: StdioCollector { id: settingsStatusOutput }
+        onExited: (exitCode, exitStatus) => { // qmllint disable signal-handler-parameters
+            if (exitStatus === 0 && exitCode === 0) root.loadSettings(settingsStatusOutput.text);
+            settingsDrainTimer.start();
+        }
     }
 
     Process {
@@ -288,7 +323,7 @@ Scope {
         stderr: StdioCollector { id: settingsActionError }
         onExited: (exitCode, exitStatus) => { // qmllint disable signal-handler-parameters
             if (exitStatus === 0 && exitCode === 0) {
-                if (!settingsStatusProcess.running) settingsStatusProcess.running = true;
+                root.refreshSettings();
             } else {
                 const detail = settingsActionError.text.trim();
                 root.settingsError = detail.length > 0 ? detail : "Update preferences changed; refresh and try again";

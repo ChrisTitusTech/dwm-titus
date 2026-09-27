@@ -8,6 +8,7 @@ ShellRoot {
     property int step: 0
     property int ticks: 0
     property var retainedProviders: null
+    property bool startupSaveDispatched: false
 
     function require(condition, message) {
         if (!condition) throw new Error(message);
@@ -50,13 +51,24 @@ ShellRoot {
                 test.ticks++;
                 test.require(test.ticks < 750, "model test timed out at step " + test.step
                     + " detail=" + (model.providers.length ? model.providers[0].detail : "none")
-                    + " pending=" + model.pendingForceRefresh + " message=" + model.message);
+                    + " pending=" + model.pendingForceRefresh + " message=" + model.message
+                    + " saved=" + model.savedRefreshSeconds + " baseline=" + model.settingsBaseline
+                    + " settingsLoading=" + model.settingsLoading + " dispatched=" + test.startupSaveDispatched
+                    + " settingsError=" + model.settingsError);
+                if (!test.startupSaveDispatched && model.settingsLoading) {
+                    model.draftRefreshSeconds = 900;
+                    model.draftAlwaysShow = true;
+                    test.require(model.saveSettings(), "save must run while startup status is still active");
+                    test.startupSaveDispatched = true;
+                }
                 if (test.step === 0 && test.ticks > 10 && model.initialCacheLoaded
-                        && initiallyFullModel.initialCacheLoaded && model.savedRefreshSeconds === 600) {
+                        && initiallyFullModel.initialCacheLoaded && model.savedRefreshSeconds === 900) {
                     test.require(initiallyFullModel.providers[0].detail === "cache" && !initiallyFullModel.scanning
-                            && !initiallyFullModel.initialLiveScanComplete,
+                            && !initiallyFullModel.initialLiveScanComplete && !initiallyFullModel.periodicRefreshRunning,
                         "initially-Full connectivity must not bypass the 30-second startup delay");
                     test.require(model.providers[0].detail === "cache", "cached state must load immediately while offline");
+                    test.require(model.settingsBaseline === "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                        "post-save status reload must replace the delayed pre-save baseline");
                     const prior = model.providers;
                     const valid = "update-center-protocol\t1\t0\nprovider\tfedora\tFedora\tavailable\t1\t1\tfresh\t10\tyes\t\tReady\nitem\tfedora\tupdate\tPackage\t1\t2\tpkg\tsystem\thttps://example.test/release\ncomplete\tsnapshot\n";
                     const invalid = [
@@ -71,25 +83,28 @@ ShellRoot {
                     for (const payload of invalid) test.require(!model.acceptSnapshot(payload), "invalid protocol must fail closed");
                     test.require(model.providers === prior, "invalid protocol must not partially replace prior state");
                     test.require(!model.startupElapsed(), "offline startup deadline must suppress its scheduled scan");
+                    test.require(!model.periodicRefreshRunning, "periodic timer must remain stopped while initially offline");
                     model.showSettings();
-                    test.require(model.draftRefreshSeconds === 600 && !model.draftAlwaysShow, "settings must open from saved values");
+                    test.require(model.draftRefreshSeconds === 900 && model.draftAlwaysShow, "settings must open from saved values");
                     model.draftRefreshSeconds = 700;
-                    model.draftAlwaysShow = true;
-                    test.require(model.savedRefreshSeconds === 600 && !model.savedAlwaysShow, "settings edits must remain drafts");
+                    model.draftAlwaysShow = false;
+                    test.require(model.savedRefreshSeconds === 900 && model.savedAlwaysShow, "settings edits must remain drafts");
                     model.discardSettings();
-                    test.require(model.draftRefreshSeconds === 600 && !model.draftAlwaysShow, "discard must restore saved settings");
-                    model.draftRefreshSeconds = 900;
-                    model.draftAlwaysShow = true;
-                    test.require(model.saveSettings(), "valid settings must dispatch through the guarded helper");
-                    test.step = 1;
-                } else if (test.step === 1 && model.savedRefreshSeconds === 900) {
-                    test.require(model.refreshIntervalMilliseconds === 900000 && model.savedAlwaysShow,
-                        "saved interval must control later scheduling");
+                    test.require(model.draftRefreshSeconds === 900 && model.draftAlwaysShow, "discard must restore saved settings");
                     model.draftRefreshSeconds = 1000;
+                    model.draftAlwaysShow = false;
+                    test.require(model.saveSettings(), "subsequent save must use the refreshed baseline");
+                    test.step = 1;
+                } else if (test.step === 1 && model.savedRefreshSeconds === 1000) {
+                    test.require(model.settingsBaseline === "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                        "successful subsequent save must refresh its baseline");
+                    test.require(model.refreshIntervalMilliseconds === 1000000 && !model.savedAlwaysShow,
+                        "saved interval must control later scheduling");
+                    model.draftRefreshSeconds = 1100;
                     test.require(model.saveSettings(), "concurrent-save fixture must dispatch");
                     test.step = 2;
                 } else if (test.step === 2 && model.settingsError.indexOf("changed") >= 0) {
-                    test.require(model.savedRefreshSeconds === 900, "concurrent save errors must not mutate saved settings");
+                    test.require(model.savedRefreshSeconds === 1000, "concurrent save errors must not mutate saved settings");
                     connectivity.connectivity = NetworkConnectivity.Full;
                     test.step = 21;
                 } else if (test.step === 21 && model.scanning) {
@@ -100,7 +115,9 @@ ShellRoot {
                     test.step = 3;
                 } else if (test.step === 3 && model.providers[0].detail === "force-2") {
                     test.require(!model.pendingForceRefresh, "required force refresh must coalesce and drain after the active scan");
+                    test.require(model.periodicRefreshRunning, "periodic timer must start after connectivity restoration");
                     connectivity.connectivity = NetworkConnectivity.None;
+                    test.require(!model.periodicRefreshRunning, "periodic timer must stop when connectivity is lost");
                     test.require(!model.scheduledRefresh(), "offline state must suppress scheduled scans");
                     test.require(model.refresh(true), "manual force refresh must bypass the schedule");
                     test.step = 4;

@@ -16,6 +16,8 @@ grep -Fq 'interval: 30000' "$model"
 grep -Fq 'root.pendingForceRefresh = true;' "$model"
 grep -Fq 'Commands.updateCenterCommand("terminal-closed", [operationId])' "$model"
 grep -Fq 'operationProcess.needsAuthoritativeRefresh = true;' "$model"
+grep -Fq 'property bool pendingSettingsReload: false' "$model"
+grep -Fq 'exitStatus === 0 && exitCode === 0' "$model"
 grep -Fq 'function updateCenterCommand(action, args)' "$commands"
 grep -Fq 'function updateCenterSettingsCommand(action, args)' "$commands"
 [ "$(grep -Fc 'Process {' "$model")" -eq 4 ]
@@ -53,6 +55,7 @@ snapshot)
 		printf '%s\n' "$count" >"$root/scan-count"
 		[ "$count" -ne 1 ] || sleep 0.15
 		if [ "$count" -eq 5 ]; then
+			printf 'update-center-protocol\t1\t0\nprovider\tfedora\tFedora\tavailable\t1\t1\tfresh\t10\tyes\t\tinvalid-nonzero\nitem\tfedora\tupdate\tPackage\t1\t2\tpkg\tsystem\thttps://example.test/release\ncomplete\tsnapshot\n'
 			printf '%s\n' 'fixture scan failure' >&2
 			exit 1
 		fi
@@ -96,6 +99,7 @@ launch)
 	flatpak)
 		op=op-00000000000000000000000000000003
 		printf '%s\t%s\t%s\t%s\t%s\n' "$op" flatpak update interrupted unknown >"$root/operation"
+		emit_operation "$op" flatpak update launched pending
 		printf '%s\n' 'ambiguous fixture launch' >&2
 		exit 1
 		;;
@@ -120,14 +124,20 @@ set -eu
 root=${DWM_UPDATE_CENTER_FIXTURE:?}
 case ${1-} in
 status)
+	count=$(($(cat "$root/status-count" 2>/dev/null || printf 0) + 1))
+	printf '%s\n' "$count" >"$root/status-count"
 	if [ -s "$root/settings" ]; then read -r seconds show baseline <"$root/settings"; else seconds=600 show=disabled baseline=absent; fi
+	[ "$count" -gt 2 ] || sleep 1
 	printf 'update-center-settings-protocol\t1\t0\nstate\tavailable\tReady\npreference\trefreshSeconds\t%s\npreference\talwaysShow\t%s\nbaseline\t%s\ncomplete\tstatus\n' "$seconds" "$show" "$baseline"
 	;;
 set)
 	count=$(($(cat "$root/settings-count" 2>/dev/null || printf 0) + 1))
 	printf '%s\n' "$count" >"$root/settings-count"
-	if [ "$count" -gt 1 ]; then printf '%s\n' 'preferences changed; refresh status before saving' >&2; exit 1; fi
-	baseline=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+	if [ "$count" -gt 2 ]; then printf '%s\n' 'preferences changed; refresh status before saving' >&2; exit 1; fi
+	current=absent
+	[ ! -s "$root/settings" ] || { read -r _ _ current <"$root/settings"; }
+	[ "$4" = "$current" ] || { printf '%s\n' 'preferences changed; refresh status before saving' >&2; exit 1; }
+	if [ "$count" -eq 1 ]; then baseline=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb; else baseline=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc; fi
 	printf '%s %s %s\n' "$2" "$3" "$baseline" >"$root/settings"
 	printf 'update-center-settings-action-protocol\t1\t0\nresult\tsuccess\tPreferences saved\nbaseline\t%s\ncomplete\tset\n' "$baseline"
 	;;
