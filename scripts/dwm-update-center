@@ -53,8 +53,9 @@ class ProviderMetadata:
 REGISTRY = (
     ProviderMetadata("fedora", "Fedora", True, "fedora", "scan_fedora", can_recover=True),
     ProviderMetadata("dwm-titus", "DWM-Titus", True, "dwm-titus", "scan_desktop", can_recover=True),
-    ProviderMetadata("flatpak", "Flatpak", False, "flatpak", "scan_flatpak"),
-    ProviderMetadata("mise", "Mise", False, "mise", "scan_mise"),
+    # Optional-provider recovery means supported recheck/retry, never rollback.
+    ProviderMetadata("flatpak", "Flatpak", False, "flatpak", "scan_flatpak", can_recover=True),
+    ProviderMetadata("mise", "Mise", False, "mise", "scan_mise", can_recover=True),
 )
 
 
@@ -414,6 +415,35 @@ def write_cache(path, results):
                 pass
 
 
+def exceptional_result(result):
+    return (result.freshness in {"stale", "error"} or bool(result.error_code)
+            or result.status in {"restricted", "partial"})
+
+
+def unavailable_optional_result(result, code):
+    suffix = "; optional provider unavailable (" + code + ")"
+    detail = result.detail
+    if not detail.endswith(suffix):
+        # Leave room for the provider envelope and worst-case field escaping.
+        budget = (MAX_RECORD_BYTES - 512 - len(suffix)) // 2
+        detail = detail.encode("utf-8")[:budget].decode("utf-8", errors="ignore") + suffix
+    return replace(result, status="unavailable", update_available=False,
+                   freshness="stale" if result.last_success else "error",
+                   error_code=result.error_code or code, detail=detail)
+
+
+def active_cache_results(results, active):
+    """Missing optional commands cannot erase cached error/recovery evidence."""
+    optional = {meta.identifier for meta in REGISTRY if not meta.core}
+    retained = []
+    for result in results:
+        if result.identifier in active:
+            retained.append(result)
+        elif result.identifier in optional and exceptional_result(result):
+            retained.append(unavailable_optional_result(result, "missing-provider"))
+    return retained
+
+
 def snapshot(path, scanners, *, force=False, provider=None, now=None):
     now = int(time.time()) if now is None else now
     active = set(scanners)
@@ -422,7 +452,7 @@ def snapshot(path, scanners, *, force=False, provider=None, now=None):
     if provider is not None and provider not in scanners:
         raise ValueError("provider is not available")
     old = read_cache(path)
-    old = [result for result in old if result.identifier in active] if old is not None else None
+    old = active_cache_results(old, active) if old is not None else None
     previous = {result.identifier: result for result in old or []}
     missing_core = {meta.identifier for meta in REGISTRY if meta.core and meta.identifier in active} - previous.keys()
     if old is not None and not missing_core and not force and provider is None:
@@ -437,6 +467,8 @@ def snapshot(path, scanners, *, force=False, provider=None, now=None):
             if result is None and identifier not in {meta.identifier for meta in REGISTRY if meta.core}:
                 if identifier not in previous:
                     return None
+                if exceptional_result(previous[identifier]):
+                    return unavailable_optional_result(previous[identifier], "unsupported")
                 raise ScanFailure("unsupported", "Optional provider unavailable or incompatible")
             result = validate_result(result)
             if result.identifier != identifier:
@@ -445,7 +477,7 @@ def snapshot(path, scanners, *, force=False, provider=None, now=None):
                 raise ScanFailure(result.error_code, result.detail)
             result = replace(result, freshness="fresh", last_success=now)
         except (OSError, ValueError, TimeoutError) as error:
-            code = error.code if isinstance(error, ScanFailure) else "busy" if isinstance(error, BlockingIOError) else "timeout" if isinstance(error, TimeoutError) else "malformed" if isinstance(error, ValueError) else "scan-failed"
+            code = error.code if isinstance(error, ScanFailure) else "busy" if isinstance(error, BlockingIOError) else "timeout" if isinstance(error, TimeoutError) else "permission-denied" if isinstance(error, PermissionError) else "malformed" if isinstance(error, ValueError) else "scan-failed"
             prior = previous.get(identifier)
             detail = error.detail if isinstance(error, ScanFailure) else "Provider scan failed"
             result = replace(prior, freshness="stale", error_code=code, detail=detail + "; last-good data retained", update_available=False) if prior and prior.last_success else ProviderResult(identifier, "unavailable", freshness="error", error_code=code, detail=detail)
@@ -469,7 +501,7 @@ def snapshot(path, scanners, *, force=False, provider=None, now=None):
         results = {**previous, **updates}
         try:
             with cache_commit_lock(Path(path).parent):
-                latest = {result.identifier: result for result in read_cache(path) or [] if result.identifier in active}
+                latest = {result.identifier: result for result in active_cache_results(read_cache(path) or [], active)}
                 cache_updates = {key: result for key, result in updates.items() if result.error_code != "busy"}
                 latest.update(cache_updates)
                 ordered_cache = [latest[meta.identifier] for meta in REGISTRY if meta.identifier in latest]
@@ -714,7 +746,9 @@ def scan_flatpak():
                 items.append(ItemResult("update", name, inventory[ref], version, ref, scope, url))
         return validate_result(ProviderResult("flatpak", pending=len(items), managed=managed,
                               update_available=True, items=tuple(items)))
-    except (ValueError, OSError):
+    except ScanFailure:
+        raise
+    except ValueError:
         return None
 
 
@@ -767,11 +801,16 @@ def scan_mise():
                 items.append(ItemResult("update", name, version, entry["latest"], name + "@" + version, "user"))
         return validate_result(ProviderResult("mise", pending=len(items), managed=len(inventory),
                               update_available=True, items=tuple(items)))
-    except (ValueError, OSError):
+    except ScanFailure:
+        raise
+    except ValueError:
         return None
 
 
 def discover_scanners():
+    for meta in REGISTRY:
+        if meta.can_update and not meta.can_recover:
+            raise ValueError("mutable provider requires recovery eligibility")
     return {meta.identifier: meta.discover for meta in REGISTRY
             if meta.core or optional_executable(meta.identifier) is not None}
 

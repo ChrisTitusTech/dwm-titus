@@ -503,6 +503,150 @@ class ScanIsolationTests(CacheTests):
         self.assertEqual([p.identifier for p in self.api["read_cache"](self.path)], ["fedora", "dwm-titus"])
 
 
+class OptionalFailureTests(unittest.TestCase):
+    def setUp(self):
+        self.api = runpy.run_path(str(HELPER))
+
+    def test_operational_failure_first_run_and_last_good_exact_codes(self):
+        from unittest.mock import patch
+        for identifier in ("flatpak", "mise"):
+            for failure, code in ((TimeoutError("expired"), "timeout"),
+                                  (OSError("exit nonzero"), "scan-failed"),
+                                  (PermissionError("denied"), "permission-denied")):
+                with self.subTest(provider=identifier, code=code), workspace() as folder:
+                    function = self.api["scan_" + identifier]
+                    def run(argv, **options):
+                        raise failure
+                    with patch.dict(function.__globals__, optional_executable=lambda name: "/usr/bin/" + name,
+                                    run_bounded=run), patch.dict(os.environ, XDG_STATE_HOME=str(Path(folder) / "state")):
+                        path = Path(folder) / "cache/update-center.json"
+                        first = self.api["snapshot"](path, {identifier: function}, force=True, now=100)
+                        self.assertEqual([(r.identifier, r.freshness, r.error_code) for r in first],
+                                         [(identifier, "error", code)])
+                        good = self.api["ProviderResult"](identifier, pending=1, managed=1, items=(
+                            self.api["ItemResult"]("update", "item", "1", "2", "item"),))
+                        self.api["snapshot"](path, {identifier: lambda: good}, force=True, now=101)
+                        retained = self.api["snapshot"](path, {identifier: function}, force=True, now=102)[0]
+                        self.assertEqual((retained.pending, retained.managed, retained.freshness,
+                                          retained.error_code, retained.last_success), (1, 1, "stale", code, 101))
+
+    def test_flatpak_system_success_then_user_failure_keeps_error_visible(self):
+        from unittest.mock import patch
+        ref = "app/org.example.App/x86_64/stable"
+        for fail_index in (0, 1, 2, 3):
+            with self.subTest(call=fail_index), workspace() as folder:
+                function = self.api["scan_flatpak"]
+                calls = []
+                def run(argv, **options):
+                    calls.append(argv)
+                    if len(calls) - 1 == fail_index:
+                        raise TimeoutError("scope timeout")
+                    return ref + "\t1\n"
+                with patch.dict(function.__globals__, optional_executable=lambda name: "/usr/bin/flatpak", run_bounded=run), \
+                        patch.dict(os.environ, XDG_STATE_HOME=str(Path(folder) / "state")):
+                    path = Path(folder) / "cache/result.json"
+                    result = self.api["snapshot"](path, {"flatpak": function}, force=True, now=100)[0]
+                    good = self.api["ProviderResult"]("flatpak", pending=2, managed=2, items=tuple(
+                        self.api["ItemResult"]("update", "App", "1", "2", ref, scope)
+                        for scope in ("system", "user")))
+                    self.api["snapshot"](path, {"flatpak": lambda: good}, force=True, now=101)
+                    calls.clear()
+                    retained = self.api["snapshot"](path, {"flatpak": function}, force=True, now=102)[0]
+                    self.assertEqual((retained.items, retained.pending, retained.freshness,
+                                      retained.error_code, retained.last_success), (good.items, 2, "stale", "timeout", 101))
+                self.assertEqual((result.identifier, result.freshness, result.error_code), ("flatpak", "error", "timeout"))
+                self.assertEqual(len(calls), fail_index + 1)
+
+    def test_actual_nonzero_child_exit_is_operational_error_for_optional_adapter(self):
+        from unittest.mock import patch
+        for identifier in ("flatpak", "mise"):
+            with self.subTest(provider=identifier), workspace() as folder, \
+                    patch.dict(os.environ, XDG_STATE_HOME=str(Path(folder) / "state")):
+                function = self.api["scan_" + identifier]
+                bounded = self.api["run_bounded"]
+                def run(argv, **options):
+                    return bounded([sys.executable, "-c", "raise SystemExit(3)"], timeout=2)
+                with patch.dict(function.__globals__, optional_executable=lambda name: "/usr/bin/" + name, run_bounded=run):
+                    result = self.api["snapshot"](Path(folder) / "cache/result.json", {identifier: function}, force=True)[0]
+                self.assertEqual((result.identifier, result.freshness, result.error_code), (identifier, "error", "scan-failed"))
+
+    def test_consecutive_disappearance_retains_exceptional_evidence_without_commands(self):
+        from unittest.mock import patch
+        for identifier in ("flatpak", "mise"):
+            for code, freshness, successful in (("network", "stale", True),
+                                                 ("interrupted", "stale", True),
+                                                 ("timeout", "error", False)):
+                with self.subTest(provider=identifier, code=code), workspace() as folder, \
+                        patch.dict(os.environ, XDG_STATE_HOME=str(Path(folder) / "state")):
+                    path = Path(folder) / "cache/snapshot.json"
+                    function = self.api["discover_scanners"]
+                    globals_ = function.__globals__
+                    cores = {"fedora": lambda: self.api["ProviderResult"]("fedora"),
+                             "dwm-titus": lambda: self.api["ProviderResult"]("dwm-titus")}
+                    good = self.api["ProviderResult"](identifier, managed=1, pending=1, items=(
+                        self.api["ItemResult"]("update", "item", "1", "2", "item"),))
+                    if successful:
+                        self.api["snapshot"](path, {**cores, identifier: lambda: good}, force=True, now=100)
+                    def fail():
+                        raise self.api["ScanFailure"](code, "Retain recovery evidence")
+                    self.api["snapshot"](path, {**cores, identifier: fail}, force=True, now=101)
+                    with patch.dict(globals_, optional_executable=lambda name: None):
+                        scanners = function()
+                    self.assertEqual(list(scanners), ["fedora", "dwm-titus"])
+                    def forbidden():
+                        self.fail("ordinary cache read must not execute commands")
+                    cached = self.api["snapshot"](path, {key: forbidden for key in scanners}, now=102)
+                    retained = cached[-1]
+                    self.assertEqual((retained.identifier, retained.error_code, retained.freshness),
+                                     (identifier, code, freshness))
+                    self.assertIn("Retain recovery evidence", retained.detail)
+                    self.assertIn("missing-provider", retained.detail)
+                    self.assertFalse(retained.update_available)
+                    forced = self.api["snapshot"](path, cores, force=True, now=103)
+                    self.assertEqual(forced[-1], retained)
+                    persisted = self.api["read_cache"](path)[-1]
+                    self.assertEqual(persisted, retained)
+                    if successful:
+                        self.assertEqual((persisted.pending, persisted.last_success), (1, 100))
+
+    def test_incompatible_capability_preserves_interrupted_evidence(self):
+        from unittest.mock import patch
+        with workspace() as folder, patch.dict(os.environ, XDG_STATE_HOME=str(Path(folder) / "state")):
+            path = Path(folder) / "cache/snapshot.json"
+            record = self.api["ProviderResult"]("mise", "restricted", error_code="interrupted", detail="Recheck before retry")
+            self.api["snapshot"](path, {"mise": lambda: record}, force=True, now=100)
+            result = self.api["snapshot"](path, {"mise": lambda: None}, force=True, now=101)[0]
+            self.assertEqual((result.error_code, result.freshness, result.last_success, result.update_available),
+                             ("interrupted", "stale", 100, False))
+            self.assertIn("Recheck before retry", result.detail)
+            self.assertIn("unsupported", result.detail)
+
+    def test_recovery_restricted_record_retained_but_healthy_unavailable_hidden(self):
+        from unittest.mock import patch
+        with workspace() as folder, patch.dict(os.environ, XDG_STATE_HOME=str(Path(folder) / "state")):
+            path = Path(folder) / "cache/snapshot.json"
+            self.api["write_cache"](path, [self.api["ProviderResult"]("fedora", last_success=100),
+                self.api["ProviderResult"]("flatpak", "unavailable", last_success=100),
+                self.api["ProviderResult"]("mise", "restricted", last_success=100, detail="Native recovery required")])
+            def forbidden():
+                self.fail("missing provider must not execute")
+            result = self.api["snapshot"](path, {"fedora": forbidden}, now=101)
+            self.assertEqual([r.identifier for r in result], ["fedora", "mise"])
+            self.assertEqual((result[-1].error_code, result[-1].freshness), ("missing-provider", "stale"))
+            self.assertIn("Native recovery required", result[-1].detail)
+
+    def test_disappearance_guidance_respects_protocol_record_limit(self):
+        from unittest.mock import patch
+        with workspace() as folder, patch.dict(os.environ, XDG_STATE_HOME=str(Path(folder) / "state")):
+            path = Path(folder) / "cache/snapshot.json"
+            self.api["write_cache"](path, [self.api["ProviderResult"]("fedora", last_success=100),
+                self.api["ProviderResult"]("mise", "restricted", last_success=100, detail="Recover: " + "x" * 8080)])
+            result = self.api["snapshot"](path, {"fedora": lambda: self.api["ProviderResult"]("fedora")})
+            output = self.api["render_snapshot"](result)
+            self.assertIn("Recover:", output)
+            self.assertIn("missing-provider", output)
+
+
 class RegistryDiscoveryTests(unittest.TestCase):
     def setUp(self):
         self.api = runpy.run_path(str(HELPER))
@@ -515,8 +659,21 @@ class RegistryDiscoveryTests(unittest.TestCase):
             self.assertTrue(callable(getattr(provider, "discover", None)), "provider discover function missing")
             self.assertIs(type(provider.can_update), bool)
             self.assertIs(type(provider.can_recover), bool)
+            self.assertTrue(not provider.can_update or provider.can_recover,
+                            "mutable provider must declare safe recovery eligibility")
             self.assertFalse(hasattr(provider, "command"))
         self.assertTrue(self.api["REGISTRY"][1].can_recover)
+
+    def test_activation_rejects_mutable_provider_without_recovery_eligibility(self):
+        from unittest.mock import patch
+        function = self.api["discover_scanners"]
+        for provider in self.api["REGISTRY"]:
+            broken = tuple(replace(entry, can_recover=False) if entry.identifier == provider.identifier else entry
+                           for entry in self.api["REGISTRY"])
+            with self.subTest(provider=provider.identifier), \
+                    patch.dict(function.__globals__, REGISTRY=broken, optional_executable=lambda name: None), \
+                    self.assertRaisesRegex(ValueError, "mutable provider requires recovery eligibility"):
+                function()
 
     def test_optional_incompatible_result_hides_and_retains_last_good_if_present(self):
         from unittest.mock import patch
