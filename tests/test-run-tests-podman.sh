@@ -24,16 +24,24 @@ printf 'child\n' >"$work/repository/directory/file"
 git -C "$work/repository" init -q
 git -C "$work/repository" add .
 git -C "$work/repository" -c user.name=Test -c user.email=test@example.invalid commit -qm fixture
-git -C "$work/repository" worktree add -qb contract "$work/current worktree"
+git -C "$work/repository" worktree add -q --detach "$work/current worktree"
 source_tree=$work/current\ worktree
+metadata=$(git -C "$source_tree" rev-parse --absolute-git-dir)
+ln -s repository "$work/repository-alias"
+printf 'gitdir: %s\n' "${metadata/"$work/repository"/"$work/repository-alias"}" >"$source_tree/.git"
 git -C "$source_tree" -c user.name=Test -c user.email=test@example.invalid commit --allow-empty -qm 'linked head'
+selected_head=$(git -C "$source_tree" rev-parse HEAD)
+[[ -z $(git -C "$source_tree" for-each-ref --contains "$selected_head") ]]
 printf 'modified\n' >"$source_tree/tracked"
 git -C "$source_tree" add tracked
 rm "$source_tree/deleted"
 printf 'untracked\n' >"$source_tree/new source"
 printf 'newline\n' >"$source_tree/"$'new\nline'
+printf 'literal\n' >"$source_tree/:(glob)literal"
 mkdir "$source_tree/ignored"
 printf 'scratch\n' >"$source_tree/ignored/scratch"
+printf 'staged ignored\n' >"$source_tree/ignored/staged"
+git -C "$source_tree" add -f ignored/staged
 ln -s tracked "$source_tree/link"
 rm "$source_tree/directory/file"
 rmdir "$source_tree/directory"
@@ -73,9 +81,9 @@ if args[0] == 'build':
 assert args[0] == 'run', args
 assert args[1:7] == ['--rm', '--interactive', '--network=private',
                       '--security-opt=label=disable', '--mount',
-                      f'type=bind,src={work}/repository/.git,dst=/source/repository,ro=true'], args
+                      f'type=bind,src={work}/repository/.git,dst=/source/repository,ro=true,bind-nonrecursive'], args
 assert args[7:9] == ['--mount',
-                    f'type=bind,src={work}/current worktree,dst=/source/worktree,ro=true'], args
+                    f'type=bind,src={work}/current worktree,dst=/source/worktree,ro=true,bind-nonrecursive'], args
 assert args[9:13] == ['localhost/dwm-titus-tests:fedora-44', 'bash', '-c', args[12]], args
 assert args[13] == 'container-stage', args
 assert len(args[14]) == 40, args
@@ -94,11 +102,24 @@ shutil.rmtree(stage)
 sys.exit(result.returncode)
 PY
 chmod +x "$work/bin/podman"
+cat >"$work/bin/findmnt" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ $* == '--raw --noheadings --output TARGET' ]]
+if [[ -n ${CONTRACT_POST_BUILD_MOUNT:-} && $(tail -n 1 "$CONTRACT_WORK/calls") == build ]]; then
+	printf '%s\n' "$CONTRACT_POST_BUILD_MOUNT"
+else
+	printf '%s\n' "${CONTRACT_MOUNTS-/}"
+fi
+exit "${CONTRACT_MOUNT_STATUS:-0}"
+SH
+chmod +x "$work/bin/findmnt"
 
 snapshot() {
 	GIT_OPTIONAL_LOCKS=0 git -C "$source_tree" status --porcelain=v1
 	git -C "$source_tree" show-ref
 	git -C "$source_tree" rev-parse HEAD
+	sha256sum "$source_tree/.git"
 	find "$work/repository/.git" -type f -print0 | sort -z | xargs -0 sha256sum
 }
 snapshot >"$work/before"
@@ -115,7 +136,11 @@ expect_failure() {
 	else
 		status=$?
 	fi
-	[[ $status == "$expected" ]]
+	[[ $status == "$expected" ]] || {
+		printf 'Expected status %s for %s, got %s\n' "$expected" "$message" "$status" >&2
+		cat "$work/err" >&2
+		exit 1
+	}
 	grep -Fq "$message" "$work/err"
 }
 
@@ -125,6 +150,19 @@ expect_failure 2 'Rootless Podman is required' env CONTRACT_ROOTLESS=unknown "$r
 [[ $(<"$work/calls") == info ]]
 expect_failure 2 'Could not query Podman rootless state' env CONTRACT_INFO_STATUS=19 "$runner"
 [[ $(<"$work/calls") == info ]]
+expect_failure 2 'Could not inspect host mounts' env CONTRACT_MOUNT_STATUS=19 "$runner"
+[[ $(<"$work/calls") == info ]]
+expect_failure 2 'Could not inspect host mounts' env CONTRACT_MOUNTS= "$runner"
+[[ $(<"$work/calls") == info ]]
+expect_failure 2 'Could not inspect host mounts: invalid target' env CONTRACT_MOUNTS=relative "$runner"
+[[ $(<"$work/calls") == info ]]
+mount_source=${source_tree// /\\x20}
+for child in "$mount_source/ignored" "$work/repository/.git/objects"; do
+	expect_failure 2 'Nested host mounts are unsupported' env CONTRACT_MOUNTS="$child" "$runner"
+	[[ $(<"$work/calls") == info ]]
+done
+expect_failure 2 'Nested host mounts are unsupported' env CONTRACT_POST_BUILD_MOUNT="$mount_source/ignored" "$runner"
+[[ $(<"$work/calls") == $'info\nbuild' ]]
 expect_failure 23 'Fedora 44 image build failed' env CONTRACT_BUILD_STATUS=23 "$runner"
 [[ $(<"$work/calls") == $'info\nbuild' ]]
 expect_failure 128 'Container staging failed (status 128)' env CONTRACT_STAGE_FAILURE=1 "$runner"
@@ -132,17 +170,26 @@ mkdir "$work/no-podman"
 ln -s "$(command -v bash)" "$work/no-podman/bash"
 expect_failure 2 'Required command is unavailable: podman' env PATH="$work/no-podman" "$runner"
 [[ ! -s $work/calls ]]
+mkdir "$work/no-findmnt"
+for dependency in bash git tar; do
+	ln -s "$(command -v "$dependency")" "$work/no-findmnt/$dependency"
+done
+ln -s "$work/bin/podman" "$work/no-findmnt/podman"
+expect_failure 2 'Required command is unavailable: findmnt' env PATH="$work/no-findmnt" "$runner"
+[[ ! -s $work/calls ]]
 
 # Check actual disposable snapshot contents, history, and managed forwarding.
 # shellcheck disable=SC2016
-"$runner" bash -e -c '
+env CONTRACT_MOUNTS=$'/\n'"$mount_source"$'\n'"$mount_source-sibling/child" "$runner" bash -e -c '
 [[ $(<tracked) == modified && ! -e deleted && $(<"new source") == untracked ]]
 [[ -e $'"'"'new\nline'"'"' && -L link && -L directory && ! -e ignored/scratch ]]
 [[ -d .git && -z $(git status --porcelain) ]]
 [[ $(git log -1 --format=%s) == "Disposable test snapshot" ]]
 [[ $(git rev-list --count HEAD) == 3 && $(git log -1 --format=%s HEAD^) == "linked head" ]]
-[[ -n $DWM_TEST_WORKSPACE && $1 == "argument with spaces" && $2 == "--flag=value" ]]
-' contract 'argument with spaces' --flag=value >"$work/success"
+[[ $(git rev-parse HEAD^) == "$1" && $(git show HEAD:ignored/staged) == "staged ignored" ]]
+[[ $(git show "HEAD::(glob)literal") == literal ]]
+[[ -n $DWM_TEST_WORKSPACE && $2 == "argument with spaces" && $3 == "--flag=value" ]]
+' contract "$selected_head" 'argument with spaces' --flag=value >"$work/success"
 
 expect_failure 17 'Container test command failed (status 17)' "$runner" bash -c 'exit 17'
 
