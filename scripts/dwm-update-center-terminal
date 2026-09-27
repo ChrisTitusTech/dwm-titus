@@ -15,6 +15,11 @@ CENTER_PATH = Path(__file__).resolve().with_name("dwm-update-center")
 CENTER = runpy.run_path(str(CENTER_PATH))
 PROVIDERS = tuple(entry.identifier for entry in CENTER["REGISTRY"])
 OPERATION_PATTERN = re.compile(r"op-[0-9a-f]{32}")
+validate_provider_action = CENTER["validate_provider_action"]
+
+
+def checkpoint(operation, phase, detail):
+    return CENTER["update_operation"](operation, phase=phase, provider_phase=phase, detail=detail)
 
 
 def executable(name):
@@ -51,6 +56,25 @@ def run_command(argv, *, cwd=None, env=None):
     return "".join(output)
 
 
+def run_protocol_command(argv):
+    """Stream stdout exactly; a nonzero status may still carry a valid terminal bundle."""
+    process = subprocess.Popen(argv, stdin=None, stdout=subprocess.PIPE, stderr=None,
+                               text=True, errors="strict", bufsize=1)
+    output, size = [], 0
+    for line in process.stdout:
+        size += len(line.encode("utf-8"))
+        if size > CENTER["MAX_BYTES"]:
+            process.kill()
+            raise ValueError("provider output exceeded byte limit")
+        output.append(line)
+        print(line, end="", flush=True)
+    status = process.wait()
+    payload = "".join(output)
+    if status not in {0, 1} or not payload:
+        raise subprocess.CalledProcessError(status, argv, payload)
+    return payload
+
+
 def result(outcome, phase, detail, restart="none"):
     return {"outcome": outcome, "phase": phase, "detail": detail[:8192], "restart": restart}
 
@@ -59,31 +83,87 @@ def records(payload, kind):
     return [line.split("\t") for line in payload.splitlines() if line.startswith(kind + "\t")]
 
 
-def execute_fedora(action):
+def parse_operation_stream(payload, action):
+    lines = CENTER["bounded_lines"](payload)
+    if not lines or lines[0] not in {"system-management-protocol\t1\t0",
+                                     "system-management-protocol\t1\t1",
+                                     "system-management-protocol\t1\t2"} or lines[-1] != "complete\toperation":
+        raise ValueError("invalid PackageKit operation protocol")
+    operation_rows, audits = [], []
+    for line in lines[1:-1]:
+        fields = line.split("\t")
+        if fields[0] == "operation" and len(fields) == 8:
+            operation_rows.append(fields)
+        elif fields[0] == "package-progress" and len(fields) == 5:
+            pass
+        elif fields[0] == "error" and len(fields) == 4:
+            pass
+        elif fields[0] == "audit" and len(fields) == 8:
+            audits.append(fields)
+        else:
+            raise ValueError("unknown PackageKit operation record")
+        for field in fields:
+            CENTER["escape"](field)
+    terminal_states = {"succeeded", "failed", "permission-denied", "canceled", "interrupted"}
+    kind = "update" if action == "updates-install-all" else "refresh" if action == "updates-refresh" else ""
+    allowed = {
+        "pending": {"pending", "authorizing", "running", "failed", "interrupted"},
+        "authorizing": {"authorizing", "running", "permission-denied", "failed", "interrupted"},
+        "running": {"running", "cancel-requested", *terminal_states},
+        "cancel-requested": {"cancel-requested", *terminal_states},
+    }
+    if (not operation_rows or len(audits) != 1 or operation_rows[0][4] != "pending"
+            or not kind or any(row[2:4] != [action, kind] or not OPERATION_PATTERN.fullmatch(row[1])
+                   for row in operation_rows)
+            or any(row[1] != operation_rows[0][1] for row in operation_rows)
+            or any(row[5] != "unknown" and (not row[5].isdigit() or not 0 <= int(row[5]) <= 100)
+                   or row[6] not in {"yes", "no"} for row in operation_rows)
+            or any(following[4] not in allowed.get(current[4], set())
+                   for current, following in zip(operation_rows, operation_rows[1:]))
+            or operation_rows[-1][4] not in terminal_states
+            or audits[0][1:5] != [operation_rows[0][1], action, kind, operation_rows[-1][4]]):
+        raise ValueError("inconsistent PackageKit operation stream")
+    return {"operation": operation_rows[0][1], "state": operation_rows[-1][4],
+            "detail": audits[0][7]}
+
+
+def fedora_restart(payload):
+    CENTER["parse_fedora_snapshot"](payload)
+    rows = [row for row in records(payload, "state") if len(row) == 5 and row[1] == "update-restart"]
+    if len(rows) != 1:
+        raise ValueError("PackageKit restart state unavailable")
+    return rows[0][3] if rows[0][2] == "available" else "unknown"
+
+
+def execute_fedora(operation, action):
     helper = str(CENTER_PATH.with_name("dwm-system-management"))
+    checkpoint(operation, "preparing", "Preparing authoritative PackageKit state")
     initial = run_command([helper, "snapshot"])
     if action == "update":
         generations = records(initial, "snapshot-generation")
         if len(generations) != 1 or not re.fullmatch(r"[0-9a-f]{64}", generations[0][1]):
             raise ValueError("PackageKit snapshot generation unavailable")
-        handoff = run_command([helper, "updates-install-all", generations[0][1]])
-        operations = records(handoff, "terminal-handoff")
-        if len(operations) != 1 or len(operations[0]) != 4 or not OPERATION_PATTERN.fullmatch(operations[0][1]):
-            raise ValueError("PackageKit operation handoff unavailable")
-        terminal = run_command([helper, "watch-operation", operations[0][1]])
+        checkpoint(operation, "fedora-executing", "Running PackageKit update")
+        terminal = run_protocol_command([helper, "updates-install-all", generations[0][1]])
+        protocol_action = "updates-install-all"
     else:
         # Snapshot performs journal reconciliation; attach to its exact retained
         # owner when work is still observable instead of starting a mutation.
         operations = records(initial, "active-operation") or records(initial, "terminal-handoff")
-        terminal = run_command([helper, "watch-operation", operations[0][1]]) if operations else initial
+        checkpoint(operation, "recovering", "Reconciling retained PackageKit operation")
+        terminal = run_protocol_command([helper, "watch-operation", operations[0][1]]) if operations else initial
+        protocol_action = operations[0][2] if operations else "updates-install-all"
+    terminal_state = parse_operation_stream(terminal, protocol_action) if records(terminal, "operation") else None
     reconciled = run_command([helper, "snapshot"])
-    failed = any(row[1] in {"failed", "interrupted", "permission-denied", "canceled"}
-                 for row in records(terminal, "terminal") if len(row) > 1)
-    interrupted = bool(records(reconciled, "active-operation"))
-    if failed or interrupted:
-        return result("failed" if failed else "unknown", "interrupted" if interrupted else "failed",
-                      "PackageKit authoritative reconciliation requires review")
-    return result("succeeded", "completed", "PackageKit update reconciled")
+    state = terminal_state["state"] if terminal_state else "interrupted" if records(reconciled, "active-operation") else "succeeded"
+    restart = fedora_restart(reconciled)
+    if terminal_state is not None and state != "interrupted":
+        run_command([helper, "ack-operation", terminal_state["operation"]])
+    if state != "succeeded":
+        return result("unknown" if state == "interrupted" else "failed",
+                      "interrupted" if state == "interrupted" else "failed",
+                      terminal_state["detail"] if terminal_state else "PackageKit reconciliation requires review", restart)
+    return result("succeeded", "completed", terminal_state["detail"] if terminal_state else "PackageKit state reconciled", restart)
 
 
 def desktop_value(payload):
@@ -93,19 +173,21 @@ def desktop_value(payload):
     return value
 
 
-def execute_desktop(action):
+def execute_desktop(operation, action):
     helper = trusted_desktop_helper()
     status = desktop_value(run_command([helper, "status"]))
     if action == "recover":
-        operation = status.get("operation")
-        if not isinstance(operation, str) or not re.fullmatch(r"[0-9a-f]{32}", operation):
+        desktop_operation = status.get("operation")
+        if not isinstance(desktop_operation, str) or not re.fullmatch(r"[0-9a-f]{32}", desktop_operation):
             raise ValueError("desktop recovery identity unavailable")
-        terminal = desktop_value(run_command([helper, "recover", operation]))
+        checkpoint(operation, "recovering", "Recovering the trusted desktop update")
+        terminal = desktop_value(run_command([helper, "recover", desktop_operation]))
     else:
         checked = desktop_value(run_command([helper, "check"]))
         revision = checked.get("available")
         if not isinstance(revision, str) or not re.fullmatch(r"[0-9a-f]{40}", revision):
             raise ValueError("verified desktop revision unavailable")
+        checkpoint(operation, "desktop-starting", "Starting the trusted desktop update")
         terminal = desktop_value(run_command([helper, "start", revision]))
     reconciled = desktop_value(run_command([helper, "status"])) if action == "update" else terminal
     deadline = time.monotonic() + 1800
@@ -129,17 +211,21 @@ def scan_flatpak_scope(program, scope):
     run_command([program, "remote-ls", "--" + scope, "--updates", "--columns=ref:full,version"])
 
 
-def execute_flatpak(action):
+def execute_flatpak(operation, action):
     program = executable("flatpak")
     if action == "recover":
+        checkpoint(operation, "recovering", "Rechecking Flatpak system and user scopes")
         scan_flatpak_scope(program, "system")
         scan_flatpak_scope(program, "user")
         return result("succeeded", "completed", "Both Flatpak scopes were rechecked; retry remains idempotent")
     try:
+        checkpoint(operation, "flatpak-system", "Updating system Flatpaks")
         run_command([program, "update", "--system", "--noninteractive"])
     except subprocess.CalledProcessError as error:
         return result("failed", "system-failed", "System Flatpak update failed; user scope was not started: " + str(error))
     try:
+        checkpoint(operation, "flatpak-system-complete", "System Flatpak update completed")
+        checkpoint(operation, "flatpak-user", "Updating user Flatpaks")
         run_command([program, "update", "--user", "--noninteractive"])
     except subprocess.CalledProcessError as error:
         return result("failed", "system-complete/user-failed",
@@ -152,15 +238,17 @@ def managed_mise(program):
     return CENTER["mise_inventory"](payload)
 
 
-def execute_mise(action):
+def execute_mise(operation, action):
     program = executable("mise")
+    checkpoint(operation, "mise-inventory", "Reading Mise managed inventory")
     inventory = managed_mise(program)
     if action == "recover":
-        # Re-evaluation is the recovery boundary; retries use the same managed set.
-        inventory = managed_mise(program)
+        checkpoint(operation, "recovering", "Retrying from the current Mise managed inventory")
     if inventory:
+        checkpoint(operation, "mise-update", "Updating Mise managed tools")
         run_command([program, "upgrade", "--", *[name + "@" + version for name, version in inventory]],
                     cwd="/", env=dict(os.environ))
+    checkpoint(operation, "mise-recheck", "Rechecking Mise managed inventory")
     managed_mise(program)
     return result("succeeded", "completed", "Mise managed inventory was rechecked after update")
 
@@ -168,8 +256,9 @@ def execute_mise(action):
 def execute_provider(operation, provider, action):
     if not OPERATION_PATTERN.fullmatch(operation) or provider not in PROVIDERS or action not in {"update", "recover"}:
         raise ValueError("invalid terminal operation")
+    validate_provider_action(provider, action)
     return {"fedora": execute_fedora, "dwm-titus": execute_desktop,
-            "flatpak": execute_flatpak, "mise": execute_mise}[provider](action)
+            "flatpak": execute_flatpak, "mise": execute_mise}[provider](operation, action)
 
 
 def completion_hold(value, *, input_stream=None, output=None):

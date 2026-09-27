@@ -59,8 +59,13 @@ REGISTRY = (
 )
 
 OPERATION_PATTERN = re.compile(r"op-[0-9a-f]{32}")
+OPERATION_PHASES = {"reserved", "launched", "running", "preparing", "fedora-executing",
+                    "desktop-starting", "flatpak-system", "flatpak-system-complete", "flatpak-user",
+                    "mise-inventory", "mise-update", "mise-recheck", "recovering", "completed", "failed",
+                    "interrupted", "system-failed", "system-complete/user-failed"}
 OPERATION_FIELDS = {"schema", "operation", "provider", "action", "phase", "outcome",
-                    "created", "updated", "terminal_pid", "terminal_identity", "detail"}
+                    "provider_phase", "created", "updated", "terminal_pid", "terminal_identity",
+                    "recovery_of", "detail"}
 
 
 def operation_path():
@@ -86,12 +91,13 @@ def validate_operation(value):
     if (not isinstance(value, dict) or set(value) != OPERATION_FIELDS or value.get("schema") != 1
             or not isinstance(value.get("operation"), str) or not OPERATION_PATTERN.fullmatch(value["operation"])
             or value.get("provider") not in providers or value.get("action") not in {"update", "recover"}
-            or value.get("phase") not in {"reserved", "launched", "running", "completed", "failed", "interrupted",
-                                                "system-failed", "system-complete/user-failed"}
+            or value.get("phase") not in OPERATION_PHASES or value.get("provider_phase") not in OPERATION_PHASES
             or value.get("outcome") not in {"pending", "succeeded", "failed", "unknown"}
             or type(value.get("created")) is not int or type(value.get("updated")) is not int
             or type(value.get("terminal_pid")) is not int or value["terminal_pid"] < 0
             or not isinstance(value.get("terminal_identity"), str) or len(value["terminal_identity"]) > 128
+            or not isinstance(value.get("recovery_of"), str)
+            or value["recovery_of"] and not OPERATION_PATTERN.fullmatch(value["recovery_of"])
             or not isinstance(value.get("detail"), str) or len(value["detail"].encode()) > 8192):
         raise ValueError("invalid operation state")
     return value
@@ -145,11 +151,18 @@ def reserve_operation(provider, action, now=None):
         existing = read_operation()
         if existing is None and os.path.lexists(operation_path()):
             raise ValueError("existing operation state is unsafe or malformed")
+        recoverable = {"interrupted", "system-failed", "system-complete/user-failed"}
         if existing is not None and existing["phase"] not in {"completed", "failed"}:
-            raise BlockingIOError("another provider operation is active")
+            if action != "recover" or existing["provider"] != provider or existing["phase"] not in recoverable:
+                raise BlockingIOError("another provider operation is active")
+            if existing["terminal_pid"] and process_identity(existing["terminal_pid"]) == existing["terminal_identity"]:
+                raise BlockingIOError("the interrupted provider terminal is still active")
         value = {"schema": 1, "operation": "op-" + secrets.token_hex(16), "provider": provider,
-                 "action": action, "phase": "reserved", "outcome": "pending", "created": now,
-                 "updated": now, "terminal_pid": 0, "terminal_identity": "", "detail": "Operation reserved"}
+                 "action": action, "phase": "reserved", "provider_phase": "reserved",
+                 "outcome": "pending", "created": now,
+                 "updated": now, "terminal_pid": 0, "terminal_identity": "",
+                 "recovery_of": existing["operation"] if action == "recover" and existing is not None else "",
+                 "detail": "Operation reserved"}
         write_operation(value)
         return value
 
@@ -175,9 +188,17 @@ def update_operation(operation, **changes):
 
 
 def record_terminal(operation, pid, identity, now=None):
-    return update_operation(operation, phase="launched", terminal_pid=pid,
-                            terminal_identity=identity or "", detail="Terminal launched",
-                            updated=int(time.time()) if now is None else now)
+    with operation_lock():
+        value = read_operation()
+        if value is None or value["operation"] != operation:
+            raise ValueError("operation identity mismatch")
+        changes = {"terminal_pid": pid, "terminal_identity": identity or "",
+                   "updated": int(time.time()) if now is None else now}
+        if value["phase"] == "reserved":
+            changes.update(phase="launched", detail="Terminal launched")
+        value = {**value, **changes}
+        write_operation(value)
+        return value
 
 
 def active_operation():
@@ -188,11 +209,29 @@ def active_operation():
 subprocess_popen = subprocess.Popen
 
 
+def validate_provider_action(provider, action):
+    metadata = next((entry for entry in REGISTRY if entry.identifier == provider), None)
+    if metadata is None or action not in {"update", "recover"}:
+        raise ValueError("invalid provider operation")
+    if action == "update" and not metadata.can_update or action == "recover" and not metadata.can_recover:
+        raise ValueError("provider capability is unavailable")
+    result = metadata.discover()
+    if result is None:
+        raise ValueError("provider is unavailable or incompatible")
+    result = validate_result(result)
+    if result.identifier != provider or result.status == "unavailable" or result.error_code == "missing-provider":
+        raise ValueError("provider is unavailable or incompatible")
+    if action == "update" and not result.update_available:
+        raise ValueError("provider update is not currently eligible")
+    return result
+
+
 def launch_operation(provider, action="update", *, terminal=None, runner=None, now=None):
+    validate_provider_action(provider, action)
     value = reserve_operation(provider, action, now=now)
     terminal = terminal or str(Path(__file__).resolve().with_name("dwm-terminal"))
     runner = runner or str(Path(__file__).resolve().with_name("dwm-update-center-terminal"))
-    argv = [terminal, runner, value["operation"], provider, action]
+    argv = [terminal, "-e", runner, value["operation"], provider, action]
     try:
         child = subprocess_popen(argv, start_new_session=True, close_fds=True)
         identity = process_identity(child.pid)
@@ -200,8 +239,16 @@ def launch_operation(provider, action="update", *, terminal=None, runner=None, n
             raise OSError("terminal identity unavailable")
         return record_terminal(value["operation"], child.pid, identity, now=now)
     except Exception as error:
-        update_operation(value["operation"], phase="interrupted", outcome="unknown",
-                         detail="Terminal launch outcome is ambiguous: " + str(error), updated=now or int(time.time()))
+        with operation_lock():
+            current = read_operation()
+            if current is not None and current["operation"] == value["operation"] \
+                    and current["phase"] in {"completed", "failed"}:
+                return current
+            if current is None or current["operation"] != value["operation"]:
+                raise
+            write_operation({**current, "phase": "interrupted", "outcome": "unknown",
+                "detail": "Terminal launch outcome is ambiguous: " + str(error),
+                "updated": now or int(time.time())})
         raise
 
 
@@ -218,7 +265,8 @@ def terminal_closed(operation, now=None):
         if value is None or value["operation"] != operation:
             raise ValueError("operation identity mismatch")
         observed = process_identity(value["terminal_pid"])
-        if value["phase"] not in {"completed", "failed"} and observed != value["terminal_identity"]:
+        recoverable = {"interrupted", "system-failed", "system-complete/user-failed"}
+        if value["phase"] not in {"completed", "failed", *recoverable} and observed != value["terminal_identity"]:
             value = {**value, "phase": "interrupted", "outcome": "unknown",
                      "detail": "Terminal identity is missing or changed; recovery is required", "updated": now or int(time.time())}
             write_operation(value)
