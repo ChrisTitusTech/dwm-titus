@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 """Run one validated Update Center provider operation in an interactive terminal."""
+import ctypes
 import io
 import json
 import os
@@ -15,7 +16,46 @@ CENTER_PATH = Path(__file__).resolve().with_name("dwm-update-center")
 CENTER = runpy.run_path(str(CENTER_PATH))
 PROVIDERS = tuple(entry.identifier for entry in CENTER["REGISTRY"])
 OPERATION_PATTERN = re.compile(r"op-[0-9a-f]{32}")
+TERMINAL_TITLE = "dwm update center"
+TERMINAL_INSTANCE = b"dwm-update-center"
+TERMINAL_CLASS = b"DwmUpdateCenter"
 validate_provider_action = CENTER["validate_provider_action"]
+
+
+class XClassHint(ctypes.Structure):
+    _fields_ = [("res_name", ctypes.c_char_p), ("res_class", ctypes.c_char_p)]
+
+
+def set_terminal_identity(environment=None, output=None):
+    """Apply the fixed Task 7 identity to this terminal; never include opaque tokens."""
+    environment = os.environ if environment is None else environment
+    destination = sys.stdout if output is None else output
+    destination.write("\033]0;" + TERMINAL_TITLE + "\007")
+    destination.flush()
+    display_name, raw_window = environment.get("DISPLAY"), environment.get("WINDOWID")
+    if not display_name or not raw_window or not re.fullmatch(r"(?:0x[0-9A-Fa-f]+|[1-9][0-9]*)", raw_window):
+        return False
+    try:
+        window = int(raw_window, 0)
+        library = ctypes.CDLL("libX11.so.6")
+        library.XOpenDisplay.argtypes = [ctypes.c_char_p]
+        library.XOpenDisplay.restype = ctypes.c_void_p
+        library.XStoreName.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_char_p]
+        library.XSetClassHint.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.POINTER(XClassHint)]
+        library.XSync.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        library.XCloseDisplay.argtypes = [ctypes.c_void_p]
+        display = library.XOpenDisplay(display_name.encode("utf-8"))
+        if not display:
+            return False
+        try:
+            hint = XClassHint(TERMINAL_INSTANCE, TERMINAL_CLASS)
+            return bool(library.XStoreName(display, window, TERMINAL_TITLE.encode("utf-8"))
+                        and library.XSetClassHint(display, window, ctypes.byref(hint))
+                        and library.XSync(display, 0) == 0)
+        finally:
+            library.XCloseDisplay(display)
+    except (OSError, ValueError, OverflowError):
+        return False
 
 
 def checkpoint(operation, phase, detail):
@@ -211,13 +251,37 @@ def scan_flatpak_scope(program, scope):
     run_command([program, "remote-ls", "--" + scope, "--updates", "--columns=ref:full,version"])
 
 
+def flatpak_recovery_basis(operation):
+    value = CENTER["read_operation"]()
+    if (value is None or value["operation"] != operation or value["provider"] != "flatpak"
+            or value["action"] != "recover" or not value["recovery_of"]):
+        raise ValueError("Flatpak recovery provenance is unavailable")
+    return value["recovery_phase"], value["recovery_provider_phase"]
+
+
 def execute_flatpak(operation, action):
     program = executable("flatpak")
     if action == "recover":
+        recovery_phase, provider_phase = flatpak_recovery_basis(operation)
         checkpoint(operation, "recovering", "Rechecking Flatpak system and user scopes")
         scan_flatpak_scope(program, "system")
         scan_flatpak_scope(program, "user")
-        return result("succeeded", "completed", "Both Flatpak scopes were rechecked; retry remains idempotent")
+        system_complete = recovery_phase == "system-complete/user-failed" or provider_phase in {
+            "flatpak-system-complete", "flatpak-user", "flatpak-user-complete"}
+        user_complete = provider_phase == "flatpak-user-complete"
+        if not system_complete:
+            checkpoint(operation, "flatpak-system", "Idempotently retrying the system Flatpak scope")
+            run_command([program, "update", "--system", "--noninteractive"])
+            checkpoint(operation, "flatpak-system-complete", "System Flatpak scope is complete")
+        if not user_complete:
+            checkpoint(operation, "flatpak-user", "Idempotently retrying the user Flatpak scope")
+            run_command([program, "update", "--user", "--noninteractive"])
+            checkpoint(operation, "flatpak-user-complete", "User Flatpak scope is complete")
+        checkpoint(operation, "recovering", "Rechecking Flatpak scopes after recovery")
+        scan_flatpak_scope(program, "system")
+        scan_flatpak_scope(program, "user")
+        return result("succeeded", "completed",
+                      "Flatpak scopes were rechecked and safely retried; known completed system work was preserved")
     try:
         checkpoint(operation, "flatpak-system", "Updating system Flatpaks")
         run_command([program, "update", "--system", "--noninteractive"])
@@ -230,6 +294,7 @@ def execute_flatpak(operation, action):
     except subprocess.CalledProcessError as error:
         return result("failed", "system-complete/user-failed",
                       "System scope remains complete; user Flatpak update failed: " + str(error))
+    checkpoint(operation, "flatpak-user-complete", "User Flatpak update completed")
     return result("succeeded", "completed", "System and user Flatpak scopes completed")
 
 
@@ -278,6 +343,8 @@ def main(argv=None):
         return 2
     operation, provider, action = args
     try:
+        if not set_terminal_identity():
+            raise OSError("controlled terminal X11 identity is unavailable")
         active = CENTER["active_operation"]()
         if active is None or (active["operation"], active["provider"], active["action"]) != tuple(args):
             raise ValueError("terminal operation does not own the active reservation")

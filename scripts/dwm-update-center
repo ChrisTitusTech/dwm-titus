@@ -61,11 +61,12 @@ REGISTRY = (
 OPERATION_PATTERN = re.compile(r"op-[0-9a-f]{32}")
 OPERATION_PHASES = {"reserved", "launched", "running", "preparing", "fedora-executing",
                     "desktop-starting", "flatpak-system", "flatpak-system-complete", "flatpak-user",
-                    "mise-inventory", "mise-update", "mise-recheck", "recovering", "completed", "failed",
-                    "interrupted", "system-failed", "system-complete/user-failed"}
+                    "flatpak-user-complete", "mise-inventory", "mise-update", "mise-recheck",
+                    "recovering", "completed", "failed",
+                    "interrupted", "system-failed", "system-complete/user-failed", "closed"}
 OPERATION_FIELDS = {"schema", "operation", "provider", "action", "phase", "outcome",
                     "provider_phase", "created", "updated", "terminal_pid", "terminal_identity",
-                    "recovery_of", "recovery_phase", "detail"}
+                    "recovery_of", "recovery_phase", "recovery_provider_phase", "detail"}
 
 
 def operation_path():
@@ -88,6 +89,10 @@ def operation_lock():
 
 def validate_operation(value):
     providers = {meta.identifier for meta in REGISTRY}
+    phase_provider = {"fedora-executing": "fedora", "desktop-starting": "dwm-titus",
+                      "flatpak-system": "flatpak", "flatpak-system-complete": "flatpak",
+                      "flatpak-user": "flatpak", "flatpak-user-complete": "flatpak",
+                      "mise-inventory": "mise", "mise-update": "mise", "mise-recheck": "mise"}
     if (not isinstance(value, dict) or set(value) != OPERATION_FIELDS or value.get("schema") != 1
             or not isinstance(value.get("operation"), str) or not OPERATION_PATTERN.fullmatch(value["operation"])
             or value.get("provider") not in providers or value.get("action") not in {"update", "recover"}
@@ -99,8 +104,22 @@ def validate_operation(value):
             or not isinstance(value.get("recovery_of"), str)
             or value["recovery_of"] and not OPERATION_PATTERN.fullmatch(value["recovery_of"])
             or value.get("recovery_phase") not in {"", "interrupted", "system-failed", "system-complete/user-failed"}
-            or (value["action"] == "update" and (value["recovery_of"] or value["recovery_phase"]))
+            or value.get("recovery_provider_phase") not in OPERATION_PHASES
+            or (value["action"] == "update" and (value["recovery_of"] or value["recovery_phase"]
+                                                   or value["recovery_provider_phase"] != "reserved"))
             or (value["action"] == "recover" and (not value["recovery_of"] or not value["recovery_phase"]))
+            or (value["phase"] == "completed" and value["outcome"] != "succeeded")
+            or (value["phase"] in {"failed", "system-failed", "system-complete/user-failed"}
+                and value["outcome"] != "failed")
+            or (value["phase"] == "interrupted" and value["outcome"] != "unknown")
+            or (value["phase"] == "closed" and value["outcome"] not in {"succeeded", "failed"})
+            or (value["phase"] not in {"completed", "failed", "interrupted", "system-failed",
+                                       "system-complete/user-failed", "closed"} and value["outcome"] != "pending")
+            or (value["phase"] in phase_provider and phase_provider[value["phase"]] != value["provider"])
+            or (value["provider_phase"] in phase_provider
+                and phase_provider[value["provider_phase"]] != value["provider"])
+            or (value["phase"] in {"system-failed", "system-complete/user-failed"}
+                and value["provider"] != "flatpak")
             or not isinstance(value.get("detail"), str) or len(value["detail"].encode()) > 8192):
         raise ValueError("invalid operation state")
     return value
@@ -158,10 +177,14 @@ def reserve_operation(provider, action, now=None):
         if action == "recover" and (existing is None or existing["provider"] != provider
                                     or existing["phase"] not in recoverable):
             raise ValueError("provider has no matching recoverable operation state")
-        if existing is not None and existing["phase"] not in {"completed", "failed"}:
+        if action == "update" and existing is not None and existing["phase"] != "closed":
+            raise BlockingIOError("another provider terminal owns the active slot")
+        if existing is not None and existing["phase"] not in {"closed"}:
             if action != "recover":
                 raise BlockingIOError("another provider operation is active")
-            if existing["terminal_pid"] and process_identity(existing["terminal_pid"]) == existing["terminal_identity"]:
+            observed = process_identity(existing["terminal_pid"]) if existing["terminal_pid"] else None
+            if observed is not None and (not existing["terminal_identity"]
+                                         or observed == existing["terminal_identity"]):
                 raise BlockingIOError("the interrupted provider terminal is still active")
         value = {"schema": 1, "operation": "op-" + secrets.token_hex(16), "provider": provider,
                  "action": action, "phase": "reserved", "provider_phase": "reserved",
@@ -169,6 +192,7 @@ def reserve_operation(provider, action, now=None):
                  "updated": now, "terminal_pid": 0, "terminal_identity": "",
                  "recovery_of": existing["operation"] if action == "recover" and existing is not None else "",
                  "recovery_phase": existing["phase"] if action == "recover" and existing is not None else "",
+                 "recovery_provider_phase": existing["provider_phase"] if action == "recover" and existing is not None else "reserved",
                  "detail": "Operation reserved"}
         write_operation(value)
         return value
@@ -210,7 +234,7 @@ def record_terminal(operation, pid, identity, now=None):
 
 def active_operation():
     value = read_operation()
-    return value if value is not None and value["phase"] not in {"completed", "failed"} else None
+    return value if value is not None and value["phase"] != "closed" else None
 
 
 subprocess_popen = subprocess.Popen
@@ -248,6 +272,7 @@ def launch_operation(provider, action="update", *, terminal=None, runner=None, n
     terminal = terminal or str(Path(__file__).resolve().with_name("dwm-terminal"))
     runner = runner or str(Path(__file__).resolve().with_name("dwm-update-center-terminal"))
     argv = [terminal, "-e", runner, value["operation"], provider, action]
+    child = None
     try:
         child = subprocess_popen(argv, start_new_session=True, close_fds=True)
         identity = process_identity(child.pid)
@@ -263,6 +288,7 @@ def launch_operation(provider, action="update", *, terminal=None, runner=None, n
             if current is None or current["operation"] != value["operation"]:
                 raise
             write_operation({**current, "phase": "interrupted", "outcome": "unknown",
+                "terminal_pid": child.pid if child is not None else current["terminal_pid"],
                 "detail": "Terminal launch outcome is ambiguous: " + str(error),
                 "updated": now or int(time.time())})
         raise
@@ -276,20 +302,32 @@ def rescan_provider(provider):
 
 
 def terminal_closed(operation, now=None):
+    release = False
     with operation_lock():
         value = read_operation()
         if value is None or value["operation"] != operation:
             raise ValueError("operation identity mismatch")
         observed = process_identity(value["terminal_pid"])
         recoverable = {"interrupted", "system-failed", "system-complete/user-failed"}
-        if value["phase"] not in {"completed", "failed", *recoverable} and observed != value["terminal_identity"]:
+        if value["phase"] == "closed":
+            pass
+        elif value["phase"] in {"completed", "failed"} and observed is None:
+            release = True
+        elif value["phase"] not in recoverable and observed != value["terminal_identity"]:
             value = {**value, "phase": "interrupted", "outcome": "unknown",
                      "detail": "Terminal identity is missing or changed; recovery is required", "updated": now or int(time.time())}
             write_operation(value)
     try:
         rescan_provider(value["provider"])
     except (OSError, ValueError):
-        pass
+        return value
+    if release:
+        with operation_lock():
+            current = read_operation()
+            if current is None or current["operation"] != operation or current["phase"] not in {"completed", "failed"}:
+                raise ValueError("operation changed during terminal reconciliation")
+            value = {**current, "phase": "closed", "updated": now or int(time.time())}
+            write_operation(value)
     return value
 
 
