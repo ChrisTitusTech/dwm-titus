@@ -24,6 +24,7 @@ Scope {
     property bool initialCacheLoaded: false
     property bool initialLiveScanComplete: false
     property bool connectivityReady: false
+    property bool startupDelayElapsed: false
     property bool pendingForceRefresh: false
     property bool pendingSettingsReload: false
     property string pendingTerminalClose: ""
@@ -72,6 +73,7 @@ Scope {
 
     function startupElapsed() {
         startupTimer.stop();
+        root.startupDelayElapsed = true;
         const started = root.scheduledRefresh();
         if (root.online) refreshTimer.start();
         else refreshTimer.stop();
@@ -215,6 +217,7 @@ Scope {
     onOnlineChanged: {
         if (!root.connectivityReady) return;
         if (online) {
+            if (!root.startupDelayElapsed) return;
             root.scheduledRefresh();
             if (!startupTimer.running) refreshTimer.start();
         }

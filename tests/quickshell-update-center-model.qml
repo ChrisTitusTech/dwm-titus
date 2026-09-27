@@ -9,6 +9,7 @@ ShellRoot {
     property int ticks: 0
     property var retainedProviders: null
     property bool startupSaveDispatched: false
+    property int transitionTick: 0
 
     function require(condition, message) {
         if (!condition) throw new Error(message);
@@ -82,7 +83,6 @@ ShellRoot {
                     ];
                     for (const payload of invalid) test.require(!model.acceptSnapshot(payload), "invalid protocol must fail closed");
                     test.require(model.providers === prior, "invalid protocol must not partially replace prior state");
-                    test.require(!model.startupElapsed(), "offline startup deadline must suppress its scheduled scan");
                     test.require(!model.periodicRefreshRunning, "periodic timer must remain stopped while initially offline");
                     model.showSettings();
                     test.require(model.draftRefreshSeconds === 900 && model.draftAlwaysShow, "settings must open from saved values");
@@ -106,6 +106,13 @@ ShellRoot {
                 } else if (test.step === 2 && model.settingsError.indexOf("changed") >= 0) {
                     test.require(model.savedRefreshSeconds === 1000, "concurrent save errors must not mutate saved settings");
                     connectivity.connectivity = NetworkConnectivity.Full;
+                    test.transitionTick = test.ticks;
+                    test.step = 20;
+                } else if (test.step === 20 && test.ticks >= test.transitionTick + 5) {
+                    test.require(!model.scanning && model.providers[0].detail === "cache"
+                            && !model.periodicRefreshRunning,
+                        "connectivity restoration before the startup deadline must not scan or start periodic work");
+                    test.require(model.startupElapsed(), "startup deadline must launch the first online force scan");
                     test.step = 21;
                 } else if (test.step === 21 && model.scanning) {
                     const started = model.scheduledRefresh();
