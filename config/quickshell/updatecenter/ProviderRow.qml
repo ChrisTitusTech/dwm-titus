@@ -14,7 +14,10 @@ Rectangle {
     property bool providerActive: false
     property bool scanning: false
     property bool online: true
+    property int nowSeconds: Math.floor(Date.now() / 1000)
+    property int instantiatedItemDelegates: 0
     readonly property bool providerBusy: root.globalBusy && !root.providerRecoverable
+    readonly property string relativeCheckAge: root.formatCheckAge(root.provider.lastSuccess, root.nowSeconds)
     readonly property var providerIcons: ({
         "fedora": "../assets/update-center/fedora.svg",
         "dwm-titus": "../assets/update-center/dwm-titus.png",
@@ -55,7 +58,7 @@ Rectangle {
     }
 
     function checkAge() {
-        return root.formatCheckAge(root.provider.lastSuccess, Math.floor(Date.now() / 1000));
+        return root.relativeCheckAge;
     }
 
     function itemDescription(item) {
@@ -147,7 +150,7 @@ Rectangle {
                     Layout.fillWidth: true
                     text: root.statusSummary() + "  |  Managed "
                         + (root.provider.managed === null ? "unknown" : root.provider.managed)
-                        + "  |  " + root.checkAge()
+                        + "  |  " + root.relativeCheckAge
                     color: root.provider.freshness === "error" ? Theme.danger
                         : root.provider.freshness === "stale" ? Theme.warning : Theme.menuMutedText
                     font.pixelSize: Theme.fontBodySmallSize
@@ -180,18 +183,21 @@ Rectangle {
             wrapMode: Text.Wrap
         }
 
-        Flickable {
+        ListView {
             id: itemViewport
 
             objectName: "providerItemsViewport"
             Layout.fillWidth: true
-            Layout.preferredHeight: root.expanded ? Math.min(itemColumn.implicitHeight, Theme.scaledSize(180)) : 0
+            Layout.preferredHeight: root.expanded
+                ? Math.min(root.provider.items.length * Theme.scaledSize(56), Theme.scaledSize(180)) : 0
             visible: root.expanded && root.provider.items.length > 0
-            contentWidth: width
-            contentHeight: itemColumn.implicitHeight
+            model: root.expanded ? root.provider.items : []
+            spacing: Theme.spacingSm
             clip: true
             boundsBehavior: Flickable.StopAtBounds
-            flickableDirection: Flickable.VerticalFlick
+            reuseItems: true
+            cacheBuffer: 0
+            activeFocusOnTab: visible
             Accessible.role: Accessible.List
             Accessible.name: root.provider.name + " update items"
 
@@ -199,52 +205,43 @@ Rectangle {
                 NumberAnimation { duration: Theme.animationFast }
             }
 
-            ColumnLayout {
-                id: itemColumn
+            delegate: Rectangle {
+                id: itemRow
 
-                width: itemViewport.width
-                spacing: Theme.spacingSm
+                required property var modelData
+                readonly property var item: modelData
 
-                Repeater {
-                    model: root.provider.items
+                width: ListView.view.width
+                height: Math.max(Theme.scaledSize(52), itemText.implicitHeight + Theme.spacingLg * 2)
+                color: Theme.menuBackground
+                border.color: Theme.controlNormalBorder
+                border.width: Theme.controlBorderWidth
+                radius: Theme.controlRadius
+                Accessible.role: Accessible.ListItem
+                Accessible.name: modelData.name + ", " + modelData.current + " to " + modelData.available
+                Component.onCompleted: root.instantiatedItemDelegates++
+                Component.onDestruction: root.instantiatedItemDelegates--
 
-                    Rectangle {
-                        id: itemRow
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.margins: Theme.spacingLg
+                    spacing: Theme.spacingLg
 
-                        required property var modelData
-                        readonly property var item: modelData
+                    UiText {
+                        id: itemText
 
                         Layout.fillWidth: true
-                        implicitHeight: itemText.implicitHeight + Theme.spacingLg * 2
-                        color: Theme.menuBackground
-                        border.color: Theme.controlNormalBorder
-                        border.width: Theme.controlBorderWidth
-                        radius: Theme.controlRadius
-                        Accessible.role: Accessible.ListItem
-                        Accessible.name: modelData.name + ", " + modelData.current + " to " + modelData.available
+                        text: root.itemDescription(itemRow.item)
+                        color: Theme.menuText
+                        font.pixelSize: Theme.fontBodySmallSize
+                        wrapMode: Text.Wrap
+                    }
 
-                        RowLayout {
-                            anchors.fill: parent
-                            anchors.margins: Theme.spacingLg
-                            spacing: Theme.spacingLg
-
-                            UiText {
-                                id: itemText
-
-                                Layout.fillWidth: true
-                                text: root.itemDescription(itemRow.item)
-                                color: Theme.menuText
-                                font.pixelSize: Theme.fontBodySmallSize
-                                wrapMode: Text.Wrap
-                            }
-
-                            ShellButton {
-                                visible: itemRow.item.url.length > 0
-                                label: "Open"
-                                accessibleDescription: "Open trusted project link for " + itemRow.item.name
-                                onActivated: root.requestOpen(itemRow.item)
-                            }
-                        }
+                    ShellButton {
+                        visible: itemRow.item.url.length > 0
+                        label: "Open"
+                        accessibleDescription: "Open trusted project link for " + itemRow.item.name
+                        onActivated: root.requestOpen(itemRow.item)
                     }
                 }
             }

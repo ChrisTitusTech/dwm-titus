@@ -91,6 +91,24 @@ ShellRoot {{
         function saveSettings() {{ saveCount++; message = "saved"; settingsLoading = true; saveTimer.start(); return true; }}
     }}
 
+    QtObject {{
+        id: highProvider
+        property string id: "fedora"
+        property string name: "High-cardinality Fedora"
+        property string status: "available"
+        property int pending: 4096
+        property int managed: 4096
+        property string freshness: "fresh"
+        property int lastSuccess: 999941
+        property bool updateAvailable: true
+        property string errorCode: ""
+        property string detail: ""
+        property var items: Array.from({{length: 4096}}, function(_, index) {{ return {{
+            providerId: "fedora", action: "update", name: "Package " + index,
+            current: "1", available: "2", packageId: "package-" + index,
+            scope: "system", url: "https://example.test/package/" + index }}; }})
+    }}
+
     Timer {{
         id: saveTimer
         interval: 20
@@ -112,6 +130,13 @@ ShellRoot {{
             onUpdateRequested: providerId => model.probeAction = "update:" + providerId
             onRecoverRequested: providerId => model.probeAction = "recover:" + providerId
             onOpenUrlRequested: url => model.probeUrl = url
+        }}
+
+        ProviderRow {{
+            id: highRow
+            width: 430
+            opacity: 0
+            provider: highProvider
         }}
     }}
 
@@ -161,6 +186,15 @@ ShellRoot {{
         function counts(): string {{ return model.refreshCount + ":" + model.saveCount; }}
         function editorFocused(): string {{ return String(updateWindow.editorFocused()); }}
         function saveStatus(): string {{ return updateWindow.saveStatus; }}
+        function highDelegateCount(): string {{ return String(highRow.instantiatedItemDelegates); }}
+        function highExpand(): void {{ highRow.expanded = true; }}
+        function highCollapse(): void {{ highRow.expanded = false; }}
+        function setProbeClock(lastSuccess: int, nowSeconds: int): string {{
+            highProvider.lastSuccess = lastSuccess;
+            highRow.nowSeconds = nowSeconds;
+            return highRow.relativeCheckAge;
+        }}
+        function ageClockRunning(): string {{ return String(updateWindow.ageClockRunning); }}
     }}
 }}'''
 
@@ -270,11 +304,25 @@ with tempfile.TemporaryDirectory(prefix="update-center-xvfb-", dir=tmp_root) as 
         assert call("probeOpen", "file:///tmp/untrusted") == ""
         assert call("probeOpen", "javascript:alert(1)") == ""
         assert call("accessibleName") == "Fedora, 40 pending"
+        assert call("highDelegateCount") == "0", "Collapsed provider eagerly instantiated item delegates"
+        call("highExpand")
+        expanded_delegate_count = wait_for(
+            lambda: int(call("highDelegateCount")) or None,
+            "Expanded high-cardinality provider did not construct visible delegates",
+        )
+        assert expanded_delegate_count < 32, f"Expanded provider constructed {expanded_delegate_count} of 4096 delegates"
+        call("highCollapse")
+        wait_for(lambda: call("highDelegateCount") == "0", "Collapsed provider retained item delegates")
+        assert call("setProbeClock", 999_941, 1_000_000) == "59s ago"
+        assert call("setProbeClock", 999_941, 1_000_001) == "1m ago", "Relative age did not react without a rescan"
+        assert call("ageClockRunning") == "true"
 
         run(env, *ipc, "openOther", check=True)
         wait_for(lambda: len(visible_windows(env, shell.pid)) == 2, "Comparison popup did not replace Update Center")
+        assert call("ageClockRunning") == "false", "Age clock continued while Update Center was closed"
         run(env, *ipc, "open", check=True)
         wait_for(lambda: len(visible_windows(env, shell.pid)) == 2, "Popup exclusivity did not close the other popup")
+        assert call("ageClockRunning") == "true"
         popup_id = next(window for window in visible_windows(env, shell.pid) if window != panel_id)
 
         run(env, "xdotool", "mousemove", "320", "210", "click", "5", "click", "5", check=True)

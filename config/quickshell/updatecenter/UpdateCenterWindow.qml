@@ -14,6 +14,8 @@ ClickAwayPopup {
     property bool savePending: false
     property bool saveObservedReload: false
     property string saveStatus: ""
+    property int nowSeconds: Math.floor(Date.now() / 1000)
+    readonly property bool ageClockRunning: ageTimer.running
     readonly property int cardWidth: Theme.scaledSize(430)
     readonly property int maximumHeight: panelWindow && panelWindow.screen
         ? Math.max(260, panelWindow.screen.height - Theme.panelHeight - Theme.popupMargin)
@@ -48,9 +50,19 @@ ClickAwayPopup {
 
     onVisibleChanged: {
         if (visible) {
+            root.nowSeconds = Math.floor(Date.now() / 1000);
             root.exclusiveOpenRequested();
             Qt.callLater(function() { updateCard.forceActiveFocus(); });
         }
+    }
+
+    Timer {
+        id: ageTimer
+
+        interval: 30000
+        repeat: true
+        running: root.visible
+        onTriggered: root.nowSeconds = Math.floor(Date.now() / 1000)
     }
 
     ShellSurface {
@@ -200,6 +212,7 @@ ClickAwayPopup {
                                 && root.updateCenterModel.activeOperation.providerId === modelData.id
                             scanning: root.updateCenterModel.scanning
                             online: root.updateCenterModel.online
+                            nowSeconds: root.nowSeconds
                             onUpdateRequested: providerId => root.updateCenterModel.launch(providerId)
                             onRecoverRequested: providerId => root.updateCenterModel.recover(providerId)
                             onOpenUrlRequested: url => Qt.openUrlExternally(url)
