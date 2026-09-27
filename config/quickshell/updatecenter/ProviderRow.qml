@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Layouts
 import qs.core
@@ -23,6 +25,7 @@ Rectangle {
 
     signal updateRequested(string providerId)
     signal recoverRequested(string providerId)
+    signal openUrlRequested(string url)
 
     function iconFor(providerId) {
         return root.providerIcons[providerId] || root.providerIcons.other;
@@ -41,13 +44,42 @@ Rectangle {
         return "Up to date";
     }
 
-    function checkAge() {
-        const seconds = Number(root.provider.lastSuccess || 0);
-        if (seconds <= 0) return "Not checked";
+    function formatCheckAge(lastSuccess, nowSeconds) {
+        const timestamp = Number(lastSuccess || 0);
+        if (timestamp <= 0) return "Not checked";
+        const seconds = Math.max(0, Math.floor(Number(nowSeconds)) - timestamp);
         if (seconds < 60) return seconds + "s ago";
         if (seconds < 3600) return Math.floor(seconds / 60) + "m ago";
         if (seconds < 86400) return Math.floor(seconds / 3600) + "h ago";
         return Math.floor(seconds / 86400) + "d ago";
+    }
+
+    function checkAge() {
+        return root.formatCheckAge(root.provider.lastSuccess, Math.floor(Date.now() / 1000));
+    }
+
+    function itemDescription(item) {
+        return item.name + (item.scope.length > 0 ? " (" + item.scope + ")" : "")
+            + "\n" + item.current + " -> " + item.available;
+    }
+
+    function toggleExpanded() {
+        if (root.provider.items.length === 0) return false;
+        root.expanded = !root.expanded;
+        return true;
+    }
+
+    function requestAction() {
+        if (root.providerBusy) return false;
+        if (root.providerRecoverable) root.recoverRequested(root.provider.id);
+        else root.updateRequested(root.provider.id);
+        return true;
+    }
+
+    function requestOpen(item) {
+        if (!item || typeof item.url !== "string" || !/^https:\/\/[^\s]+$/.test(item.url)) return false;
+        root.openUrlRequested(item.url);
+        return true;
     }
 
     implicitHeight: rowColumn.implicitHeight + Theme.spacingXl * 2
@@ -62,7 +94,7 @@ Rectangle {
 
     Keys.onPressed: function(event) {
         if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
-            root.expanded = !root.expanded;
+            root.toggleExpanded();
             event.accepted = true;
         }
     }
@@ -80,14 +112,23 @@ Rectangle {
             Layout.fillWidth: true
             spacing: Theme.spacingXl
 
-            Image {
+            Rectangle {
                 Layout.preferredWidth: Theme.scaledSize(32)
                 Layout.preferredHeight: Theme.scaledSize(32)
-                source: root.iconFor(root.provider.id)
-                fillMode: Image.PreserveAspectFit
-                smooth: true
+                color: "#111827"
+                border.color: "#94a3b8"
+                border.width: 1
+                radius: Theme.controlRadius
                 Accessible.role: Accessible.Graphic
                 Accessible.name: root.provider.name + " logo"
+
+                Image {
+                    anchors.fill: parent
+                    anchors.margins: Theme.spacingSm
+                    source: root.iconFor(root.provider.id)
+                    fillMode: Image.PreserveAspectFit
+                    smooth: true
+                }
             }
 
             ColumnLayout {
@@ -119,17 +160,14 @@ Rectangle {
                 accessibleDescription: root.provider.name + " provider action"
                 enabled: root.providerRecoverable || !root.globalBusy
                 primary: root.providerRecoverable
-                onActivated: {
-                    if (root.providerRecoverable) root.recoverRequested(root.provider.id);
-                    else root.updateRequested(root.provider.id);
-                }
+                onActivated: root.requestAction()
             }
 
             ShellButton {
                 label: root.expanded ? "Collapse" : "Details"
                 accessibleDescription: root.provider.name + " update details"
                 enabled: root.provider.items.length > 0
-                onActivated: root.expanded = !root.expanded
+                onActivated: root.toggleExpanded()
             }
         }
 
@@ -194,8 +232,7 @@ Rectangle {
                                 id: itemText
 
                                 Layout.fillWidth: true
-                                text: itemRow.item.name + (itemRow.item.scope.length > 0 ? " (" + itemRow.item.scope + ")" : "")
-                                    + "\n" + itemRow.item.current + " -> " + itemRow.item.available
+                                text: root.itemDescription(itemRow.item)
                                 color: Theme.menuText
                                 font.pixelSize: Theme.fontBodySmallSize
                                 wrapMode: Text.Wrap
@@ -205,10 +242,7 @@ Rectangle {
                                 visible: itemRow.item.url.length > 0
                                 label: "Open"
                                 accessibleDescription: "Open trusted project link for " + itemRow.item.name
-                                onActivated: {
-                                    const item = itemRow.item;
-                                    if (/^https:\/\/[^\s]+$/.test(item.url)) Qt.openUrlExternally(item.url);
-                                }
+                                onActivated: root.requestOpen(itemRow.item)
                             }
                         }
                     }

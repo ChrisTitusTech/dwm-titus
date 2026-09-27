@@ -36,7 +36,9 @@ grep -Fq 'return root.providerIcons[providerId] || root.providerIcons.other;' "$
 grep -Fq 'property bool expanded: false' "$row"
 grep -Fq 'signal updateRequested(string providerId)' "$row"
 grep -Fq 'signal recoverRequested(string providerId)' "$row"
-grep -Fq 'Qt.openUrlExternally(item.url)' "$row"
+grep -Fq 'signal openUrlRequested(string url)' "$row"
+grep -Fq 'if (!item || typeof item.url !== "string" || !/^https:' "$row"
+grep -Fq 'onOpenUrlRequested: url => Qt.openUrlExternally(url)' "$window"
 grep -Fq 'root.providerBusy ? "Busy" : root.providerRecoverable ? "Recover" : "Update"' "$row"
 
 grep -Fq 'ClickAwayPopup {' "$window"

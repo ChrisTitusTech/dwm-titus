@@ -8,6 +8,8 @@ import tempfile
 import time
 from pathlib import Path
 
+from PIL import ImageGrab
+
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -74,15 +76,26 @@ ShellRoot {{
         property bool scanning: false
         property bool settingsLoading: false
         property bool online: true
+        property int refreshCount: 0
+        property int saveCount: 0
+        property string probeAction: ""
+        property string probeUrl: ""
         readonly property bool busy: activeOperation !== null
         function open() {{ visible = true; }}
         function close() {{ visible = false; settingsMode = false; discardSettings(); }}
-        function refresh(force) {{ message = force ? "Manual refresh requested" : ""; return true; }}
+        function refresh(force) {{ refreshCount++; message = force ? "Manual refresh requested" : ""; return true; }}
         function launch(providerId) {{ message = "launch:" + providerId; visible = false; return true; }}
         function recover(providerId) {{ message = "recover:" + providerId; visible = false; return true; }}
         function showSettings() {{ settingsMode = true; discardSettings(); }}
         function discardSettings() {{ draftRefreshSeconds = 3600; draftAlwaysShow = true; settingsError = ""; }}
-        function saveSettings() {{ message = "saved"; return true; }}
+        function saveSettings() {{ saveCount++; message = "saved"; settingsLoading = true; saveTimer.start(); return true; }}
+    }}
+
+    Timer {{
+        id: saveTimer
+        interval: 20
+        repeat: false
+        onTriggered: model.settingsLoading = false
     }}
 
     PanelWindow {{
@@ -91,6 +104,15 @@ ShellRoot {{
         anchors {{ top: true; left: true; right: true }}
         exclusiveZone: 30
         color: Theme.barBackground
+
+        ProviderRow {{
+            id: probeRow
+            visible: false
+            provider: model.providers[0]
+            onUpdateRequested: providerId => model.probeAction = "update:" + providerId
+            onRecoverRequested: providerId => model.probeAction = "recover:" + providerId
+            onOpenUrlRequested: url => model.probeUrl = url
+        }}
     }}
 
     ClickAwayPopup {{
@@ -123,6 +145,22 @@ ShellRoot {{
         function dark(): void {{ Theme.dark = true; Theme.bg = "#202630"; Theme.surface = "#303846"; Theme.text = "#f0f0f0"; }}
         function reducedMotion(): void {{ Theme.applyAccessibility(false, true); }}
         function normalMotion(): void {{ Theme.applyAccessibility(false, false); }}
+        function motionDuration(): string {{ return String(Theme.animationFast); }}
+        function probeAge(lastSuccess: int, nowSeconds: int): string {{ return probeRow.formatCheckAge(lastSuccess, nowSeconds); }}
+        function probeExpand(): string {{ probeRow.toggleExpanded(); return String(probeRow.expanded); }}
+        function probeDetails(): string {{ return probeRow.itemDescription(model.providers[0].items[0]); }}
+        function probeAction(mode: string): string {{
+            model.probeAction = "";
+            probeRow.globalBusy = mode === "busy";
+            probeRow.providerRecoverable = mode === "recover";
+            probeRow.requestAction();
+            return model.probeAction;
+        }}
+        function probeOpen(url: string): string {{ model.probeUrl = ""; probeRow.requestOpen({{ url: url }}); return model.probeUrl; }}
+        function accessibleName(): string {{ return probeRow.Accessible.name; }}
+        function counts(): string {{ return model.refreshCount + ":" + model.saveCount; }}
+        function editorFocused(): string {{ return String(updateWindow.editorFocused()); }}
+        function saveStatus(): string {{ return updateWindow.saveStatus; }}
     }}
 }}'''
 
@@ -165,6 +203,22 @@ with tempfile.TemporaryDirectory(prefix="update-center-xvfb-", dir=tmp_root) as 
     shell = subprocess.Popen(["quickshell", "--no-duplicate"], env=env, stdout=log, stderr=log)
     ipc = ("quickshell", "ipc", "--path", str(qml / "shell.qml"), "call", "update-center-test")
 
+    def call(name, *arguments):
+        return run(env, *ipc, name, *(str(argument) for argument in arguments), check=True).stdout.strip()
+
+    def screenshot():
+        return ImageGrab.grab(xdisplay=env.get("DISPLAY")).convert("RGB")
+
+    def color_bounds(image, rgb):
+        points = [(x, y) for y in range(image.height) for x in range(image.width) if image.getpixel((x, y)) == rgb]
+        assert points, f"color {rgb} was not rendered"
+        return min(x for x, _ in points), min(y for _, y in points), max(x for x, _ in points), max(y for _, y in points), len(points)
+
+    def pixel_difference(first, second):
+        first_pixels = first.get_flattened_data() if hasattr(first, "get_flattened_data") else first.getdata()
+        second_pixels = second.get_flattened_data() if hasattr(second, "get_flattened_data") else second.getdata()
+        return sum(1 for before, after in zip(first_pixels, second_pixels) if before != after)
+
     try:
         wait_for(lambda: run(env, *ipc, "open").returncode == 0, "Update Center IPC unavailable")
         windows = wait_for(lambda: len(visible_windows(env, shell.pid)) >= 2 and visible_windows(env, shell.pid),
@@ -177,6 +231,45 @@ with tempfile.TemporaryDirectory(prefix="update-center-xvfb-", dir=tmp_root) as 
         assert int(popup_geometry["Y"]) == int(panel_geometry["Y"]) + int(panel_geometry["HEIGHT"])
         assert int(popup_geometry["WIDTH"]) == 640, "Popup did not remain bounded to narrow monitor"
         assert int(popup_geometry["HEIGHT"]) <= 450, "Popup overflowed below the panel"
+        time.sleep(0.2)
+        run(env, "xdotool", "mousemove", "10", "15", check=True)
+        time.sleep(0.1)
+        updates_image = screenshot()
+        run(env, "xdotool", "mousemove", "480", "143", "click", "1", check=True)
+        run(env, "xdotool", "mousemove", "10", "15", check=True)
+        time.sleep(0.3)
+        expanded_image = screenshot()
+        changed_pixels = pixel_difference(updates_image, expanded_image)
+        assert changed_pixels > 3000, "Expanding a provider did not render its bounded item list"
+        run(env, "xdotool", "mousemove", "480", "143", "click", "1", check=True)
+        run(env, "xdotool", "mousemove", "10", "15", check=True)
+        time.sleep(0.3)
+        collapsed_image = screenshot()
+        restored_difference = pixel_difference(updates_image, collapsed_image)
+        assert restored_difference < 1000, "Collapsing one provider did not restore the independent row layout"
+
+        expected_ages = (
+            (0, 1_000_000, "Not checked"),
+            (1_000_001, 1_000_000, "0s ago"),
+            (1_000_000, 1_000_000, "0s ago"),
+            (999_941, 1_000_000, "59s ago"),
+            (999_940, 1_000_000, "1m ago"),
+            (996_400, 1_000_000, "1h ago"),
+            (913_600, 1_000_000, "1d ago"),
+        )
+        for last_success, now_seconds, expected in expected_ages:
+            assert call("probeAge", last_success, now_seconds) == expected
+
+        assert call("probeExpand") == "true"
+        assert call("probeExpand") == "false", "Provider expansion was not independently reversible"
+        assert call("probeDetails") == "Package with a deliberately long name 0 (system)\n1.0 -> 2.0"
+        assert call("probeAction", "update") == "update:fedora"
+        assert call("probeAction", "recover") == "recover:fedora"
+        assert call("probeAction", "busy") == "", "Busy provider dispatched an action"
+        assert call("probeOpen", "https://example.test/release") == "https://example.test/release"
+        assert call("probeOpen", "file:///tmp/untrusted") == ""
+        assert call("probeOpen", "javascript:alert(1)") == ""
+        assert call("accessibleName") == "Fedora, 40 pending"
 
         run(env, *ipc, "openOther", check=True)
         wait_for(lambda: len(visible_windows(env, shell.pid)) == 2, "Comparison popup did not replace Update Center")
@@ -195,8 +288,46 @@ with tempfile.TemporaryDirectory(prefix="update-center-xvfb-", dir=tmp_root) as 
             run(env, *ipc, fixture, check=True)
             assert shell.poll() is None, f"{fixture} fixture terminated the shell"
 
+        call("light")
+        time.sleep(0.2)
+        light_image = screenshot()
+        assert color_bounds(light_image, (244, 244, 244))[4] > 1000
+        tile_bounds = color_bounds(light_image, (17, 24, 39))
+        assert tile_bounds[4] > 100, "Contrasting provider icon tile was not visible in light mode"
+        call("dark")
+        time.sleep(0.2)
+        dark_image = screenshot()
+        card_bounds = color_bounds(dark_image, (32, 38, 48))
+        assert card_bounds[:3] == (106, 31, 533), f"Rendered card interior did not prove a 430px card centered at x=105 below y=30: {card_bounds}"
+        assert card_bounds[4] > 1000
+        call("reducedMotion")
+        assert call("motionDuration") == "0"
+        call("normalMotion")
+
         run(env, *ipc, "settings", check=True)
         run(env, "xdotool", "windowfocus", popup_id, check=True)
+        time.sleep(0.2)
+        before_refresh, before_save = map(int, call("counts").split(":"))
+        run(env, "xdotool", "mousemove", "500", "318", "click", "1", check=True)
+        wait_for(lambda: call("saveStatus") == "Preferences saved", "Save did not report successful persistence")
+        clicked_refresh, clicked_save = map(int, call("counts").split(":"))
+        assert clicked_refresh == before_refresh and clicked_save == before_save + 1
+        run(env, "xdotool", "key", "r", check=True)
+        after_refresh, after_save = map(int, call("counts").split(":"))
+        assert after_refresh == clicked_refresh + 1 and after_save == clicked_save
+        run(env, "xdotool", "key", "s", check=True)
+        shortcut_refresh, shortcut_save = map(int, call("counts").split(":"))
+        assert shortcut_refresh == after_refresh and shortcut_save == after_save + 1
+        for _ in range(16):
+            run(env, "xdotool", "key", "Tab", check=True)
+            if call("editorFocused") == "true":
+                break
+        else:
+            raise AssertionError("Interval editor was not keyboard reachable")
+        run(env, "xdotool", "key", "s", check=True)
+        editor_refresh, editor_save = map(int, call("counts").split(":"))
+        assert editor_refresh == shortcut_refresh and editor_save == shortcut_save, \
+            f"S escaped the focused interval editor: before={shortcut_refresh, shortcut_save} after={editor_refresh, editor_save}"
         run(env, "xdotool", "key", "Escape", check=True)
         wait_for(lambda: popup_id not in visible_windows(env, shell.pid), "Escape did not close the popup")
 

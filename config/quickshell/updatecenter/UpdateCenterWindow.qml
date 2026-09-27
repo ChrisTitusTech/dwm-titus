@@ -34,7 +34,8 @@ ClickAwayPopup {
     function requestSave() {
         root.saveStatus = "";
         root.saveObservedReload = false;
-        root.savePending = root.updateCenterModel.saveSettings();
+        root.savePending = true;
+        if (!root.updateCenterModel.saveSettings()) root.savePending = false;
     }
 
     visible: panelWindow !== null && panelWindow.screen !== null && updateCenterModel.visible
@@ -201,6 +202,7 @@ ClickAwayPopup {
                             online: root.updateCenterModel.online
                             onUpdateRequested: providerId => root.updateCenterModel.launch(providerId)
                             onRecoverRequested: providerId => root.updateCenterModel.recover(providerId)
+                            onOpenUrlRequested: url => Qt.openUrlExternally(url)
                         }
                     }
                 }
