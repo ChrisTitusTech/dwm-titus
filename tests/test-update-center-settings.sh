@@ -150,11 +150,13 @@ def fsync(fd):
         os.chmod(state, 0o600)
     elif mode == "interrupt":
         raise KeyboardInterrupt
+    elif mode == "io":
+        raise OSError("injected stage sync failure")
 os.fsync = fsync
 sys.argv = [helper, "set", "300", "disabled", "absent"]
 runpy.run_path(helper, run_name="__main__")
 '''
-    for mode in ("concurrent", "interrupt"):
+    for mode in ("concurrent", "interrupt", "io"):
         result = subprocess.run([sys.executable, "-c", injection, str(helper), mode, str(state)], env=env, text=True, capture_output=True)
         assert result.returncode != 0, result.stdout
         stages = list(state.parent.glob(".update-center.*"))
@@ -164,8 +166,48 @@ runpy.run_path(helper, run_name="__main__")
             assert state.read_text() == "external edit\n"
             state.unlink()
         else:
+            detail = "operation interrupted; staged preferences retained" if mode == "interrupt" else "I/O failure before preferences committed; staged preferences retained"
+            assert result.stderr == "dwm-update-center-settings: " + detail + "\n", result.stderr
             assert not state.exists()
         stages[0].unlink()
+
+    # A committed transaction cannot advertise a nonexistent recovery stage.
+    committed_injection = '''import os, runpy, sys
+helper, action, failure, baseline = sys.argv[1:]
+original = os.fsync
+calls = 0
+def fsync(fd):
+    global calls
+    original(fd)
+    calls += 1
+    if calls == 2:
+        if failure == "interrupt": raise KeyboardInterrupt
+        raise OSError("injected directory sync failure")
+os.fsync = fsync
+sys.argv = [helper, "set", "300", "disabled", baseline] if action == "set" else [helper, "reset", baseline]
+runpy.run_path(helper, run_name="__main__")
+'''
+    failures = []
+    for action in ("set", "reset"):
+        for failure in ("interrupt", "io"):
+            if action == "reset":
+                run("set", "300", "disabled", status())
+                token = status("available", "300", "disabled")
+            else:
+                token = status()
+            result = subprocess.run([sys.executable, "-c", committed_injection, str(helper), action, failure, token], env=env, text=True, capture_output=True)
+            detail = "operation interrupted after preferences committed; refresh status" if failure == "interrupt" else "I/O failure after preferences committed; durability uncertain; refresh status"
+            expected = "dwm-update-center-settings: " + detail + "\n"
+            if result.returncode != 1 or result.stderr != expected or result.stdout:
+                failures.append((action, failure, result.returncode, result.stderr, result.stdout))
+            assert not list(state.parent.glob(".update-center.*")), "committed operation retained an unexpected stage"
+            if action == "set":
+                status("available", "300", "disabled")
+                state.unlink()
+            else:
+                assert not state.exists()
+                status()
+    assert not failures, ("incorrect post-commit diagnostics", failures)
 
     # Wrong-owner metadata fixture: fake only fstat's owner, keep all I/O real.
     state.write_text(header + "refreshSeconds\t300\nalwaysShow\tdisabled\n")

@@ -206,6 +206,7 @@ def mutate(config, runtime, command, baseline, values):
         staged = f".update-center.{secrets.token_hex(12)}"
         stage_fd = os.open(staged, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
                            0o600, dir_fd=fd)
+        committed = False
         try:
             content = f"{HEADER}\nrefreshSeconds\t{values[0]}\nalwaysShow\t{values[1]}\n".encode("ascii")
             with os.fdopen(stage_fd, "wb") as stream:
@@ -221,13 +222,21 @@ def mutate(config, runtime, command, baseline, values):
             if command == "reset":
                 if data is not None:
                     os.unlink(NAME, dir_fd=fd)
+                committed = True
                 os.unlink(staged, dir_fd=fd)
             else:
                 os.replace(staged, NAME, src_dir_fd=fd, dst_dir_fd=fd)
+                committed = True
             os.fsync(fd)
             new_token, _ = snapshot(fd)
         except KeyboardInterrupt:
+            if committed:
+                raise Rejected("operation interrupted after preferences committed; refresh status") from None
             raise Rejected("operation interrupted; staged preferences retained") from None
+        except OSError:
+            if committed:
+                raise Rejected("I/O failure after preferences committed; durability uncertain; refresh status") from None
+            raise Rejected("I/O failure before preferences committed; staged preferences retained") from None
     print(ACTION_HEADER)
     print("result\tsuccess\tPreferences saved" if command == "set" else "result\tsuccess\tDefault preferences restored")
     print(f"baseline\t{new_token}")
