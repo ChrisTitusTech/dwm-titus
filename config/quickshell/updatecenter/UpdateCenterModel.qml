@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import Quickshell.Networking
 import qs.core
 import "UpdateCenterProtocol.js" as Protocol
 
@@ -14,7 +15,7 @@ Scope {
     property int draftRefreshSeconds: 3600
     property bool draftAlwaysShow: true
     property var activeOperation: null
-    property bool online: true
+    property var connectivitySource: Networking
     property string message: ""
     property string settingsError: ""
     property int savedRefreshSeconds: 3600
@@ -22,7 +23,12 @@ Scope {
     property string settingsBaseline: "absent"
     property bool initialCacheLoaded: false
     property bool initialLiveScanComplete: false
+    property bool pendingForceRefresh: false
+    property string pendingTerminalClose: ""
+    readonly property bool online: root.connectivitySource.connectivity === NetworkConnectivity.Full
     readonly property bool busy: root.activeOperation !== null
+    readonly property bool scanning: scanProcess.running
+    readonly property int refreshIntervalMilliseconds: root.savedRefreshSeconds * 1000
 
     function hasExceptionalState() {
         return root.providers.some(provider => provider.freshness === "stale" || provider.freshness === "error"
@@ -38,7 +44,11 @@ Scope {
     function toggle() { if (root.visible) root.close(); else root.open(); }
 
     function refresh(force) {
-        if (scanProcess.running) return false;
+        if (scanProcess.running) {
+            if (force) root.pendingForceRefresh = true;
+            return false;
+        }
+        if (force) root.pendingForceRefresh = false;
         scanProcess.command = Commands.updateCenterCommand("snapshot", force ? ["--force"] : []);
         scanProcess.liveRequest = force;
         scanProcess.running = true;
@@ -46,8 +56,21 @@ Scope {
     }
 
     function scheduledRefresh() {
-        if (!root.online || scanProcess.running) return false;
+        if (!root.online) return false;
         return root.refresh(true);
+    }
+
+    function drainScanQueue() {
+        if (!root.pendingForceRefresh || scanProcess.running || !root.online) return false;
+        root.pendingForceRefresh = false;
+        return root.refresh(true);
+    }
+
+    function startupElapsed() {
+        startupTimer.stop();
+        const started = root.scheduledRefresh();
+        refreshTimer.start();
+        return started;
     }
 
     function acceptSnapshot(text) {
@@ -64,16 +87,21 @@ Scope {
         return true;
     }
 
-    function reconcileOperation(text) {
+    function reconcileOperation(text, source) {
         const parsed = Protocol.parseAction(text);
         if (parsed === null) {
             root.message = "Update operation state is unavailable";
             return false;
         }
         const previouslyActive = root.activeOperation !== null;
-        root.activeOperation = parsed.operationId.length > 0 ? parsed : null;
+        root.activeOperation = parsed.operationId.length > 0 && parsed.phase !== "closed" ? parsed : null;
         operationTimer.running = root.activeOperation !== null;
-        if (previouslyActive && root.activeOperation === null) root.refresh(true);
+        if (root.activeOperation !== null && source !== "terminal-closed")
+            root.pendingTerminalClose = root.activeOperation.operationId;
+        if (previouslyActive && root.activeOperation === null) {
+            root.pendingTerminalClose = "";
+            root.refresh(true);
+        }
         return true;
     }
 
@@ -86,6 +114,8 @@ Scope {
                 || ["fedora", "dwm-titus", "flatpak", "mise"].indexOf(providerId) < 0)
             return false;
         operationProcess.command = Commands.updateCenterCommand(action, [providerId]);
+        operationProcess.requestKind = action;
+        operationProcess.responseAccepted = false;
         operationProcess.running = true;
         root.visible = false;
         return true;
@@ -94,8 +124,31 @@ Scope {
     function refreshOperation() {
         if (operationProcess.running) return false;
         operationProcess.command = Commands.updateCenterCommand("active", []);
+        operationProcess.requestKind = "active";
+        operationProcess.responseAccepted = false;
         operationProcess.running = true;
         return true;
+    }
+
+    function reconcileTerminalClose(operationId) {
+        if (operationProcess.running || !/^op-[0-9a-f]{32}$/.test(operationId)) return false;
+        operationProcess.command = Commands.updateCenterCommand("terminal-closed", [operationId]);
+        operationProcess.requestKind = "terminal-closed";
+        operationProcess.responseAccepted = false;
+        operationProcess.running = true;
+        return true;
+    }
+
+    function drainOperationQueue() {
+        if (operationProcess.running) return;
+        if (root.pendingTerminalClose.length > 0) {
+            const operationId = root.pendingTerminalClose;
+            root.pendingTerminalClose = "";
+            root.reconcileTerminalClose(operationId);
+        } else if (operationProcess.needsAuthoritativeRefresh) {
+            operationProcess.needsAuthoritativeRefresh = false;
+            root.refreshOperation();
+        }
     }
 
     function loadSettings(text) {
@@ -156,10 +209,7 @@ Scope {
         id: startupTimer
         interval: 30000
         repeat: false
-        onTriggered: {
-            root.scheduledRefresh();
-            refreshTimer.start();
-        }
+        onTriggered: root.startupElapsed()
     }
 
     Timer {
@@ -178,6 +228,20 @@ Scope {
         onTriggered: root.refreshOperation()
     }
 
+    Timer {
+        id: scanDrainTimer
+        interval: 0
+        repeat: false
+        onTriggered: root.drainScanQueue()
+    }
+
+    Timer {
+        id: operationDrainTimer
+        interval: 0
+        repeat: false
+        onTriggered: root.drainOperationQueue()
+    }
+
     Process {
         id: scanProcess
         command: Commands.updateCenterCommand("snapshot", [])
@@ -185,14 +249,26 @@ Scope {
         property bool liveRequest: false
         stdout: StdioCollector { onStreamFinished: root.acceptSnapshot(this.text) }
         stderr: StdioCollector { onStreamFinished: if (this.text.trim().length > 0) root.message = this.text.trim() }
+        onExited: scanDrainTimer.start() // qmllint disable signal-handler-parameters
     }
 
     Process {
         id: operationProcess
         command: Commands.updateCenterCommand("active", [])
         running: false
-        stdout: StdioCollector { onStreamFinished: root.reconcileOperation(this.text) }
+        property string requestKind: "active"
+        property bool responseAccepted: false
+        property bool needsAuthoritativeRefresh: false
+        stdout: StdioCollector {
+            onStreamFinished: operationProcess.responseAccepted = root.reconcileOperation(this.text, operationProcess.requestKind)
+        }
         stderr: StdioCollector { onStreamFinished: if (this.text.trim().length > 0) root.message = this.text.trim() }
+        onExited: (exitCode, exitStatus) => { // qmllint disable signal-handler-parameters
+            if ((operationProcess.requestKind === "launch" || operationProcess.requestKind === "recover")
+                    && (!operationProcess.responseAccepted || exitStatus !== 0 || exitCode !== 0))
+                operationProcess.needsAuthoritativeRefresh = true;
+            operationDrainTimer.start();
+        }
     }
 
     Process {
