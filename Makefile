@@ -39,6 +39,7 @@ INSTALL_COMMANDS = \
 	scripts/dwm-lock \
 	scripts/dwm-lock-watch \
 	scripts/dwm-panel-settings \
+	scripts/dwm-update-center-settings \
 	scripts/dwm-quickshell-launcher \
 	scripts/dwm-quickshell-controls \
 	scripts/dwm-quickshell-controlcenter \
@@ -511,6 +512,9 @@ check-quickshell-panel-menus: dwm
 check-quickshell-panel-settings:
 	tests/test-quickshell-panel-settings.sh
 
+check-update-center-settings:
+	tests/test-update-center-settings.sh
+
 check-accessibility:
 	tests/test-dwm-accessibility-settings.sh
 	tests/test-quickshell-accessibility.sh
@@ -751,6 +755,7 @@ check: check-picom check-picom-xvfb
 	$(MAKE) check-quickshell-large-surfaces-xvfb
 	$(MAKE) check-quickshell-panel-menus
 	$(MAKE) check-quickshell-panel-settings
+	$(MAKE) check-update-center-settings
 	$(MAKE) check-accessibility
 	$(MAKE) check-quickshell-command-menu
 	$(MAKE) check-quickshell-qml
@@ -784,6 +789,7 @@ check: check-picom check-picom-xvfb
 .PHONY: print-dnf-defaults-helper check-initial-update install-files install-user-files install-system-files clean all check check-desktop-update check-picom check-picom-xvfb check-accessibility check-appearance check-phase5-optional-components check-build-config check-build-deps check-default-apps check-xdg-autostart check-dev-sync-install \
 	check-cursor-reload \
 	check-test-runner \
+	check-update-center-settings \
 	check-display-profile check-display-setup check-fedora-iso-builder check-fedora-packages check-fedora-platform check-format check-install \
 	check-gearlever-install check-herdr-install check-install-manifest check-install-preservation check-kickstart check-lock \
 	check-session-guards check-session-migration check-screenshot check-release-helper check-shell check-webapp-launch check-diagnostics check-status check-system-health check-system-management check-quickshell-system-management check-settings \
