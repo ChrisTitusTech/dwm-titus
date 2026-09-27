@@ -554,6 +554,12 @@ check-update-center-terminal:
 check-quickshell-update-center-model:
 	tests/test-quickshell-update-center-model.sh
 
+check-quickshell-update-center:
+	tests/test-quickshell-update-center.sh
+
+check-quickshell-update-center-xvfb: all
+	xvfb-run -a /usr/bin/python3 tests/test-quickshell-update-center-xvfb.py
+
 check-system-management:
 	/usr/bin/python3 tests/test-system-management.py
 
@@ -773,6 +779,8 @@ check: check-picom check-picom-xvfb
 	$(MAKE) check-update-center
 	$(MAKE) check-update-center-terminal
 	$(MAKE) check-quickshell-update-center-model
+	$(MAKE) check-quickshell-update-center
+	$(MAKE) check-quickshell-update-center-xvfb
 	$(MAKE) check-accessibility
 	$(MAKE) check-quickshell-command-menu
 	$(MAKE) check-quickshell-qml
@@ -803,7 +811,7 @@ check: check-picom check-picom-xvfb
 	$(MAKE) check-lightdm-config
 	$(MAKE) release-check
 
-.PHONY: check-update-center check-update-center-terminal check-quickshell-update-center-model print-dnf-defaults-helper check-initial-update install-files install-user-files install-system-files clean all check check-desktop-update check-picom check-picom-xvfb check-accessibility check-appearance check-phase5-optional-components check-build-config check-build-deps check-default-apps check-xdg-autostart check-dev-sync-install \
+.PHONY: check-update-center check-update-center-terminal check-quickshell-update-center-model check-quickshell-update-center check-quickshell-update-center-xvfb print-dnf-defaults-helper check-initial-update install-files install-user-files install-system-files clean all check check-desktop-update check-picom check-picom-xvfb check-accessibility check-appearance check-phase5-optional-components check-build-config check-build-deps check-default-apps check-xdg-autostart check-dev-sync-install \
 	check-cursor-reload \
 	check-test-runner \
 	check-test-runner-podman \
