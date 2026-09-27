@@ -124,7 +124,11 @@ def require_fedora(path=Path("/etc/os-release")):
 def bounded_lines(payload):
     if not isinstance(payload, str) or len(payload.encode("utf-8")) > MAX_BYTES or "\0" in payload:
         raise ValueError("snapshot byte limit exceeded")
-    lines = payload.splitlines()
+    if any((ord(char) < 32 and char not in "\t\n") or 127 <= ord(char) <= 159 for char in payload):
+        raise ValueError("invalid raw snapshot control character")
+    lines = payload.split("\n")
+    if lines[-1] == "":
+        lines.pop()
     if len(lines) > MAX_RECORDS or any(len(line.encode("utf-8")) > MAX_RECORD_BYTES for line in lines):
         raise ValueError("snapshot record limit exceeded")
     return lines
@@ -404,13 +408,21 @@ def write_cache(path, results):
 
 def snapshot(path, scanners, *, force=False, provider=None, now=None):
     now = int(time.time()) if now is None else now
-    old = read_cache(path)
-    if old is not None and not force and provider is None:
-        return [replace(result, freshness="cached") if result.freshness == "fresh" else result for result in old]
-    previous = {result.identifier: result for result in old or []}
+    active = set(scanners)
+    if not active or active - {meta.identifier for meta in REGISTRY}:
+        raise ValueError("invalid active provider registry")
     if provider is not None and provider not in scanners:
         raise ValueError("provider is not available")
-    selected = scanners if provider is None else {provider: scanners[provider]}
+    old = read_cache(path)
+    old = [result for result in old if result.identifier in active] if old is not None else None
+    previous = {result.identifier: result for result in old or []}
+    missing_core = {meta.identifier for meta in REGISTRY if meta.core and meta.identifier in active} - previous.keys()
+    if old is not None and not missing_core and not force and provider is None:
+        return [replace(result, freshness="cached") if result.freshness == "fresh" else result for result in old]
+    selected = dict(scanners) if provider is None else {provider: scanners[provider]}
+    if old is not None and provider is None and not force:
+        selected = {identifier: scanners[identifier] for identifier in missing_core}
+    selected.update({identifier: scanners[identifier] for identifier in missing_core})
     def collect(identifier, scan):
         try:
             result = validate_result(scan())
@@ -429,7 +441,7 @@ def snapshot(path, scanners, *, force=False, provider=None, now=None):
         pending = {}
         for identifier, scan in selected.items():
             try:
-                locks.enter_context(scan_lock(Path(path).parent, identifier))
+                locks.enter_context(scan_lock(identifier))
                 pending[identifier] = scan
             except (OSError, ValueError) as error:
                 def failed(error=error):
@@ -441,7 +453,7 @@ def snapshot(path, scanners, *, force=False, provider=None, now=None):
         results = {**previous, **updates}
         try:
             with cache_commit_lock(Path(path).parent):
-                latest = {result.identifier: result for result in read_cache(path) or []}
+                latest = {result.identifier: result for result in read_cache(path) or [] if result.identifier in active}
                 latest.update({key: result for key, result in updates.items() if result.error_code != "busy"})
                 ordered_cache = [latest[meta.identifier] for meta in REGISTRY if meta.identifier in latest]
                 if ordered_cache:
@@ -454,10 +466,10 @@ def snapshot(path, scanners, *, force=False, provider=None, now=None):
 
 
 @contextlib.contextmanager
-def scan_lock(path, identifier):
+def scan_lock(identifier):
     if identifier not in {meta.identifier for meta in REGISTRY}:
         raise ValueError("unknown provider")
-    with cache_directory(path, create=True) as fd:
+    with cache_directory(coordination_path(), create=True) as fd:
         lock_fd = os.open(".scan-" + identifier, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
                           0o600, dir_fd=fd)
         try:
@@ -467,6 +479,20 @@ def scan_lock(path, identifier):
             yield
         finally:
             os.close(lock_fd)
+
+
+def coordination_path():
+    """Provider exclusion must not depend on optional cache persistence."""
+    runtime = os.environ.get("XDG_RUNTIME_DIR")
+    if runtime:
+        try:
+            with cache_directory(runtime) as fd:
+                if fd is not None and not os.fstat(fd).st_mode & 0o077:
+                    return Path(runtime) / "dwm-titus/update-center"
+        except (ValueError, OSError):
+            pass
+    state = os.environ.get("XDG_STATE_HOME") or str(Path.home() / ".local/state")
+    return Path(state) / "dwm-titus/update-center"
 
 
 @contextlib.contextmanager
@@ -557,8 +583,8 @@ def main(argv=None):
         require_fedora()
         root = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
         path = Path(root) / "dwm-titus/update-center.json"
-        if not path.is_absolute():
-            raise ValueError("cache path must be absolute")
+        # The guarded persistence layer rejects invalid/unsafe paths. Optional
+        # cache configuration must not suppress independently coordinated scans.
         scanners = {"fedora": scan_fedora}
         provider = args[1] if args[0] == "rescan" else None
         results = snapshot(path, scanners, force=args != ["snapshot"], provider=provider)
