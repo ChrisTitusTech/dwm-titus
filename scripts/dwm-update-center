@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Bounded, unprivileged Update Center snapshots; no transaction execution."""
+"""Bounded Update Center discovery and validated terminal orchestration."""
 from dataclasses import asdict, dataclass, replace
 import contextlib
 from concurrent.futures import ThreadPoolExecutor
@@ -57,6 +57,176 @@ REGISTRY = (
     ProviderMetadata("flatpak", "Flatpak", False, "flatpak", "scan_flatpak", can_recover=True),
     ProviderMetadata("mise", "Mise", False, "mise", "scan_mise", can_recover=True),
 )
+
+OPERATION_PATTERN = re.compile(r"op-[0-9a-f]{32}")
+OPERATION_FIELDS = {"schema", "operation", "provider", "action", "phase", "outcome",
+                    "created", "updated", "terminal_pid", "terminal_identity", "detail"}
+
+
+def operation_path():
+    return coordination_path() / "operation.json"
+
+
+@contextlib.contextmanager
+def operation_lock():
+    with cache_directory(coordination_path(), create=True) as fd:
+        lock_fd = os.open(".operation-lock", os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC,
+                          0o600, dir_fd=fd)
+        try:
+            if not safe_file(os.fstat(lock_fd)):
+                raise ValueError("unsafe operation lock")
+            fcntl.flock(lock_fd, fcntl.LOCK_EX)
+            yield
+        finally:
+            os.close(lock_fd)
+
+
+def validate_operation(value):
+    providers = {meta.identifier for meta in REGISTRY}
+    if (not isinstance(value, dict) or set(value) != OPERATION_FIELDS or value.get("schema") != 1
+            or not isinstance(value.get("operation"), str) or not OPERATION_PATTERN.fullmatch(value["operation"])
+            or value.get("provider") not in providers or value.get("action") not in {"update", "recover"}
+            or value.get("phase") not in {"reserved", "launched", "running", "completed", "failed", "interrupted",
+                                                "system-failed", "system-complete/user-failed"}
+            or value.get("outcome") not in {"pending", "succeeded", "failed", "unknown"}
+            or type(value.get("created")) is not int or type(value.get("updated")) is not int
+            or type(value.get("terminal_pid")) is not int or value["terminal_pid"] < 0
+            or not isinstance(value.get("terminal_identity"), str) or len(value["terminal_identity"]) > 128
+            or not isinstance(value.get("detail"), str) or len(value["detail"].encode()) > 8192):
+        raise ValueError("invalid operation state")
+    return value
+
+
+def read_operation():
+    path = operation_path()
+    try:
+        with cache_directory(path.parent) as fd:
+            if fd is None:
+                return None
+            _, data = cache_data(fd, path.name)
+        return validate_operation(machine_json(data.decode("utf-8"))) if data is not None else None
+    except (OSError, ValueError, UnicodeError):
+        return None
+
+
+def write_operation(value):
+    value = validate_operation(value)
+    path = operation_path()
+    data = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+    with cache_directory(path.parent, create=True) as fd:
+        baseline, _ = cache_data(fd, path.name)
+        temporary = ".operation-" + secrets.token_hex(16)
+        target = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+                         0o600, dir_fd=fd)
+        try:
+            with os.fdopen(target, "wb") as stream:
+                stream.write(data)
+                stream.flush()
+                os.fsync(stream.fileno())
+            current, _ = cache_data(fd, path.name)
+            if current != baseline:
+                raise ValueError("operation state changed")
+            os.replace(temporary, path.name, src_dir_fd=fd, dst_dir_fd=fd)
+            os.fsync(fd)
+        finally:
+            try:
+                os.unlink(temporary, dir_fd=fd)
+            except FileNotFoundError:
+                pass
+
+
+def reserve_operation(provider, action, now=None):
+    metadata = next((entry for entry in REGISTRY if entry.identifier == provider), None)
+    if metadata is None or action not in {"update", "recover"} or (action == "update" and not metadata.can_update) \
+            or (action == "recover" and not metadata.can_recover):
+        raise ValueError("invalid provider operation")
+    now = int(time.time()) if now is None else now
+    with operation_lock():
+        existing = read_operation()
+        if existing is None and os.path.lexists(operation_path()):
+            raise ValueError("existing operation state is unsafe or malformed")
+        if existing is not None and existing["phase"] not in {"completed", "failed"}:
+            raise BlockingIOError("another provider operation is active")
+        value = {"schema": 1, "operation": "op-" + secrets.token_hex(16), "provider": provider,
+                 "action": action, "phase": "reserved", "outcome": "pending", "created": now,
+                 "updated": now, "terminal_pid": 0, "terminal_identity": "", "detail": "Operation reserved"}
+        write_operation(value)
+        return value
+
+
+def process_identity(pid):
+    if type(pid) is not int or pid <= 0:
+        return None
+    try:
+        stat_fields = (Path("/proc") / str(pid) / "stat").read_text().rsplit(") ", 1)[1].split()
+        return str(pid) + ":" + stat_fields[19]
+    except (OSError, IndexError, ValueError):
+        return None
+
+
+def update_operation(operation, **changes):
+    with operation_lock():
+        value = read_operation()
+        if value is None or value["operation"] != operation:
+            raise ValueError("operation identity mismatch")
+        value = {**value, **changes, "updated": int(changes.get("updated", time.time()))}
+        write_operation(value)
+        return value
+
+
+def record_terminal(operation, pid, identity, now=None):
+    return update_operation(operation, phase="launched", terminal_pid=pid,
+                            terminal_identity=identity or "", detail="Terminal launched",
+                            updated=int(time.time()) if now is None else now)
+
+
+def active_operation():
+    value = read_operation()
+    return value if value is not None and value["phase"] not in {"completed", "failed"} else None
+
+
+subprocess_popen = subprocess.Popen
+
+
+def launch_operation(provider, action="update", *, terminal=None, runner=None, now=None):
+    value = reserve_operation(provider, action, now=now)
+    terminal = terminal or str(Path(__file__).resolve().with_name("dwm-terminal"))
+    runner = runner or str(Path(__file__).resolve().with_name("dwm-update-center-terminal"))
+    argv = [terminal, runner, value["operation"], provider, action]
+    try:
+        child = subprocess_popen(argv, start_new_session=True, close_fds=True)
+        identity = process_identity(child.pid)
+        if identity is None:
+            raise OSError("terminal identity unavailable")
+        return record_terminal(value["operation"], child.pid, identity, now=now)
+    except Exception as error:
+        update_operation(value["operation"], phase="interrupted", outcome="unknown",
+                         detail="Terminal launch outcome is ambiguous: " + str(error), updated=now or int(time.time()))
+        raise
+
+
+def rescan_provider(provider):
+    root = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
+    scanners = discover_scanners()
+    if provider in scanners:
+        snapshot(Path(root) / "dwm-titus/update-center.json", scanners, force=True, provider=provider)
+
+
+def terminal_closed(operation, now=None):
+    with operation_lock():
+        value = read_operation()
+        if value is None or value["operation"] != operation:
+            raise ValueError("operation identity mismatch")
+        observed = process_identity(value["terminal_pid"])
+        if value["phase"] not in {"completed", "failed"} and observed != value["terminal_identity"]:
+            value = {**value, "phase": "interrupted", "outcome": "unknown",
+                     "detail": "Terminal identity is missing or changed; recovery is required", "updated": now or int(time.time())}
+            write_operation(value)
+    try:
+        rescan_provider(value["provider"])
+    except (OSError, ValueError):
+        pass
+    return value
 
 
 @dataclass(frozen=True)
@@ -817,12 +987,34 @@ def discover_scanners():
 
 def main(argv=None):
     args = sys.argv[1:] if argv is None else argv
-    if args not in (["snapshot"], ["snapshot", "--force"]) and not (
-            len(args) == 2 and args[0] == "rescan" and args[1] in {meta.identifier for meta in REGISTRY}):
-        print("usage: snapshot [--force] | rescan PROVIDER", file=sys.stderr)
+    providers = {meta.identifier for meta in REGISTRY}
+    snapshot_command = args in (["snapshot"], ["snapshot", "--force"]) or (
+        len(args) == 2 and args[0] == "rescan" and args[1] in providers)
+    operation_command = args == ["active"] or (len(args) == 2 and args[0] in {"launch", "recover"}
+        and args[1] in providers) or (len(args) == 2 and args[0] == "terminal-closed"
+        and OPERATION_PATTERN.fullmatch(args[1]) is not None)
+    if not snapshot_command and not operation_command:
+        print("usage: snapshot [--force] | rescan PROVIDER | launch PROVIDER | active | "
+              "terminal-closed OPERATION_ID | recover PROVIDER", file=sys.stderr)
         return 2
     try:
         require_fedora()
+        if operation_command:
+            if args == ["active"]:
+                value = active_operation()
+                if value is None:
+                    sys.stdout.write("update-center-action-protocol\t1\t0\nactive\tnone\ncomplete\taction\n")
+                else:
+                    sys.stdout.write("update-center-action-protocol\t1\t0\noperation\t" + "\t".join(
+                        escape(str(value[field])) for field in ("operation", "provider", "action", "phase", "outcome"))
+                        + "\ncomplete\taction\n")
+                return 0
+            value = terminal_closed(args[1]) if args[0] == "terminal-closed" else launch_operation(
+                args[1], "recover" if args[0] == "recover" else "update")
+            sys.stdout.write("update-center-action-protocol\t1\t0\noperation\t" + "\t".join(
+                escape(str(value[field])) for field in ("operation", "provider", "action", "phase", "outcome"))
+                + "\ncomplete\taction\n")
+            return 0
         root = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
         path = Path(root) / "dwm-titus/update-center.json"
         # The guarded persistence layer rejects invalid/unsafe paths. Optional

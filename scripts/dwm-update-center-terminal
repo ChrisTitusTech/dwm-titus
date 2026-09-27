@@ -1,0 +1,213 @@
+#!/usr/bin/python3
+"""Run one validated Update Center provider operation in an interactive terminal."""
+import io
+import json
+import os
+import re
+import runpy
+import shutil
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+CENTER_PATH = Path(__file__).resolve().with_name("dwm-update-center")
+CENTER = runpy.run_path(str(CENTER_PATH))
+PROVIDERS = tuple(entry.identifier for entry in CENTER["REGISTRY"])
+OPERATION_PATTERN = re.compile(r"op-[0-9a-f]{32}")
+
+
+def executable(name):
+    path = shutil.which(name)
+    if path is None:
+        raise FileNotFoundError(name + " is unavailable")
+    return str(Path(path).resolve())
+
+
+def trusted_desktop_helper():
+    helper = CENTER["trusted_desktop_helper"]()
+    if helper is None:
+        raise PermissionError("Trusted installed desktop updater unavailable")
+    return helper
+
+
+def run_command(argv, *, cwd=None, env=None):
+    """Stream bounded output while retaining the machine response for reconciliation."""
+    if not isinstance(argv, list) or not argv or any(not isinstance(value, str) for value in argv):
+        raise ValueError("invalid provider argv")
+    process = subprocess.Popen(argv, cwd=cwd, env=env, stdin=None, stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT, text=True, errors="strict", bufsize=1)
+    output, size = [], 0
+    for line in process.stdout:
+        size += len(line.encode("utf-8"))
+        if size > CENTER["MAX_BYTES"]:
+            process.kill()
+            raise ValueError("provider output exceeded byte limit")
+        output.append(line)
+        print(line, end="", flush=True)
+    status = process.wait()
+    if status:
+        raise subprocess.CalledProcessError(status, argv, "".join(output))
+    return "".join(output)
+
+
+def result(outcome, phase, detail, restart="none"):
+    return {"outcome": outcome, "phase": phase, "detail": detail[:8192], "restart": restart}
+
+
+def records(payload, kind):
+    return [line.split("\t") for line in payload.splitlines() if line.startswith(kind + "\t")]
+
+
+def execute_fedora(action):
+    helper = str(CENTER_PATH.with_name("dwm-system-management"))
+    initial = run_command([helper, "snapshot"])
+    if action == "update":
+        generations = records(initial, "snapshot-generation")
+        if len(generations) != 1 or not re.fullmatch(r"[0-9a-f]{64}", generations[0][1]):
+            raise ValueError("PackageKit snapshot generation unavailable")
+        handoff = run_command([helper, "updates-install-all", generations[0][1]])
+        operations = records(handoff, "terminal-handoff")
+        if len(operations) != 1 or len(operations[0]) != 4 or not OPERATION_PATTERN.fullmatch(operations[0][1]):
+            raise ValueError("PackageKit operation handoff unavailable")
+        terminal = run_command([helper, "watch-operation", operations[0][1]])
+    else:
+        # Snapshot performs journal reconciliation; attach to its exact retained
+        # owner when work is still observable instead of starting a mutation.
+        operations = records(initial, "active-operation") or records(initial, "terminal-handoff")
+        terminal = run_command([helper, "watch-operation", operations[0][1]]) if operations else initial
+    reconciled = run_command([helper, "snapshot"])
+    failed = any(row[1] in {"failed", "interrupted", "permission-denied", "canceled"}
+                 for row in records(terminal, "terminal") if len(row) > 1)
+    interrupted = bool(records(reconciled, "active-operation"))
+    if failed or interrupted:
+        return result("failed" if failed else "unknown", "interrupted" if interrupted else "failed",
+                      "PackageKit authoritative reconciliation requires review")
+    return result("succeeded", "completed", "PackageKit update reconciled")
+
+
+def desktop_value(payload):
+    value = CENTER["machine_json"](payload)
+    if not isinstance(value, dict) or not isinstance(value.get("state"), str):
+        raise ValueError("invalid desktop updater state")
+    return value
+
+
+def execute_desktop(action):
+    helper = trusted_desktop_helper()
+    status = desktop_value(run_command([helper, "status"]))
+    if action == "recover":
+        operation = status.get("operation")
+        if not isinstance(operation, str) or not re.fullmatch(r"[0-9a-f]{32}", operation):
+            raise ValueError("desktop recovery identity unavailable")
+        terminal = desktop_value(run_command([helper, "recover", operation]))
+    else:
+        checked = desktop_value(run_command([helper, "check"]))
+        revision = checked.get("available")
+        if not isinstance(revision, str) or not re.fullmatch(r"[0-9a-f]{40}", revision):
+            raise ValueError("verified desktop revision unavailable")
+        terminal = desktop_value(run_command([helper, "start", revision]))
+    reconciled = desktop_value(run_command([helper, "status"])) if action == "update" else terminal
+    deadline = time.monotonic() + 1800
+    while reconciled["state"] in CENTER["DESKTOP_ACTIVE"] | {"checking"}:
+        if time.monotonic() >= deadline:
+            return result("unknown", "interrupted", "Desktop updater remains active; reconnect with recovery")
+        print(reconciled.get("detail", "Desktop update running"), flush=True)
+        time.sleep(1)
+        reconciled = desktop_value(run_command([helper, "status"]))
+    state = reconciled["state"]
+    restart = reconciled.get("restart", "none")
+    if state in {"current", "complete", "restart-required"}:
+        return result("succeeded", "completed", reconciled.get("detail", "Desktop update complete"), restart)
+    if state == "interrupted":
+        return result("unknown", "interrupted", reconciled.get("detail", "Desktop recovery required"), restart)
+    return result("failed", "failed", reconciled.get("detail", "Desktop update failed"), restart)
+
+
+def scan_flatpak_scope(program, scope):
+    run_command([program, "list", "--" + scope, "--columns=ref:full,version"])
+    run_command([program, "remote-ls", "--" + scope, "--updates", "--columns=ref:full,version"])
+
+
+def execute_flatpak(action):
+    program = executable("flatpak")
+    if action == "recover":
+        scan_flatpak_scope(program, "system")
+        scan_flatpak_scope(program, "user")
+        return result("succeeded", "completed", "Both Flatpak scopes were rechecked; retry remains idempotent")
+    try:
+        run_command([program, "update", "--system", "--noninteractive"])
+    except subprocess.CalledProcessError as error:
+        return result("failed", "system-failed", "System Flatpak update failed; user scope was not started: " + str(error))
+    try:
+        run_command([program, "update", "--user", "--noninteractive"])
+    except subprocess.CalledProcessError as error:
+        return result("failed", "system-complete/user-failed",
+                      "System scope remains complete; user Flatpak update failed: " + str(error))
+    return result("succeeded", "completed", "System and user Flatpak scopes completed")
+
+
+def managed_mise(program):
+    payload = run_command([program, "ls", "--installed", "--json"], cwd="/", env=dict(os.environ))
+    return CENTER["mise_inventory"](payload)
+
+
+def execute_mise(action):
+    program = executable("mise")
+    inventory = managed_mise(program)
+    if action == "recover":
+        # Re-evaluation is the recovery boundary; retries use the same managed set.
+        inventory = managed_mise(program)
+    if inventory:
+        run_command([program, "upgrade", "--", *[name + "@" + version for name, version in inventory]],
+                    cwd="/", env=dict(os.environ))
+    managed_mise(program)
+    return result("succeeded", "completed", "Mise managed inventory was rechecked after update")
+
+
+def execute_provider(operation, provider, action):
+    if not OPERATION_PATTERN.fullmatch(operation) or provider not in PROVIDERS or action not in {"update", "recover"}:
+        raise ValueError("invalid terminal operation")
+    return {"fedora": execute_fedora, "dwm-titus": execute_desktop,
+            "flatpak": execute_flatpak, "mise": execute_mise}[provider](action)
+
+
+def completion_hold(value, *, input_stream=None, output=None):
+    stream = sys.stdin if input_stream is None else input_stream
+    destination = sys.stdout if output is None else output
+    destination.write("\n" + value.get("detail", "Operation finished") + "\n")
+    destination.write("Done. Press any key to close\n")
+    destination.flush()
+    if input_stream is not None or getattr(stream, "isatty", lambda: False)():
+        stream.read(1)
+
+
+def main(argv=None):
+    args = sys.argv[1:] if argv is None else argv
+    if len(args) != 3:
+        print("usage: dwm-update-center-terminal OPERATION_ID PROVIDER update|recover", file=sys.stderr)
+        return 2
+    operation, provider, action = args
+    try:
+        active = CENTER["active_operation"]()
+        if active is None or (active["operation"], active["provider"], active["action"]) != tuple(args):
+            raise ValueError("terminal operation does not own the active reservation")
+        CENTER["update_operation"](operation, phase="running", detail="Provider operation running")
+        try:
+            value = execute_provider(operation, provider, action)
+        except Exception as error:
+            value = result("unknown", "interrupted", "Provider outcome requires recovery: " + str(error))
+        CENTER["update_operation"](operation, phase=value["phase"], outcome=value["outcome"], detail=value["detail"])
+        try:
+            CENTER["rescan_provider"](provider)
+        except (OSError, ValueError):
+            pass
+        completion_hold(value)
+        return 0 if value["outcome"] == "succeeded" else 1
+    except (OSError, ValueError) as error:
+        print(str(error), file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

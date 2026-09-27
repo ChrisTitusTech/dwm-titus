@@ -370,7 +370,8 @@ class ScanIsolationTests(CacheTests):
                 result = subprocess.run([sys.executable, str(HELPER), *args], capture_output=True, text=True,
                                         env={**os.environ, "XDG_CACHE_HOME": self.temp.name})
                 self.assertEqual(result.returncode, 2)
-                self.assertEqual(result.stderr, "usage: snapshot [--force] | rescan PROVIDER\n")
+                self.assertEqual(result.stderr, "usage: snapshot [--force] | rescan PROVIDER | launch PROVIDER | "
+                                 "active | terminal-closed OPERATION_ID | recover PROVIDER\n")
                 self.assertEqual(result.stdout, "")
         self.assertEqual(list(Path(self.temp.name).iterdir()), [])
 

@@ -40,6 +40,7 @@ INSTALL_COMMANDS = \
 	scripts/dwm-lock-watch \
 	scripts/dwm-panel-settings \
 	scripts/dwm-update-center \
+	scripts/dwm-update-center-terminal \
 	scripts/dwm-update-center-settings \
 	scripts/dwm-quickshell-launcher \
 	scripts/dwm-quickshell-controls \
@@ -547,6 +548,9 @@ check-system-health:
 check-update-center:
 	/usr/bin/python3 tests/test-update-center.py
 
+check-update-center-terminal:
+	/usr/bin/python3 tests/test-update-center-terminal.py
+
 check-system-management:
 	/usr/bin/python3 tests/test-system-management.py
 
@@ -764,6 +768,7 @@ check: check-picom check-picom-xvfb
 	$(MAKE) check-quickshell-panel-settings
 	$(MAKE) check-update-center-settings
 	$(MAKE) check-update-center
+	$(MAKE) check-update-center-terminal
 	$(MAKE) check-accessibility
 	$(MAKE) check-quickshell-command-menu
 	$(MAKE) check-quickshell-qml
@@ -794,7 +799,7 @@ check: check-picom check-picom-xvfb
 	$(MAKE) check-lightdm-config
 	$(MAKE) release-check
 
-.PHONY: check-update-center print-dnf-defaults-helper check-initial-update install-files install-user-files install-system-files clean all check check-desktop-update check-picom check-picom-xvfb check-accessibility check-appearance check-phase5-optional-components check-build-config check-build-deps check-default-apps check-xdg-autostart check-dev-sync-install \
+.PHONY: check-update-center check-update-center-terminal print-dnf-defaults-helper check-initial-update install-files install-user-files install-system-files clean all check check-desktop-update check-picom check-picom-xvfb check-accessibility check-appearance check-phase5-optional-components check-build-config check-build-deps check-default-apps check-xdg-autostart check-dev-sync-install \
 	check-cursor-reload \
 	check-test-runner \
 	check-test-runner-podman \
