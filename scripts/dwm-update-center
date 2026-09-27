@@ -9,6 +9,7 @@ import os
 import re
 import secrets
 import selectors
+import shutil
 import signal
 import stat
 import subprocess
@@ -40,13 +41,20 @@ class ProviderMetadata:
     name: str
     core: bool
     icon: str
+    scanner: str
+    can_update: bool = True
+    can_recover: bool = False
+
+    @property
+    def discover(self):
+        return globals()[self.scanner]
 
 
 REGISTRY = (
-    ProviderMetadata("fedora", "Fedora", True, "fedora"),
-    ProviderMetadata("dwm-titus", "DWM-Titus", True, "dwm-titus"),
-    ProviderMetadata("flatpak", "Flatpak", False, "flatpak"),
-    ProviderMetadata("mise", "Mise", False, "mise"),
+    ProviderMetadata("fedora", "Fedora", True, "fedora", "scan_fedora", can_recover=True),
+    ProviderMetadata("dwm-titus", "DWM-Titus", True, "dwm-titus", "scan_desktop", can_recover=True),
+    ProviderMetadata("flatpak", "Flatpak", False, "flatpak", "scan_flatpak"),
+    ProviderMetadata("mise", "Mise", False, "mise", "scan_mise"),
 )
 
 
@@ -425,10 +433,17 @@ def snapshot(path, scanners, *, force=False, provider=None, now=None):
     selected.update({identifier: scanners[identifier] for identifier in missing_core})
     def collect(identifier, scan):
         try:
-            result = validate_result(scan())
+            result = scan()
+            if result is None and identifier not in {meta.identifier for meta in REGISTRY if meta.core}:
+                if identifier not in previous:
+                    return None
+                raise ScanFailure("unsupported", "Optional provider unavailable or incompatible")
+            result = validate_result(result)
             if result.identifier != identifier:
                 raise ValueError("provider identity mismatch")
-            result = replace(result, freshness="fresh", last_success=now, error_code="")
+            if result.error_code and result.error_code not in {"busy", "interrupted"}:
+                raise ScanFailure(result.error_code, result.detail)
+            result = replace(result, freshness="fresh", last_success=now)
         except (OSError, ValueError, TimeoutError) as error:
             code = error.code if isinstance(error, ScanFailure) else "busy" if isinstance(error, BlockingIOError) else "timeout" if isinstance(error, TimeoutError) else "malformed" if isinstance(error, ValueError) else "scan-failed"
             prior = previous.get(identifier)
@@ -449,7 +464,8 @@ def snapshot(path, scanners, *, force=False, provider=None, now=None):
                 pending[identifier] = failed
         with ThreadPoolExecutor(max_workers=len(REGISTRY)) as pool:
             futures = {identifier: pool.submit(collect, identifier, scan) for identifier, scan in pending.items()}
-            updates = {identifier: future.result() for identifier, future in futures.items()}
+            updates = {identifier: result for identifier, future in futures.items()
+                       if (result := future.result()) is not None}
         results = {**previous, **updates}
         try:
             with cache_commit_lock(Path(path).parent):
@@ -510,12 +526,12 @@ def cache_commit_lock(path):
             os.close(lock_fd)
 
 
-def run_bounded(argv, *, timeout=180, env=None):
+def run_bounded(argv, *, timeout=180, env=None, cwd=None):
     """Drain both pipes concurrently; kill the whole child group on timeout/fault."""
     if not argv or type(timeout) not in {int, float} or not 0 < timeout <= 300:
         raise ValueError("invalid scan command")
     process = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                               env=dict(os.environ if env is None else env), start_new_session=True)
+                               env=dict(os.environ if env is None else env), cwd=cwd, start_new_session=True)
     output, count, deadline = [], 0, time.monotonic() + timeout
     try:
         with selectors.DefaultSelector() as selector:
@@ -566,6 +582,200 @@ def scan_fedora():
     return parse_fedora_snapshot(run_bounded([str(helper), "snapshot"], timeout=180))
 
 
+def trusted_desktop_helper():
+    """Only installed root-owned helpers in protected system directories."""
+    for name in ("/usr/local/bin/dwm-desktop-update", "/usr/bin/dwm-desktop-update"):
+        path = Path(name)
+        try:
+            for entry in (path, *path.parents):
+                info = entry.lstat()
+                if info.st_uid != 0 or info.st_mode & 0o022 or stat.S_ISLNK(info.st_mode):
+                    raise ValueError("untrusted installed helper")
+            if path.is_file() and os.access(path, os.X_OK):
+                return name
+        except (OSError, ValueError):
+            continue
+    return None
+
+
+DESKTOP_ACTIVE = {"starting", "downloading", "dependencies", "building", "backing-up",
+                  "installing", "verifying", "activating", "recovering"}
+
+
+def machine_json(payload):
+    if not isinstance(payload, str) or len(payload.encode("utf-8")) > MAX_BYTES:
+        raise ValueError("machine JSON byte limit exceeded")
+    depth, quoted, escaped = 0, False, False
+    for char in payload:
+        if quoted:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                quoted = False
+        elif char == '"':
+            quoted = True
+        elif char in "[{":
+            depth += 1
+            if depth > 32:
+                raise ValueError("machine JSON nesting limit exceeded")
+        elif char in "]}":
+            depth -= 1
+    def unique(pairs):
+        result = {}
+        for name, value in pairs:
+            if name in result:
+                raise ValueError("duplicate machine JSON field")
+            result[name] = value
+        return result
+    try:
+        return json.loads(payload, object_pairs_hook=unique)
+    except RecursionError as error:
+        raise ValueError("machine JSON nesting limit exceeded") from error
+
+
+def desktop_status(payload):
+    value = machine_json(payload)
+    if (not isinstance(value, dict) or type(value.get("schema")) is not int or value["schema"] != 1
+            or type(value.get("canUpdate")) is not bool or not isinstance(value.get("detail"), str)
+            or not isinstance(value.get("restart"), str) or not isinstance(value.get("state"), str)
+            or type(value.get("statusInvalid", False)) is not bool
+            or value.get("restart") not in {"none", "session"}
+            or value.get("state") not in DESKTOP_ACTIVE | {"unknown", "checking", "available", "current",
+                "drift", "blocked", "failed", "interrupted", "complete", "restart-required", "canceled"}):
+        raise ValueError("invalid desktop status")
+    for field in ("installed", "available"):
+        if not isinstance(value.get(field), str) or not re.fullmatch(r"unknown|[0-9a-f]{40}", value[field]):
+            raise ValueError("invalid desktop revision")
+    escape(value["detail"])
+    return value
+
+
+def scan_desktop():
+    helper = trusted_desktop_helper()
+    if helper is None:
+        return ProviderResult("dwm-titus", "unavailable", error_code="missing-provider",
+                              detail="Trusted installed desktop updater unavailable")
+    value = desktop_status(run_bounded([helper, "status"], timeout=10))
+    if value["state"] not in DESKTOP_ACTIVE | {"interrupted"} and not value.get("statusInvalid"):
+        value = desktop_status(run_bounded([helper, "check"], timeout=75))
+    state = value["state"]
+    items = ()
+    if value["installed"] != "unknown" and value["available"] != "unknown" and value["installed"] != value["available"]:
+        items = (ItemResult("update", "DWM-Titus", value["installed"], value["available"],
+                            value["available"], url="https://github.com/ChrisTitusTech/dwm-titus"),)
+    busy = state in DESKTOP_ACTIVE | {"checking", "interrupted"}
+    code = "interrupted" if state == "interrupted" else "busy" if busy else "scan-failed" if state == "failed" else ""
+    detail = value["detail"] + ("; restart: session" if value["restart"] == "session" else "")
+    return validate_result(ProviderResult("dwm-titus", "restricted" if busy or state in {"blocked", "failed"} else "available",
+                          len(items), 1, update_available=value["canUpdate"] and not busy,
+                          error_code=code, detail=detail, items=items))
+
+
+def optional_executable(name):
+    path = shutil.which(name)
+    return str(Path(path).resolve()) if path else None
+
+
+APPLICATION_ID = r"[A-Za-z_][A-Za-z0-9_-]*(?:\.[A-Za-z_][A-Za-z0-9_-]*){2,}"
+
+
+def flatpak_columns(payload):
+    rows = {}
+    for line in bounded_lines(payload):
+        fields = line.split("\t")
+        if len(fields) != 2 or not re.fullmatch(r"(?:app|runtime)/" + APPLICATION_ID + r"/[A-Za-z0-9_-]+/[A-Za-z0-9._-]+", fields[0]):
+            raise ValueError("incompatible Flatpak columns")
+        if fields[0] in rows or len(rows) >= MAX_ITEMS:
+            raise ValueError("duplicate or excessive Flatpak refs")
+        escape(fields[1])
+        rows[fields[0]] = fields[1] or "unknown"
+    return rows
+
+
+def scan_flatpak():
+    executable = optional_executable("flatpak")
+    if executable is None:
+        return None
+    items, managed = [], 0
+    try:
+        for scope in ("system", "user"):
+            inventory = flatpak_columns(run_bounded([executable, "list", "--" + scope,
+                                        "--columns=ref:full,version"], timeout=20))
+            updates = flatpak_columns(run_bounded([executable, "remote-ls", "--" + scope,
+                                      "--updates", "--columns=ref:full,version"], timeout=60))
+            managed += len(inventory)
+            for ref, version in sorted(updates.items()):
+                if ref not in inventory:
+                    raise ValueError("Flatpak update absent from installed inventory")
+                kind, name, _, _ = ref.split("/")
+                url = "https://flathub.org/apps/" + name if kind == "app" else ""
+                items.append(ItemResult("update", name, inventory[ref], version, ref, scope, url))
+        return validate_result(ProviderResult("flatpak", pending=len(items), managed=managed,
+                              update_available=True, items=tuple(items)))
+    except (ValueError, OSError):
+        return None
+
+
+def mise_inventory(payload):
+    value = machine_json(payload)
+    if not isinstance(value, dict) or len(value) > MAX_ITEMS:
+        raise ValueError("incompatible Mise inventory")
+    inventory = set()
+    for name, entries in value.items():
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:+/-]{0,255}", name) or ".." in name or not isinstance(entries, list):
+            raise ValueError("invalid Mise tool")
+        for entry in entries:
+            if (not isinstance(entry, dict) or entry.get("installed") is not True
+                    or not isinstance(entry.get("version"), str)
+                    or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.+-]{0,255}", entry["version"])):
+                raise ValueError("invalid Mise installed version")
+            identity = (name, entry["version"])
+            if identity in inventory or len(inventory) >= MAX_ITEMS:
+                raise ValueError("duplicate or excessive Mise inventory")
+            inventory.add(identity)
+    return sorted(inventory)
+
+
+def scan_mise():
+    executable = optional_executable("mise")
+    if executable is None:
+        return None
+    environment = dict(os.environ)
+    deadline = time.monotonic() + 120
+    def query(arguments):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("Mise scan timed out")
+        return run_bounded([executable, *arguments], timeout=remaining, env=environment, cwd="/")
+    try:
+        inventory = mise_inventory(query(["ls", "--installed", "--json"]))
+        items = []
+        for name, version in inventory:
+            value = machine_json(query(["outdated", "--json", "--", name + "@" + version]))
+            if not isinstance(value, dict) or set(value) - {name}:
+                raise ValueError("incompatible Mise outdated tools")
+            if not value:
+                continue
+            entry = value[name]
+            if (not isinstance(entry, dict) or entry.get("current") != version
+                    or not isinstance(entry.get("latest"), str)
+                    or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.+-]{0,255}", entry["latest"])):
+                raise ValueError("incompatible Mise outdated version")
+            if entry["latest"] != version:
+                items.append(ItemResult("update", name, version, entry["latest"], name + "@" + version, "user"))
+        return validate_result(ProviderResult("mise", pending=len(items), managed=len(inventory),
+                              update_available=True, items=tuple(items)))
+    except (ValueError, OSError):
+        return None
+
+
+def discover_scanners():
+    return {meta.identifier: meta.discover for meta in REGISTRY
+            if meta.core or optional_executable(meta.identifier) is not None}
+
+
 def main(argv=None):
     args = sys.argv[1:] if argv is None else argv
     if args not in (["snapshot"], ["snapshot", "--force"]) and not (
@@ -578,7 +788,7 @@ def main(argv=None):
         path = Path(root) / "dwm-titus/update-center.json"
         # The guarded persistence layer rejects invalid/unsafe paths. Optional
         # cache configuration must not suppress independently coordinated scans.
-        scanners = {"fedora": scan_fedora}
+        scanners = discover_scanners()
         provider = args[1] if args[0] == "rescan" else None
         results = snapshot(path, scanners, force=args != ["snapshot"], provider=provider)
         sys.stdout.write(render_snapshot(results))

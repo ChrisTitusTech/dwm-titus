@@ -503,5 +503,263 @@ class ScanIsolationTests(CacheTests):
         self.assertEqual([p.identifier for p in self.api["read_cache"](self.path)], ["fedora", "dwm-titus"])
 
 
+class RegistryDiscoveryTests(unittest.TestCase):
+    def setUp(self):
+        self.api = runpy.run_path(str(HELPER))
+
+    def test_all_providers_declare_safe_discovery_and_operation_capabilities(self):
+        self.assertEqual([p.identifier for p in self.api["REGISTRY"]], ["fedora", "dwm-titus", "flatpak", "mise"])
+        for provider in self.api["REGISTRY"]:
+            self.assertRegex(provider.identifier, r"^[a-z][a-z0-9-]*$")
+            self.assertRegex(provider.icon, r"^[a-z][a-z0-9-]*$")
+            self.assertTrue(callable(getattr(provider, "discover", None)), "provider discover function missing")
+            self.assertIs(type(provider.can_update), bool)
+            self.assertIs(type(provider.can_recover), bool)
+            self.assertFalse(hasattr(provider, "command"))
+        self.assertTrue(self.api["REGISTRY"][1].can_recover)
+
+    def test_optional_incompatible_result_hides_and_retains_last_good_if_present(self):
+        from unittest.mock import patch
+        with workspace() as folder:
+            path = Path(folder) / "cache/update-center.json"
+            with patch.dict(os.environ, XDG_STATE_HOME=str(Path(folder) / "state")):
+                results = self.api["snapshot"](path, {"fedora": lambda: self.api["ProviderResult"]("fedora"),
+                             "dwm-titus": lambda: self.api["ProviderResult"]("dwm-titus"),
+                             "flatpak": lambda: None, "mise": lambda: None}, force=True, now=100)
+                self.assertEqual([r.identifier for r in results], ["fedora", "dwm-titus"])
+                self.api["snapshot"](path, {"mise": lambda: self.api["ProviderResult"]("mise")}, force=True, now=101)
+                result = self.api["snapshot"](path, {"mise": lambda: None}, force=True, now=102)[0]
+                self.assertEqual((result.identifier, result.freshness, result.error_code), ("mise", "stale", "unsupported"))
+
+    def test_discovery_registers_both_core_rows_and_hides_missing_optional_tools(self):
+        self.assertTrue("discover_scanners" in self.api, "registry activation missing")
+        from unittest.mock import patch
+        function = self.api["discover_scanners"]
+        with patch.dict(function.__globals__, optional_executable=lambda name: None):
+            self.assertEqual(list(function()), ["fedora", "dwm-titus"])
+
+    def test_count_and_item_bounds_fail_closed(self):
+        constructor = self.api["ProviderResult"]
+        for provider in self.api["REGISTRY"]:
+            for count in (-1, 4097, True):
+                with self.subTest(provider=provider.identifier, count=count), self.assertRaises(ValueError):
+                    self.api["validate_result"](constructor(provider.identifier, pending=count))
+
+    def test_machine_json_rejects_duplicate_keys_and_excessive_nesting(self):
+        self.assertTrue("machine_json" in self.api, "bounded machine JSON decoder missing")
+        for payload in ('{"schema":1,"schema":2}', "[" * 2000 + "]" * 2000):
+            with self.subTest(payload=payload[:50]), self.assertRaises(ValueError):
+                self.api["machine_json"](payload)
+
+    def test_bounded_subprocess_uses_neutral_cwd_and_preserves_environment(self):
+        environment = {**os.environ, "MISE_MINIMUM_RELEASE_AGE": "9d"}
+        output = self.api["run_bounded"]([sys.executable, "-c",
+            "import os,json; print(json.dumps([os.getcwd(),os.environ.get('MISE_MINIMUM_RELEASE_AGE')]))"],
+            cwd="/", env=environment, timeout=2)
+        self.assertEqual(json.loads(output), ["/", "9d"])
+
+    def test_unavailable_desktop_scan_preserves_cached_revision(self):
+        from unittest.mock import patch
+        with workspace() as folder, patch.dict(os.environ, XDG_STATE_HOME=str(Path(folder) / "state")):
+            path = Path(folder) / "cache/update-center.json"
+            good = self.api["ProviderResult"]("dwm-titus", pending=1, items=(
+                self.api["ItemResult"]("update", "DWM-Titus", "a" * 40, "b" * 40, "b" * 40),))
+            self.api["snapshot"](path, {"dwm-titus": lambda: good}, force=True, now=100)
+            failed = self.api["ProviderResult"]("dwm-titus", "unavailable", error_code="missing-provider", detail="Missing helper")
+            result = self.api["snapshot"](path, {"dwm-titus": lambda: failed}, force=True, now=101)[0]
+            self.assertEqual((result.pending, result.freshness, result.error_code, result.last_success),
+                             (1, "stale", "missing-provider", 100))
+
+
+class MiseDiscoveryTests(unittest.TestCase):
+    def setUp(self):
+        self.api = runpy.run_path(str(HELPER))
+
+    def scan(self, outputs, executable="/usr/bin/mise"):
+        from unittest.mock import patch
+        self.assertTrue("scan_mise" in self.api, "Mise discovery is missing")
+        function = self.api["scan_mise"]
+        calls = []
+        def run(argv, **options):
+            calls.append(argv)
+            self.assertEqual(options["cwd"], "/")
+            self.assertLessEqual(options["timeout"], 120)
+            self.assertEqual(options["env"].get("MISE_MINIMUM_RELEASE_AGE"), os.environ.get("MISE_MINIMUM_RELEASE_AGE"))
+            return json.dumps(outputs[len(calls) - 1])
+        with patch.dict(function.__globals__, optional_executable=lambda name: executable, run_bounded=run):
+            result = function()
+        return result, calls
+
+    def test_installed_inventory_including_inactive_versions_defines_count(self):
+        inventory = {"node": [{"version": "20.0.0", "installed": True, "active": False},
+                              {"version": "22.0.0", "installed": True, "active": True}],
+                     "python": [{"version": "3.13.0", "installed": True}]}
+        result, calls = self.scan([inventory, {"node": {"current": "20.0.0", "latest": "20.1.0"}},
+                                  {}, {"python": {"current": "3.13.0", "latest": "3.13.1"}}])
+        self.assertEqual(calls, [["/usr/bin/mise", "ls", "--installed", "--json"],
+                                 ["/usr/bin/mise", "outdated", "--json", "--", "node@20.0.0"],
+                                 ["/usr/bin/mise", "outdated", "--json", "--", "node@22.0.0"],
+                                 ["/usr/bin/mise", "outdated", "--json", "--", "python@3.13.0"]])
+        self.assertEqual((result.managed, result.pending), (3, 2))
+        self.assertEqual([(i.name, i.current, i.available) for i in result.items],
+                         [("node", "20.0.0", "20.1.0"), ("python", "3.13.0", "3.13.1")])
+
+    def test_cooldown_is_preserved_and_absent_is_not_forced(self):
+        from unittest.mock import patch
+        for configured in (None, "7d"):
+            environment = dict(os.environ)
+            environment.pop("MISE_MINIMUM_RELEASE_AGE", None)
+            if configured is not None:
+                environment["MISE_MINIMUM_RELEASE_AGE"] = configured
+            with patch.dict(os.environ, environment, clear=True):
+                self.assertEqual(self.scan([{}])[0].managed, 0)
+
+    def test_absent_incompatible_and_foreign_outdated_tools_hide(self):
+        self.assertEqual(self.scan([], executable=None), (None, []))
+        for inventory in ([], {"node": "20"}, {"../bad": [{"version": "1", "installed": True}]}):
+            with self.subTest(inventory=inventory):
+                self.assertIsNone(self.scan([inventory])[0])
+        self.assertIsNone(self.scan([{"node": [{"version": "20", "installed": True}]},
+                                    {"python": {"current": "3", "latest": "4"}}])[0])
+
+
+class FlatpakDiscoveryTests(unittest.TestCase):
+    def setUp(self):
+        self.api = runpy.run_path(str(HELPER))
+
+    def scan(self, outputs, executable="/usr/bin/flatpak"):
+        from unittest.mock import patch
+        self.assertTrue("scan_flatpak" in self.api, "Flatpak discovery is missing")
+        function = self.api["scan_flatpak"]
+        calls = []
+        def run(argv, **options):
+            calls.append(argv)
+            self.assertLessEqual(options["timeout"], 180)
+            return outputs[len(calls) - 1]
+        with patch.dict(function.__globals__, optional_executable=lambda name: executable, run_bounded=run):
+            result = function()
+        return result, calls
+
+    def test_scoped_inventory_and_updates_keep_duplicate_refs(self):
+        ref = "app/org.example.App/x86_64/stable"
+        result, calls = self.scan([ref + "\t1\n", ref + "\t2\n", ref + "\t1\n", ref + "\t3\n"])
+        self.assertEqual(calls, [["/usr/bin/flatpak", "list", "--system", "--columns=ref:full,version"],
+                                ["/usr/bin/flatpak", "remote-ls", "--system", "--updates", "--columns=ref:full,version"],
+                                ["/usr/bin/flatpak", "list", "--user", "--columns=ref:full,version"],
+                                ["/usr/bin/flatpak", "remote-ls", "--user", "--updates", "--columns=ref:full,version"]])
+        self.assertEqual((result.pending, result.managed), (2, 2))
+        self.assertEqual([(item.scope, item.current, item.available) for item in result.items],
+                         [("system", "1", "2"), ("user", "1", "3")])
+        self.assertEqual(result.items[0].url, "https://flathub.org/apps/org.example.App")
+
+    def test_absent_and_incompatible_flatpak_hide_without_human_fallback(self):
+        self.assertEqual(self.scan([], executable=None), (None, []))
+        for text in ("Application ID Version Branch\n", "app/bad/x86_64/stable\t2\n", "a\tb\tc\n"):
+            with self.subTest(text=text):
+                result, calls = self.scan([text])
+                self.assertIsNone(result)
+                self.assertEqual(len(calls), 1)
+
+    def test_runtime_has_no_fabricated_flathub_link_and_empty_versions_unknown(self):
+        ref = "runtime/org.example.Platform/x86_64/stable"
+        result, _ = self.scan([ref + "\t\n", ref + "\t\n", "", ""])
+        self.assertEqual((result.items[0].current, result.items[0].available, result.items[0].url),
+                         ("unknown", "unknown", ""))
+
+
+class DesktopDiscoveryTests(unittest.TestCase):
+    def setUp(self):
+        self.api = runpy.run_path(str(HELPER))
+
+    def status(self, **changes):
+        return dict(schema=1, state="available", installed="a" * 40,
+                    available="b" * 40, canUpdate=True, detail="Update ready",
+                    restart="none", **changes)
+
+    def scan(self, records, helper="/usr/bin/dwm-desktop-update"):
+        from unittest.mock import patch
+        self.assertIn("scan_desktop", self.api, "desktop discovery is missing")
+        function = self.api["scan_desktop"]
+        calls = []
+        def run(argv, **options):
+            calls.append(argv)
+            self.assertEqual(argv[0], helper)
+            self.assertLessEqual(options["timeout"], 180)
+            value = records[len(calls) - 1]
+            if isinstance(value, Exception):
+                raise value
+            return json.dumps(value)
+        with patch.dict(function.__globals__, trusted_desktop_helper=lambda: helper, run_bounded=run):
+            result = function()
+        return result, calls
+
+    def test_desktop_revision_item_and_status_before_check(self):
+        result, calls = self.scan([self.status(), self.status()])
+        self.assertEqual(calls, [["/usr/bin/dwm-desktop-update", "status"],
+                                 ["/usr/bin/dwm-desktop-update", "check"]])
+        self.assertEqual((result.identifier, result.pending, result.managed, result.update_available),
+                         ("dwm-titus", 1, 1, True))
+        self.assertEqual((result.items[0].current, result.items[0].available), ("a" * 40, "b" * 40))
+
+    def test_interrupted_and_restart_preserve_guidance_without_check(self):
+        record = self.status()
+        record.update(state="interrupted", canUpdate=False, detail="Restore retained backup", restart="session")
+        result, calls = self.scan([record])
+        self.assertEqual(len(calls), 1)
+        self.assertFalse(result.update_available)
+        self.assertEqual(result.error_code, "interrupted")
+        self.assertIn("Restore retained backup", result.detail)
+        self.assertIn("session", result.detail)
+
+    def test_malformed_revision_timeout_and_missing_helper(self):
+        record = self.status()
+        record["available"] = "bad revision"
+        with self.assertRaises(ValueError):
+            self.scan([record])
+        with self.assertRaises(TimeoutError):
+            self.scan([TimeoutError("expired")])
+        result, calls = self.scan([], helper=None)
+        self.assertEqual((result.status, result.error_code, calls), ("unavailable", "missing-provider", []))
+
+    def test_malformed_status_types_cannot_crash_other_providers(self):
+        for field, value in (("state", []), ("restart", {}), ("statusInvalid", "false")):
+            record = self.status()
+            record[field] = value
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                self.scan([record])
+
+    def test_active_updater_and_drift_keep_check_disabled_or_repair_available(self):
+        record = self.status()
+        record.update(state="building", canUpdate=True)
+        result, calls = self.scan([record])
+        self.assertEqual((result.error_code, result.update_available, len(calls)), ("busy", False, 1))
+        record.update(state="drift", available="a" * 40)
+        result, _ = self.scan([record, record])
+        self.assertEqual((result.pending, result.update_available), (0, True))
+
+    def test_rejects_user_owned_or_writable_installed_helper(self):
+        self.assertTrue("trusted_desktop_helper" in self.api)
+        from unittest.mock import patch
+        from types import SimpleNamespace
+        for uid, mode in ((1000, 0o100755), (0, 0o100777), (0, 0o120755)):
+            with self.subTest(uid=uid, mode=mode), patch.object(Path, "lstat", return_value=SimpleNamespace(st_uid=uid, st_mode=mode)):
+                self.assertIsNone(self.api["trusted_desktop_helper"]())
+
+    def test_trusted_installed_absolute_path_only(self):
+        self.assertIn("trusted_desktop_helper", self.api, "trusted installed helper resolution is missing")
+        from unittest.mock import patch
+        function = self.api["trusted_desktop_helper"]
+        with workspace() as folder:
+            checkout = Path(folder) / "dwm-desktop-update"
+            checkout.write_text("#!/bin/sh\nexit 0\n")
+            checkout.chmod(0o755)
+            with patch.dict(os.environ, PATH=folder):
+                chosen = function()
+            self.assertNotEqual(chosen, str(checkout))
+            if chosen:
+                self.assertIn(chosen, ("/usr/bin/dwm-desktop-update", "/usr/local/bin/dwm-desktop-update"))
+                self.assertEqual(Path(chosen).stat().st_uid, 0)
+
+
 if __name__ == "__main__":
     unittest.main()
