@@ -87,7 +87,7 @@ class ReservationTests(Environment):
     def test_matching_interrupted_owner_can_reserve_recovery_but_other_provider_cannot(self):
         previous = self.api["reserve_operation"]("flatpak", "update", now=10)
         self.api["update_operation"](previous["operation"], phase="interrupted", outcome="unknown")
-        with self.assertRaises(BlockingIOError):
+        with self.assertRaisesRegex(ValueError, "no matching recoverable"):
             self.api["reserve_operation"]("mise", "recover", now=11)
         recovery = self.api["reserve_operation"]("flatpak", "recover", now=12)
         self.assertEqual((recovery["provider"], recovery["action"], recovery["phase"]),
@@ -145,17 +145,47 @@ class ReservationTests(Environment):
             value = self.api["launch_operation"]("fedora", now=10)
         self.assertEqual((value["phase"], value["outcome"]), ("completed", "succeeded"))
 
-    def test_cli_recover_routes_only_valid_provider_to_recovery_launch(self):
-        calls = []
-        value = {"operation": "op-" + "f" * 32, "provider": "flatpak", "action": "recover",
-                 "phase": "launched", "outcome": "pending"}
+    def test_cli_recover_requires_and_consumes_matching_interrupted_state(self):
+        previous = self.api["reserve_operation"]("flatpak", "update", now=10)
+        self.api["update_operation"](previous["operation"], phase="interrupted", outcome="unknown")
+        class Child:
+            pid = 789
         globals_ = self.api["main"].__globals__
         with patch.dict(globals_, require_fedora=lambda: None,
-                        launch_operation=lambda provider, action: calls.append((provider, action)) or value), \
+                        validate_provider_action=lambda provider, action: None,
+                        subprocess_popen=lambda argv, **options: Child(), process_identity=lambda pid: "789:2"), \
                 patch("sys.stdout", new_callable=io.StringIO) as output:
             self.assertEqual(self.api["main"](["recover", "flatpak"]), 0)
-        self.assertEqual(calls, [("flatpak", "recover")])
         self.assertIn("\tflatpak\trecover\tlaunched\tpending", output.getvalue())
+        saved = self.api["read_operation"]()
+        self.assertEqual((saved["action"], saved["recovery_of"], saved["recovery_phase"]),
+                         ("recover", previous["operation"], "interrupted"))
+
+    def test_recovery_rejects_absent_completed_failed_wrong_and_healthy_state(self):
+        with self.assertRaisesRegex(ValueError, "no matching recoverable"):
+            self.api["reserve_operation"]("flatpak", "recover")
+        operation = self.api["reserve_operation"]("flatpak", "update", now=10)
+        for phase in ("completed", "failed"):
+            self.api["update_operation"](operation["operation"], phase=phase,
+                                         outcome="succeeded" if phase == "completed" else "failed")
+            with self.subTest(phase=phase), self.assertRaisesRegex(ValueError, "no matching recoverable"):
+                self.api["reserve_operation"]("flatpak", "recover")
+        self.api["update_operation"](operation["operation"], phase="interrupted", outcome="unknown")
+        with self.assertRaisesRegex(ValueError, "no matching recoverable"):
+            self.api["reserve_operation"]("mise", "recover")
+
+    def test_runner_revalidation_requires_authoritative_recovery_basis(self):
+        function = self.api["validate_provider_action"]
+        healthy = self.api["ProviderResult"]("flatpak", update_available=True)
+        with patch.dict(function.__globals__, scan_flatpak=lambda: healthy):
+            with self.assertRaisesRegex(ValueError, "authoritative recovery"):
+                function("flatpak", "recover")
+            previous = self.api["reserve_operation"]("flatpak", "update", now=10)
+            self.api["update_operation"](previous["operation"], phase="interrupted", outcome="unknown")
+            self.assertEqual(function("flatpak", "recover"), healthy)
+            recovery = self.api["reserve_operation"]("flatpak", "recover", now=11)
+            self.assertEqual(function("flatpak", "recover"), healthy)
+            self.assertEqual(recovery["recovery_phase"], "interrupted")
 
     def test_missing_optional_provider_is_not_operation_eligible(self):
         function = self.api["validate_provider_action"]

@@ -65,7 +65,7 @@ OPERATION_PHASES = {"reserved", "launched", "running", "preparing", "fedora-exec
                     "interrupted", "system-failed", "system-complete/user-failed"}
 OPERATION_FIELDS = {"schema", "operation", "provider", "action", "phase", "outcome",
                     "provider_phase", "created", "updated", "terminal_pid", "terminal_identity",
-                    "recovery_of", "detail"}
+                    "recovery_of", "recovery_phase", "detail"}
 
 
 def operation_path():
@@ -98,6 +98,9 @@ def validate_operation(value):
             or not isinstance(value.get("terminal_identity"), str) or len(value["terminal_identity"]) > 128
             or not isinstance(value.get("recovery_of"), str)
             or value["recovery_of"] and not OPERATION_PATTERN.fullmatch(value["recovery_of"])
+            or value.get("recovery_phase") not in {"", "interrupted", "system-failed", "system-complete/user-failed"}
+            or (value["action"] == "update" and (value["recovery_of"] or value["recovery_phase"]))
+            or (value["action"] == "recover" and (not value["recovery_of"] or not value["recovery_phase"]))
             or not isinstance(value.get("detail"), str) or len(value["detail"].encode()) > 8192):
         raise ValueError("invalid operation state")
     return value
@@ -152,8 +155,11 @@ def reserve_operation(provider, action, now=None):
         if existing is None and os.path.lexists(operation_path()):
             raise ValueError("existing operation state is unsafe or malformed")
         recoverable = {"interrupted", "system-failed", "system-complete/user-failed"}
+        if action == "recover" and (existing is None or existing["provider"] != provider
+                                    or existing["phase"] not in recoverable):
+            raise ValueError("provider has no matching recoverable operation state")
         if existing is not None and existing["phase"] not in {"completed", "failed"}:
-            if action != "recover" or existing["provider"] != provider or existing["phase"] not in recoverable:
+            if action != "recover":
                 raise BlockingIOError("another provider operation is active")
             if existing["terminal_pid"] and process_identity(existing["terminal_pid"]) == existing["terminal_identity"]:
                 raise BlockingIOError("the interrupted provider terminal is still active")
@@ -162,6 +168,7 @@ def reserve_operation(provider, action, now=None):
                  "outcome": "pending", "created": now,
                  "updated": now, "terminal_pid": 0, "terminal_identity": "",
                  "recovery_of": existing["operation"] if action == "recover" and existing is not None else "",
+                 "recovery_phase": existing["phase"] if action == "recover" and existing is not None else "",
                  "detail": "Operation reserved"}
         write_operation(value)
         return value
@@ -223,6 +230,15 @@ def validate_provider_action(provider, action):
         raise ValueError("provider is unavailable or incompatible")
     if action == "update" and not result.update_available:
         raise ValueError("provider update is not currently eligible")
+    if action == "recover":
+        operation = read_operation()
+        recoverable = {"interrupted", "system-failed", "system-complete/user-failed"}
+        direct = operation is not None and operation["provider"] == provider and operation["phase"] in recoverable
+        reserved = (operation is not None and operation["provider"] == provider and operation["action"] == "recover"
+                    and operation["phase"] in OPERATION_PHASES and operation["recovery_phase"] in recoverable
+                    and OPERATION_PATTERN.fullmatch(operation["recovery_of"]) is not None)
+        if not direct and not reserved:
+            raise ValueError("provider has no authoritative recovery state")
     return result
 
 
