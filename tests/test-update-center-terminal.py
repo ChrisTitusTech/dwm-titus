@@ -144,6 +144,15 @@ class ReservationTests(Environment):
                         validate_provider_action=lambda provider, action: None):
             value = self.api["launch_operation"]("fedora", now=10)
         self.assertEqual((value["phase"], value["outcome"]), ("completed", "succeeded"))
+        self.assertEqual((value["terminal_pid"], value["terminal_identity"]), (457, ""))
+        with patch.dict(globals_, process_identity=lambda pid: "457:still-live",
+                        rescan_provider=lambda provider: None,
+                        validate_provider_action=lambda provider, action: None):
+            retained = self.api["terminal_closed"](value["operation"], now=11)
+            self.assertEqual((retained["phase"], retained["terminal_pid"]), ("completed", 457))
+            self.assertEqual(self.api["active_operation"]()["operation"], value["operation"])
+            with self.assertRaisesRegex(BlockingIOError, "active"):
+                self.api["launch_operation"]("mise", now=12)
 
     def test_live_spawn_with_unavailable_identity_retains_pid_and_blocks_recovery(self):
         class Child:
@@ -208,6 +217,25 @@ class ReservationTests(Environment):
                                ("closed", "unknown"), ("flatpak-user", "pending")):
             with self.subTest(phase=phase, outcome=outcome), self.assertRaisesRegex(ValueError, "invalid operation"):
                 self.api["update_operation"](operation["operation"], phase=phase, outcome=outcome)
+
+    def test_recovery_provenance_rejects_cross_provider_phases(self):
+        operation = self.api["reserve_operation"]("flatpak", "update", now=10)
+        self.api["update_operation"](operation["operation"], phase="system-complete/user-failed",
+                                     provider_phase="flatpak-user", outcome="failed")
+        recovery = self.api["reserve_operation"]("flatpak", "recover", now=11)
+        malformed = (
+            {**recovery, "provider": "fedora", "recovery_provider_phase": "fedora-executing"},
+            {**recovery, "provider": "dwm-titus", "recovery_provider_phase": "desktop-starting"},
+            {**recovery, "provider": "fedora", "recovery_phase": "interrupted",
+             "recovery_provider_phase": "flatpak-user"},
+            {**recovery, "provider": "mise", "recovery_phase": "interrupted",
+             "recovery_provider_phase": "fedora-executing"},
+        )
+        for value in malformed:
+            with self.subTest(provider=value["provider"], phase=value["recovery_phase"],
+                              provider_phase=value["recovery_provider_phase"]), \
+                    self.assertRaisesRegex(ValueError, "invalid operation"):
+                self.api["validate_operation"](value)
 
     def test_missing_optional_provider_is_not_operation_eligible(self):
         function = self.api["validate_provider_action"]

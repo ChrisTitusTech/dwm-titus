@@ -118,7 +118,11 @@ def validate_operation(value):
             or (value["phase"] in phase_provider and phase_provider[value["phase"]] != value["provider"])
             or (value["provider_phase"] in phase_provider
                 and phase_provider[value["provider_phase"]] != value["provider"])
+            or (value["recovery_provider_phase"] in phase_provider
+                and phase_provider[value["recovery_provider_phase"]] != value["provider"])
             or (value["phase"] in {"system-failed", "system-complete/user-failed"}
+                and value["provider"] != "flatpak")
+            or (value["recovery_phase"] in {"system-failed", "system-complete/user-failed"}
                 and value["provider"] != "flatpak")
             or not isinstance(value.get("detail"), str) or len(value["detail"].encode()) > 8192):
         raise ValueError("invalid operation state")
@@ -284,6 +288,10 @@ def launch_operation(provider, action="update", *, terminal=None, runner=None, n
             current = read_operation()
             if current is not None and current["operation"] == value["operation"] \
                     and current["phase"] in {"completed", "failed"}:
+                if child is not None and current["terminal_pid"] == 0:
+                    current = {**current, "terminal_pid": child.pid,
+                               "updated": now or int(time.time())}
+                    write_operation(current)
                 return current
             if current is None or current["operation"] != value["operation"]:
                 raise
@@ -313,6 +321,8 @@ def terminal_closed(operation, now=None):
             pass
         elif value["phase"] in {"completed", "failed"} and observed is None:
             release = True
+        elif value["phase"] in {"completed", "failed"} and not value["terminal_identity"] and observed is not None:
+            pass  # Spawn is known live; blank identity can never prove closure.
         elif value["phase"] not in recoverable and observed != value["terminal_identity"]:
             value = {**value, "phase": "interrupted", "outcome": "unknown",
                      "detail": "Terminal identity is missing or changed; recovery is required", "updated": now or int(time.time())}
