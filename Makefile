@@ -682,6 +682,9 @@ check-desktop-update: dwm
 check-test-runner:
 	@$(call run_managed_test,tests/test-run-tests.sh)
 
+check-test-runner-podman:
+	@$(call run_managed_test,tests/test-run-tests-podman.sh)
+
 release-check: all
 	@set -eu; \
 	first="$$(mktemp)"; \
@@ -789,6 +792,7 @@ check: check-picom check-picom-xvfb
 .PHONY: print-dnf-defaults-helper check-initial-update install-files install-user-files install-system-files clean all check check-desktop-update check-picom check-picom-xvfb check-accessibility check-appearance check-phase5-optional-components check-build-config check-build-deps check-default-apps check-xdg-autostart check-dev-sync-install \
 	check-cursor-reload \
 	check-test-runner \
+	check-test-runner-podman \
 	check-update-center-settings \
 	check-display-profile check-display-setup check-fedora-iso-builder check-fedora-packages check-fedora-platform check-format check-install \
 	check-gearlever-install check-herdr-install check-install-manifest check-install-preservation check-kickstart check-lock \

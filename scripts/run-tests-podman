@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# All host Git operations are read-only, including optional index refreshes.
+export GIT_OPTIONAL_LOCKS=0
+for dependency in podman git tar; do
+	command -v "$dependency" >/dev/null 2>&1 || {
+		printf 'Required command is unavailable: %s\n' "$dependency" >&2
+		exit 2
+	}
+done
+if ! rootless=$(podman info --format '{{.Host.Security.Rootless}}'); then
+	printf 'Could not query Podman rootless state\n' >&2
+	exit 2
+fi
+if [[ $rootless != true ]]; then
+	printf 'Rootless Podman is required\n' >&2
+	exit 2
+fi
+source_tree=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
+repository=$(git -C "$source_tree" rev-parse --path-format=absolute --git-common-dir)
+head=$(git -C "$source_tree" rev-parse --verify HEAD)
+# Podman's comma-delimited --mount grammar cannot represent commas in paths.
+if [[ $source_tree == *,* || $repository == *,* ]]; then
+	printf 'Podman source mount paths must not contain commas\n' >&2
+	exit 2
+fi
+image=localhost/dwm-titus-tests:fedora-44
+printf '==> Building Fedora 44 test image\n'
+set +e
+tar -C "$source_tree" -cf - scripts/dwm-packages.sh tests/containers/fedora-44/Containerfile |
+	podman build --tag "$image" --file tests/containers/fedora-44/Containerfile -
+build_status=("${PIPESTATUS[@]}")
+set -e
+if ((build_status[1] != 0 || build_status[0] != 0)); then
+	printf 'Fedora 44 image build failed (context %s, build %s)\n' "${build_status[@]}" >&2
+	((build_status[1] == 0)) || exit "${build_status[1]}"
+	exit "${build_status[0]}"
+fi
+
+# The manifest uses the linked worktree's index and ignore rules. NUL framing
+# preserves whitespace/newlines; tracked deleted paths are skipped in staging.
+# No writable host mounts, host session sockets, or SELinux source relabeling.
+printf '==> Staging current worktree in a disposable container\n'
+set +e
+git -C "$source_tree" ls-files -z --cached --others --exclude-standard |
+	podman run --rm --interactive --network=private --security-opt=label=disable \
+		--mount "type=bind,src=$repository,dst=/source/repository,ro=true" \
+		--mount "type=bind,src=$source_tree,dst=/source/worktree,ro=true" \
+		"$image" bash -c '
+set -euo pipefail
+trap '\''printf "Container staging failed (status %s)\n" "$?" >&2'\'' ERR
+mkdir -p /workspace
+cd /workspace
+manifest=$(mktemp /workspace/source.XXXXXX)
+cat >"$manifest"
+git clone --no-local --no-checkout /source/repository /workspace/checkout
+cd /workspace/checkout
+git checkout --detach "$1"
+shift
+git ls-files -z | xargs -0 -r rm -f --
+available=$(mktemp /workspace/available.XXXXXX)
+while IFS= read -r -d "" path; do
+    case "$path" in .git|.git/*) continue ;; esac
+    if [[ -e "/source/worktree/$path" || -L "/source/worktree/$path" ]]; then
+        printf "%s\0" "$path" >>"$available"
+    fi
+done <"$manifest"
+tar -C "/source/worktree" --no-recursion --null -T "$available" -cf - | tar -xf -
+git add --all
+git -c user.name="Disposable test runner" -c user.email=tests@example.invalid \
+    -c commit.gpgsign=false commit --allow-empty -m "Disposable test snapshot"
+trap - ERR
+printf "==> Running scripts/run-tests in Fedora 44\n"
+if scripts/run-tests "$@"; then
+    exit 0
+else
+    status=$?
+    printf "Container test command failed (status %s)\n" "$status" >&2
+    exit "$status"
+fi
+' container-stage "$head" "$@"
+run_status=("${PIPESTATUS[@]}")
+set -e
+if ((run_status[1] != 0)); then
+	printf 'Fedora 44 container failed (status %s); see staging/test diagnostics above\n' "${run_status[1]}" >&2
+	exit "${run_status[1]}"
+fi
+if ((run_status[0] != 0)); then
+	printf 'Current worktree manifest failed (status %s)\n' "${run_status[0]}" >&2
+	exit "${run_status[0]}"
+fi
