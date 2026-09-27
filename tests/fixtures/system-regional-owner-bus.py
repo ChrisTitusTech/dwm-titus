@@ -13,6 +13,7 @@ os.environ["DBUS_SYSTEM_BUS_ADDRESS"] = os.environ["DBUS_SESSION_BUS_ADDRESS"]
 from gi.repository import Gio, GLib
 
 provider_path = str(pathlib.Path(sys.argv[1]).resolve())
+child_path = str(pathlib.Path(__file__).with_name("system-regional-cli-child.py"))
 p = runpy.run_path(provider_path, run_name="regional_owner_fixture")
 bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
 registrations = []
@@ -106,7 +107,7 @@ def called(_bus, _sender, _path, _interface, method, args, invocation):
 def command(arguments, environment):
     """Bound each real CLI child while keeping the private service loop responsive."""
     global child
-    child = subprocess.Popen(["/usr/bin/python3", provider_path, *arguments],
+    child = subprocess.Popen(["/usr/bin/python3", child_path, provider_path, *arguments],
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=environment)
     loop = GLib.MainLoop()
     deadline = time.monotonic() + 10
@@ -172,6 +173,7 @@ try:
                 ["C", "POSIX"] if action == "locale-set" else ["UTC", "Etc/UTC"]).generation
             assert generation in preview
             code, output, diagnostic = command([action, argument, "0" * 64 if mode == "stale" else generation], environment)
+            assert code == (0 if mode == "success" else 1), (mode, code, output, diagnostic)
             state = journal_state()
             assert state.active is None
             if mode == "stale":
@@ -181,7 +183,6 @@ try:
             terminal = state.terminals[state.handoff.slot]
             expected = "permission-denied" if mode == "denied" else "interrupted" if mode == "ambiguous" else "succeeded"
             assert terminal.state == expected, (mode, terminal, output, diagnostic)
-            assert code == (0 if mode == "success" else 1), (mode, code, output, diagnostic)
             assert terminal.generation is None and terminal.boot_id is None
             assert len([call for call in calls if call.startswith("Set")]) == 1
             if mode == "lost-output":
