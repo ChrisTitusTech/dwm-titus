@@ -1,8 +1,34 @@
 #!/usr/bin/python3
 """Check popup boundaries and click-away behavior in an isolated X11 session."""
-import os, shutil, subprocess, tempfile, time
+import os, shutil, subprocess, sys, tempfile, time
 from pathlib import Path
 repo=Path(__file__).resolve().parents[1]
+if os.environ.get("DWM_PANEL_POPUP_NESTED") != "1":
+ nested = {**os.environ, "DWM_PANEL_POPUP_NESTED": "1"}
+ raise SystemExit(subprocess.run(
+  ["xvfb-run", "-a", sys.executable, str(Path(__file__).resolve())], env=nested).returncode)
+shell_source=(repo/'config/quickshell/shell.qml').read_text()
+selection=shell_source[shell_source.index('function selectPanelPopup'):shell_source.index('function openCommandMenu')]
+for close in ('commandMenuModel.close();', 'launcherModel.close();',
+              'notificationModel.closeHistory();', 'controlCenterModel.closeUtility();'):
+ assert close in selection
+for popup, close in (('bluetooth', 'bluetoothModel.close();'),
+                     ('controlcenter', 'controlCenterModel.close();'),
+                     ('controls', 'controlsModel.close();'),
+                     ('network', 'networkModel.close();'),
+                     ('power', 'powerMenuModel.close("panel");'),
+                     ('updatecenter', 'updateCenterModel.close();')):
+ assert f'if (popupId !== "{popup}") {close}' in selection
+assert 'root.selectedPanelWindow = panel;' in selection
+assert 'UpdateCenterWindow {' in shell_source
+assert 'panelWindow: root.activePanelWindow' in shell_source
+assert 'onExclusiveOpenRequested: root.selectPanelPopup(root.activePanelWindow, "updatecenter")' in shell_source
+for handler in ('onVisibleChanged: if (visible) updateCenterModel.close()',
+                'onUtilityVisibleChanged: if (utilityVisible) updateCenterModel.close()',
+                'onHistoryVisibleChanged: if (historyVisible) updateCenterModel.close()'):
+ assert handler in shell_source
+assert shell_source.count('onVisibleChanged: if (visible) updateCenterModel.close()') >= 6
+assert 'commandMenuModel.close();\n                updateCenterModel.close();' in shell_source
 with tempfile.TemporaryDirectory(prefix='panel-popup-', dir=os.environ.get('TMPDIR', str(Path.home()/'tmp'))) as temp:
  base=Path(temp); config=base/'config'; qml=config/'quickshell'; qml.mkdir(parents=True)
  runtime=base/'runtime'; runtime.mkdir(mode=0o700)
