@@ -10,7 +10,12 @@ test -f "$protocol"
 test -f "$model"
 grep -Fq 'import Quickshell.Networking' "$model"
 grep -Fq 'property var connectivitySource: Networking' "$model"
-grep -Fq 'NetworkConnectivity.Full' "$model"
+grep -Fq 'root.connectivitySource.devices.values.some' "$model"
+grep -Fq 'device => device.connected' "$model"
+if grep -Eq 'Network(Connectivity|State)' "$model"; then
+	printf '%s\n' 'Update Center QML uses a connectivity API unavailable in Fedora Quickshell.' >&2
+	exit 1
+fi
 grep -Fq 'if (!root.connectivityReady) return;' "$model"
 grep -Fq 'if (!root.startupDelayElapsed) return;' "$model"
 grep -Fq 'interval: 30000' "$model"

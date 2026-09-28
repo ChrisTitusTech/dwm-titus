@@ -16,13 +16,27 @@ ShellRoot {
     }
 
     QtObject {
+        id: connectivityDevice
+        property bool connected: false
+    }
+
+    QtObject {
+        id: initiallyConnectedDevice
+        property bool connected: true
+    }
+
+    QtObject {
         id: connectivity
-        property int connectivity: NetworkConnectivity.None
+        property var devices: QtObject {
+            property var values: [connectivityDevice]
+        }
     }
 
     QtObject {
         id: initiallyFullConnectivity
-        property int connectivity: NetworkConnectivity.Full
+        property var devices: QtObject {
+            property var values: [initiallyConnectedDevice]
+        }
     }
 
     UpdateCenterModel {
@@ -64,6 +78,25 @@ ShellRoot {
                 }
                 if (test.step === 0 && test.ticks > 10 && model.initialCacheLoaded
                         && initiallyFullModel.initialCacheLoaded && model.savedRefreshSeconds === 900) {
+                    const cachedProviders = model.providers;
+                    const cachedTotalUpdates = model.totalUpdates;
+                    model.savedAlwaysShow = false;
+                    test.require(model.acceptSnapshot("update-center-protocol\t1\t0\nprovider\tdwm-titus\tDWM-Titus\tavailable\t0\t1\tfresh\t10\tno\t\tReady\ncomplete\tsnapshot\n")
+                            && !model.shouldShow(), "healthy current state must honor alwaysShow=false");
+                    test.require(model.acceptSnapshot("update-center-protocol\t1\t0\nprovider\tdwm-titus\tDWM-Titus\tavailable\t0\t1\tstale\t10\tno\tnetwork\tCached\ncomplete\tsnapshot\n")
+                            && model.shouldShow(), "stale state must force panel visibility");
+                    test.require(model.acceptSnapshot("update-center-protocol\t1\t0\nprovider\tdwm-titus\tDWM-Titus\tavailable\t0\t1\tfresh\t10\tno\t\tRestart ready\nguidance\tdwm-titus\trestart\tsession\ncomplete\tsnapshot\n")
+                            && model.shouldShow(), "restart guidance must force panel visibility");
+                    model.activeOperation = { operationId: "op-00000000000000000000000000000000", providerId: "dwm-titus",
+                        action: "update", phase: "running", outcome: "pending" };
+                    test.require(model.shouldShow(), "active state must force panel visibility");
+                    model.activeOperation.phase = "interrupted";
+                    model.activeOperation.outcome = "unknown";
+                    test.require(model.shouldShow(), "recovery state must force panel visibility");
+                    model.activeOperation = null;
+                    model.savedAlwaysShow = true;
+                    model.providers = cachedProviders;
+                    model.totalUpdates = cachedTotalUpdates;
                     test.require(initiallyFullModel.providers[0].detail === "cache" && !initiallyFullModel.scanning
                             && !initiallyFullModel.initialLiveScanComplete && !initiallyFullModel.periodicRefreshRunning,
                         "initially-Full connectivity must not bypass the 30-second startup delay");
@@ -105,7 +138,7 @@ ShellRoot {
                     test.step = 2;
                 } else if (test.step === 2 && model.settingsError.indexOf("changed") >= 0) {
                     test.require(model.savedRefreshSeconds === 1000, "concurrent save errors must not mutate saved settings");
-                    connectivity.connectivity = NetworkConnectivity.Full;
+                    connectivityDevice.connected = true;
                     test.transitionTick = test.ticks;
                     test.step = 20;
                 } else if (test.step === 20 && test.ticks >= test.transitionTick + 5) {
@@ -123,13 +156,13 @@ ShellRoot {
                 } else if (test.step === 3 && model.providers[0].detail === "force-2") {
                     test.require(!model.pendingForceRefresh, "required force refresh must coalesce and drain after the active scan");
                     test.require(model.periodicRefreshRunning, "periodic timer must start after connectivity restoration");
-                    connectivity.connectivity = NetworkConnectivity.None;
+                    connectivityDevice.connected = false;
                     test.require(!model.periodicRefreshRunning, "periodic timer must stop when connectivity is lost");
                     test.require(!model.scheduledRefresh(), "offline state must suppress scheduled scans");
                     test.require(model.refresh(true), "manual force refresh must bypass the schedule");
                     test.step = 4;
                 } else if (test.step === 4 && model.providers[0].detail === "force-3") {
-                    connectivity.connectivity = NetworkConnectivity.Full;
+                    connectivityDevice.connected = true;
                     test.step = 5;
                 } else if (test.step === 5 && model.providers[0].detail === "force-4") {
                     test.retainedProviders = model.providers;

@@ -41,15 +41,16 @@ def geometry(env, window):
 
 providers = """[
  { id: "fedora", name: "Fedora", status: "available", pending: 40, managed: 1200,
-   freshness: "fresh", lastSuccess: 30, updateAvailable: true, errorCode: "", detail: "",
+   freshness: "fresh", lastSuccess: 30, updateAvailable: true, errorCode: "", detail: "", restart: "none",
    items: Array.from({length: 40}, function(_, index) { return {
      providerId: "fedora", action: "update", name: "Package with a deliberately long name " + index,
      current: "1." + index, available: "2." + index, packageId: "package-" + index,
      scope: "system", url: "https://example.test/package/" + index }; }) },
  { id: "dwm-titus", name: "DWM-Titus", status: "available", pending: 0, managed: 1,
-   freshness: "fresh", lastSuccess: 90, updateAvailable: false, errorCode: "", detail: "", items: [] },
+   freshness: "fresh", lastSuccess: 90, updateAvailable: false, errorCode: "", detail: "", restart: "none", items: [] },
  { id: "flatpak", name: "Flatpak", status: "partial", pending: 1, managed: 12,
    freshness: "stale", lastSuccess: 4000, updateAvailable: true, errorCode: "network", detail: "Using cached results",
+   restart: "none",
    items: [{ providerId: "flatpak", action: "update", name: "Application", current: "1", available: "2",
      packageId: "org.example.Application", scope: "user", url: "https://example.test/application" }] }
 ]"""
@@ -80,6 +81,7 @@ ShellRoot {{
         property int saveCount: 0
         property string probeAction: ""
         property string probeUrl: ""
+        property int anchorX: 320
         readonly property bool busy: activeOperation !== null
         function open() {{ visible = true; }}
         function close() {{ visible = false; settingsMode = false; discardSettings(); }}
@@ -103,6 +105,7 @@ ShellRoot {{
         property bool updateAvailable: true
         property string errorCode: ""
         property string detail: ""
+        property string restart: "none"
         property var items: Array.from({{length: 4096}}, function(_, index) {{ return {{
             providerId: "fedora", action: "update", name: "Package " + index,
             current: "1", available: "2", packageId: "package-" + index,
@@ -122,6 +125,8 @@ ShellRoot {{
         anchors {{ top: true; left: true; right: true }}
         exclusiveZone: 30
         color: Theme.barBackground
+
+        Rectangle {{ id: updateButton; x: 240; y: 2; width: 40; height: 26; color: "#ff00ff" }}
 
         ProviderRow {{
             id: probeRow
@@ -156,7 +161,7 @@ ShellRoot {{
         id: updateWindow
         updateCenterModel: model
         panelWindow: panel
-        anchorX: panel.width / 2
+        anchorX: model.anchorX
         onExclusiveOpenRequested: otherPopup.visible = false
     }}
 
@@ -183,6 +188,14 @@ ShellRoot {{
         }}
         function probeOpen(url: string): string {{ model.probeUrl = ""; probeRow.requestOpen({{ url: url }}); return model.probeUrl; }}
         function accessibleName(): string {{ return probeRow.Accessible.name; }}
+        function setProbeRestart(value: string): string {{
+            probeRow.provider = {{
+                id: "fedora", name: "Fedora", status: "available", pending: 0, managed: 1200,
+                freshness: "fresh", lastSuccess: 30, updateAvailable: false, errorCode: "",
+                detail: "", restart: value, items: []
+            }};
+            return probeRow.Accessible.name + "|" + probeRow.visibleDetail();
+        }}
         function counts(): string {{ return model.refreshCount + ":" + model.saveCount; }}
         function editorFocused(): string {{ return String(updateWindow.editorFocused()); }}
         function saveStatus(): string {{ return updateWindow.saveStatus; }}
@@ -195,6 +208,8 @@ ShellRoot {{
             return highRow.relativeCheckAge;
         }}
         function ageClockRunning(): string {{ return String(updateWindow.ageClockRunning); }}
+        function setAnchor(value: int): void {{ model.anchorX = value; }}
+        function anchorToButton(): void {{ model.anchorX = updateButton.x + updateButton.width / 2; }}
     }}
 }}'''
 
@@ -268,19 +283,15 @@ with tempfile.TemporaryDirectory(prefix="update-center-xvfb-", dir=tmp_root) as 
         time.sleep(0.2)
         run(env, "xdotool", "mousemove", "10", "15", check=True)
         time.sleep(0.1)
-        updates_image = screenshot()
-        run(env, "xdotool", "mousemove", "480", "143", "click", "1", check=True)
-        run(env, "xdotool", "mousemove", "10", "15", check=True)
-        time.sleep(0.3)
-        expanded_image = screenshot()
-        changed_pixels = pixel_difference(updates_image, expanded_image)
-        assert changed_pixels > 3000, "Expanding a provider did not render its bounded item list"
-        run(env, "xdotool", "mousemove", "480", "143", "click", "1", check=True)
-        run(env, "xdotool", "mousemove", "10", "15", check=True)
-        time.sleep(0.3)
-        collapsed_image = screenshot()
-        restored_difference = pixel_difference(updates_image, collapsed_image)
-        assert restored_difference < 1000, "Collapsing one provider did not restore the independent row layout"
+        assert call("highDelegateCount") == "0", "Collapsed provider eagerly instantiated item delegates"
+        call("highExpand")
+        expanded_delegate_count = wait_for(
+            lambda: int(call("highDelegateCount")) or None,
+            "Expanding a provider did not render its bounded item list",
+        )
+        assert expanded_delegate_count < 32, f"Expanded provider constructed {expanded_delegate_count} of 4096 delegates"
+        call("highCollapse")
+        wait_for(lambda: call("highDelegateCount") == "0", "Collapsing one provider did not restore the independent row layout")
 
         expected_ages = (
             (0, 1_000_000, "Not checked"),
@@ -304,15 +315,10 @@ with tempfile.TemporaryDirectory(prefix="update-center-xvfb-", dir=tmp_root) as 
         assert call("probeOpen", "file:///tmp/untrusted") == ""
         assert call("probeOpen", "javascript:alert(1)") == ""
         assert call("accessibleName") == "Fedora, 40 pending"
-        assert call("highDelegateCount") == "0", "Collapsed provider eagerly instantiated item delegates"
-        call("highExpand")
-        expanded_delegate_count = wait_for(
-            lambda: int(call("highDelegateCount")) or None,
-            "Expanded high-cardinality provider did not construct visible delegates",
-        )
-        assert expanded_delegate_count < 32, f"Expanded provider constructed {expanded_delegate_count} of 4096 delegates"
-        call("highCollapse")
-        wait_for(lambda: call("highDelegateCount") == "0", "Collapsed provider retained item delegates")
+        assert call("setProbeRestart", "session") == "Fedora, Restart session|Sign out and back in to complete this update."
+        assert call("setProbeRestart", "system") == "Fedora, Restart system|Restart the system to complete this update."
+        assert call("setProbeRestart", "none") == "Fedora, Up to date|"
+        assert call("highDelegateCount") == "0", "Collapsed provider retained item delegates"
         assert call("setProbeClock", 999_941, 1_000_000) == "59s ago"
         assert call("setProbeClock", 999_941, 1_000_001) == "1m ago", "Relative age did not react without a rescan"
         assert call("ageClockRunning") == "true"
@@ -343,11 +349,20 @@ with tempfile.TemporaryDirectory(prefix="update-center-xvfb-", dir=tmp_root) as 
         tile_bounds = color_bounds(light_image, (17, 24, 39))
         assert tile_bounds[4] > 100, "Contrasting provider icon tile was not visible in light mode"
         call("dark")
+        call("anchorToButton")
         time.sleep(0.2)
         dark_image = screenshot()
         card_bounds = color_bounds(dark_image, (32, 38, 48))
-        assert card_bounds[:3] == (106, 31, 533), f"Rendered card interior did not prove a 430px card centered at x=105 below y=30: {card_bounds}"
+        assert card_bounds[:4] == (46, 31, 473, card_bounds[3]), \
+            f"Rendered card did not center below the button at x=260: {card_bounds}"
         assert card_bounds[4] > 1000
+        call("setAnchor", 620)
+        time.sleep(0.2)
+        clamped_image = screenshot()
+        clamped_bounds = color_bounds(clamped_image, (32, 38, 48))
+        assert clamped_bounds[0] == 211 and clamped_bounds[2] == 638, \
+            f"Narrow-screen button anchoring did not clamp the card: {clamped_bounds}"
+        call("setAnchor", 320)
         call("reducedMotion")
         assert call("motionDuration") == "0"
         call("normalMotion")

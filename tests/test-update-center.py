@@ -104,6 +104,27 @@ class SnapshotProtocolTests(unittest.TestCase):
         self.assertEqual(result.pending, 1)
         self.assertFalse(result.update_available)
 
+    def test_fedora_restart_guidance_is_normalized(self):
+        payload = source(ROW).replace("complete\tsnapshot", "state\tupdate-restart\tavailable\tsystem\tRestart required\ncomplete\tsnapshot")
+        result = self.api["parse_fedora_snapshot"](payload)
+        self.assertEqual(result.restart, "system")
+        self.assertIn("guidance\tfedora\trestart\tsystem\n", self.api["render_snapshot"]([result]))
+
+    def test_fedora_restart_guidance_accepts_system_management_buckets(self):
+        for backend, normalized in (("security-system", "system"), ("security-session", "session"),
+                                    ("application", "session"), ("none", "none")):
+            with self.subTest(backend=backend):
+                payload = source(ROW).replace("complete\tsnapshot",
+                    f"state\tupdate-restart\tavailable\t{backend}\tRestart required\ncomplete\tsnapshot")
+                result = self.api["parse_fedora_snapshot"](payload)
+                self.assertEqual(result.restart, normalized)
+        partial = source(ROW).replace("complete\tsnapshot",
+            "state\tupdate-restart\tpartial\tsecurity-session\tRestart guidance retained\ncomplete\tsnapshot")
+        self.assertEqual(self.api["parse_fedora_snapshot"](partial).restart, "session")
+        unknown = source(ROW).replace("complete\tsnapshot",
+            "state\tupdate-restart\tpartial\tunknown\tRestart guidance incomplete\ncomplete\tsnapshot")
+        self.assertEqual(self.api["parse_fedora_snapshot"](unknown).restart, "none")
+
     def test_source_uses_only_lf_records_and_rejects_raw_control_separators(self):
         valid = source().replace("available\t1\tReady", "available\t0\tReady")
         self.assertEqual(self.api["parse_fedora_snapshot"](valid).pending, 0)
@@ -136,6 +157,17 @@ class CacheTests(unittest.TestCase):
         fresh = replace(self.good, pending=0, items=())
         self.assertEqual(self.scan({"fedora": lambda: fresh}, force=True)[0].pending, 0)
         self.assertEqual(json.loads(self.path.read_text())["schema"], 1)
+
+    def test_schema_one_cache_without_restart_defaults_to_none(self):
+        self.scan(force=True)
+        cached = json.loads(self.path.read_text())
+        del cached["providers"][0]["restart"]
+        self.path.write_text(json.dumps(cached))
+        result = self.api["read_cache"](self.path)[0]
+        self.assertEqual(result.restart, "none")
+        def forbidden():
+            self.fail("compatible schema-one cache must not force a live scan")
+        self.assertEqual(self.scan({"fedora": forbidden})[0].pending, 1)
 
     def test_failure_retains_last_good_independently_and_recovers(self):
         desktop = self.api["ProviderResult"]("dwm-titus", pending=0)
@@ -868,6 +900,8 @@ class DesktopDiscoveryTests(unittest.TestCase):
         self.assertEqual(result.error_code, "interrupted")
         self.assertIn("Restore retained backup", result.detail)
         self.assertIn("session", result.detail)
+        self.assertEqual(result.restart, "session")
+        self.assertIn("guidance\tdwm-titus\trestart\tsession\n", self.api["render_snapshot"]([result]))
 
     def test_malformed_revision_timeout_and_missing_helper(self):
         record = self.status()

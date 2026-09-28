@@ -44,7 +44,16 @@ Rectangle {
         if (root.provider.status === "restricted") return "Restricted";
         if (root.provider.status === "partial") return "Partial";
         if (root.provider.pending > 0) return root.provider.pending + " pending";
+        if (root.provider.restart === "session") return "Restart session";
+        if (root.provider.restart === "system") return "Restart system";
         return "Up to date";
+    }
+
+    function visibleDetail() {
+        if (root.provider.detail.length > 0) return root.provider.detail;
+        if (root.provider.restart === "session") return "Sign out and back in to complete this update.";
+        if (root.provider.restart === "system") return "Restart the system to complete this update.";
+        return "";
     }
 
     function formatCheckAge(lastSuccess, nowSeconds) {
@@ -176,8 +185,8 @@ Rectangle {
 
         UiText {
             Layout.fillWidth: true
-            visible: root.provider.detail.length > 0
-            text: root.provider.detail
+            visible: root.visibleDetail().length > 0
+            text: root.visibleDetail()
             color: root.provider.errorCode.length > 0 ? Theme.danger : Theme.menuMutedText
             font.pixelSize: Theme.fontBodySmallSize
             wrapMode: Text.Wrap

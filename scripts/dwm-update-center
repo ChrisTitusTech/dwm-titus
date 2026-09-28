@@ -73,6 +73,13 @@ def operation_path():
     return coordination_path() / "operation.json"
 
 
+def cache_root():
+    root = os.environ.get("XDG_CACHE_HOME")
+    if root and os.path.isabs(root):
+        return root
+    return str(Path.home() / ".cache")
+
+
 @contextlib.contextmanager
 def operation_lock():
     with cache_directory(coordination_path(), create=True) as fd:
@@ -303,10 +310,9 @@ def launch_operation(provider, action="update", *, terminal=None, runner=None, n
 
 
 def rescan_provider(provider):
-    root = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
     scanners = discover_scanners()
     if provider in scanners:
-        snapshot(Path(root) / "dwm-titus/update-center.json", scanners, force=True, provider=provider)
+        snapshot(Path(cache_root()) / "dwm-titus/update-center.json", scanners, force=True, provider=provider)
 
 
 def terminal_closed(operation, now=None):
@@ -363,6 +369,7 @@ class ProviderResult:
     update_available: bool = False
     error_code: str = ""
     detail: str = ""
+    restart: str = "none"
     items: tuple[ItemResult, ...] = ()
 
 
@@ -427,6 +434,17 @@ def bounded_lines(payload):
 
 def parse_fedora_snapshot(payload):
     """Strictly consume the existing 1.0-1.2 machine protocol, never CLI text."""
+    def normalize_restart(status, value):
+        if status not in STATUSES:
+            raise ValueError("invalid Fedora restart state")
+        if value in {"none", "unknown"}:
+            return "none"
+        if value in {"system", "security-system"}:
+            return "system"
+        if value in {"session", "security-session", "application"}:
+            return "session"
+        raise ValueError("invalid Fedora restart state")
+
     lines = bounded_lines(payload)
     if not lines or lines[0] not in {f"system-management-protocol\t1\t{minor}" for minor in range(3)}:
         raise ValueError("invalid Fedora protocol")
@@ -437,6 +455,7 @@ def parse_fedora_snapshot(payload):
              "repository": 4, "filesystem": 10, "active-operation": 9,
              "terminal-handoff": 4}
     rows, plans, seen, summary, provider, update_available = [], {}, set(), None, None, False
+    restart = "none"
     discovery_failure, failures, provider_detail, active = False, [], "", False
     for line in lines[1:-1]:
         fields = line.split("\t")
@@ -464,6 +483,11 @@ def parse_fedora_snapshot(payload):
                 if not re.fullmatch(r"0|[1-9][0-9]{0,4}", fields[3]) or int(fields[3]) > MAX_ITEMS:
                     raise ValueError("invalid Fedora count")
                 summary = int(fields[3])
+        elif kind == "state" and fields[1] == "update-restart":
+            if "restart-state" in seen:
+                raise ValueError("invalid Fedora restart state")
+            seen.add("restart-state")
+            restart = normalize_restart(fields[2], fields[3])
         elif kind == "action" and fields[1] == "updates-install-all":
             if "install-action" in seen or fields[2] not in STATUSES:
                 raise ValueError("invalid Fedora action")
@@ -492,7 +516,7 @@ def parse_fedora_snapshot(payload):
     items = tuple(replace(row, action=plans.get(row.package_id, row.action))
                   for row in sorted(rows, key=lambda item: item.package_id.encode("utf-8")))
     return ProviderResult("fedora", provider, summary, update_available=update_available and not active,
-                          detail=provider_detail, items=items)
+                          detail=provider_detail, restart=restart, items=items)
 
 
 def render_snapshot(results):
@@ -509,6 +533,8 @@ def render_snapshot(results):
                   "unknown" if result.managed is None else str(result.managed), result.freshness,
                   str(result.last_success), "yes" if result.update_available else "no", result.error_code, result.detail)
         lines.append("\t".join(escape(field) for field in fields))
+        if result.restart != "none":
+            lines.append("\t".join(("guidance", meta.identifier, "restart", result.restart)))
         for item in sorted(result.items, key=lambda item: (item.scope.encode(), item.package_id.encode())):
             lines.append("\t".join(escape(field) for field in ("item", meta.identifier, item.action,
                          item.name, item.current, item.available, item.package_id, item.scope, item.url)))
@@ -529,6 +555,7 @@ def validate_result(result):
             or result.freshness not in {"fresh", "cached", "stale", "error"}
             or type(result.last_success) is not int or not 0 <= result.last_success <= (1 << 53)
             or type(result.update_available) is not bool
+            or result.restart not in {"none", "session", "system"}
             or result.error_code not in ERROR_CODES):
         raise ValueError("invalid normalized provider")
     identities = set()
@@ -637,7 +664,12 @@ def decode_cache(data):
         raise ValueError("invalid cache providers")
     results, seen = [], set()
     for entry in value["providers"]:
-        if not isinstance(entry, dict) or set(entry) != set(ProviderResult.__dataclass_fields__):
+        provider_fields = set(ProviderResult.__dataclass_fields__)
+        if not isinstance(entry, dict):
+            raise ValueError("invalid cache fields")
+        if set(entry) == provider_fields - {"restart"}:
+            entry = {**entry, "restart": "none"}
+        elif set(entry) != provider_fields:
             raise ValueError("invalid cache fields")
         if not isinstance(entry["items"], list) or len(entry["items"]) > MAX_ITEMS:
             raise ValueError("invalid cache items")
@@ -955,7 +987,7 @@ def desktop_status(payload):
             or type(value.get("canUpdate")) is not bool or not isinstance(value.get("detail"), str)
             or not isinstance(value.get("restart"), str) or not isinstance(value.get("state"), str)
             or type(value.get("statusInvalid", False)) is not bool
-            or value.get("restart") not in {"none", "session"}
+            or value.get("restart") not in {"none", "session", "system"}
             or value.get("state") not in DESKTOP_ACTIVE | {"unknown", "checking", "available", "current",
                 "drift", "blocked", "failed", "interrupted", "complete", "restart-required", "canceled"}):
         raise ValueError("invalid desktop status")
@@ -981,10 +1013,10 @@ def scan_desktop():
                             value["available"], url="https://github.com/ChrisTitusTech/dwm-titus"),)
     busy = state in DESKTOP_ACTIVE | {"checking", "interrupted"}
     code = "interrupted" if state == "interrupted" else "busy" if busy else "scan-failed" if state == "failed" else ""
-    detail = value["detail"] + ("; restart: session" if value["restart"] == "session" else "")
+    detail = value["detail"] + ("; restart: " + value["restart"] if value["restart"] != "none" else "")
     return validate_result(ProviderResult("dwm-titus", "restricted" if busy or state in {"blocked", "failed"} else "available",
                           len(items), 1, update_available=value["canUpdate"] and not busy,
-                          error_code=code, detail=detail, items=items))
+                          error_code=code, detail=detail, restart=value["restart"], items=items))
 
 
 def optional_executable(name):
@@ -1012,13 +1044,15 @@ def scan_flatpak():
     executable = optional_executable("flatpak")
     if executable is None:
         return None
+    environment = dict(os.environ)
+    environment["XDG_CACHE_HOME"] = cache_root()
     items, managed = [], 0
     try:
         for scope in ("system", "user"):
             inventory = flatpak_columns(run_bounded([executable, "list", "--" + scope,
-                                        "--columns=ref:full,version"], timeout=20))
+                                        "--columns=ref:full,version"], timeout=20, env=environment, cwd="/"))
             updates = flatpak_columns(run_bounded([executable, "remote-ls", "--" + scope,
-                                      "--updates", "--columns=ref:full,version"], timeout=60))
+                                      "--updates", "--columns=ref:full,version"], timeout=60, env=environment, cwd="/"))
             managed += len(inventory)
             for ref, version in sorted(updates.items()):
                 if ref not in inventory:
@@ -1127,8 +1161,7 @@ def main(argv=None):
                 escape(str(value[field])) for field in ("operation", "provider", "action", "phase", "outcome"))
                 + "\ncomplete\taction\n")
             return 0
-        root = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
-        path = Path(root) / "dwm-titus/update-center.json"
+        path = Path(cache_root()) / "dwm-titus/update-center.json"
         # The guarded persistence layer rejects invalid/unsafe paths. Optional
         # cache configuration must not suppress independently coordinated scans.
         scanners = discover_scanners()

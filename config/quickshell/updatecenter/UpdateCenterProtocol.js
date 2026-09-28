@@ -78,9 +78,15 @@ function parseSnapshot(payload) {
                 const provider = { id: values[1], name: values[2], status: values[3], pending: pending,
                     managed: managed, freshness: values[6], lastSuccess: lastSuccess,
                     updateAvailable: values[8] === "yes", canUpdate: true, canRecover: true,
-                    icon: values[1], errorCode: values[9], detail: values[10], items: [], itemIds: {} };
+                    icon: values[1], errorCode: values[9], detail: values[10], restart: "none",
+                    items: [], itemIds: {} };
                 indexed[provider.id] = provider;
                 providers.push(provider);
+            } else if (values[0] === "guidance") {
+                if (values.length !== 4 || !indexed[values[1]] || values[2] !== "restart"
+                        || ["session", "system"].indexOf(values[3]) < 0
+                        || indexed[values[1]].restart !== "none") throw new Error("invalid guidance");
+                indexed[values[1]].restart = values[3];
             } else if (values[0] === "item") {
                 if (values.length !== 9 || !indexed[values[1]] || itemActions.indexOf(values[2]) < 0
                         || !values[3] || !values[6] || (values[8] && !/^https:\/\/[^\s]+$/.test(values[8]))) throw new Error("invalid item");

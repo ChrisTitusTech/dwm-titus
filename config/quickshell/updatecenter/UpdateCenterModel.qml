@@ -28,7 +28,8 @@ Scope {
     property bool pendingForceRefresh: false
     property bool pendingSettingsReload: false
     property string pendingTerminalClose: ""
-    readonly property bool online: root.connectivitySource.connectivity === NetworkConnectivity.Full
+    readonly property bool online: root.connectivitySource.devices.values.some(
+        device => device.connected)
     readonly property bool busy: root.activeOperation !== null
     readonly property bool scanning: scanProcess.running
     readonly property bool settingsLoading: settingsStatusProcess.running
@@ -40,8 +41,13 @@ Scope {
             || provider.errorCode.length > 0 || ["partial", "restricted"].indexOf(provider.status) >= 0);
     }
 
+    function hasRestartGuidance() {
+        return root.providers.some(provider => provider.restart === "session" || provider.restart === "system");
+    }
+
     function shouldShow() {
-        return root.busy || root.hasExceptionalState() || root.totalUpdates > 0 || root.savedAlwaysShow;
+        return root.busy || root.hasExceptionalState() || root.hasRestartGuidance()
+            || root.totalUpdates > 0 || root.savedAlwaysShow;
     }
 
     function open() { root.visible = true; }
