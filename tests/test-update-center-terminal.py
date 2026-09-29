@@ -380,6 +380,27 @@ class RunnerTests(Environment):
             os.close(devnull)
         self.assertEqual(output.strip(), '{"ok": true}')
 
+    def test_run_command_enforces_read_deadline_and_reaps_child(self):
+        code = 'import time; time.sleep(10)'
+        with self.assertRaises(TimeoutError):
+            self.api["run_command"]([sys.executable, "-c", code], timeout=0.1)
+
+    def test_run_command_enforces_max_bytes_on_unbounded_line(self):
+        code = 'import sys; [sys.stdout.write("x" * 1024) or sys.stdout.flush() for _ in range(10000)]'
+        with patch.dict(self.api["CENTER"], MAX_BYTES=2048):
+            with self.assertRaisesRegex(ValueError, "byte limit"):
+                self.api["run_command"]([sys.executable, "-c", code], timeout=2)
+
+    def test_run_protocol_command_enforces_deadline_and_max_bytes(self):
+        code_hang = 'import time; time.sleep(10)'
+        with self.assertRaises(TimeoutError):
+            self.api["run_protocol_command"]([sys.executable, "-c", code_hang], timeout=0.1)
+
+        code_unbounded = 'import sys; [sys.stdout.write("x" * 1024) or sys.stdout.flush() for _ in range(10000)]'
+        with patch.dict(self.api["CENTER"], MAX_BYTES=2048):
+            with self.assertRaisesRegex(ValueError, "byte limit"):
+                self.api["run_protocol_command"]([sys.executable, "-c", code_unbounded], timeout=2)
+
     def test_desktop_uses_trusted_status_check_start_and_recover(self):
         ready = json.dumps({"schema": 1, "state": "available", "installed": "a" * 40,
                             "available": "b" * 40, "canUpdate": True, "detail": "Ready", "restart": "none"})

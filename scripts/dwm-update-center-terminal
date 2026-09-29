@@ -1,11 +1,13 @@
 #!/usr/bin/python3
 """Run one validated Update Center provider operation in an interactive terminal."""
+import codecs
 import ctypes
 import io
 import json
 import os
 import re
 import runpy
+import selectors
 import shutil
 import subprocess
 import sys
@@ -20,6 +22,7 @@ OPERATION_PATTERN = re.compile(r"op-[0-9a-f]{32}")
 TERMINAL_TITLE = "dwm update center"
 TERMINAL_INSTANCE = b"dwm-update-center"
 TERMINAL_CLASS = b"DwmUpdateCenter"
+DEFAULT_TIMEOUT = 1800
 validate_provider_action = CENTER["validate_provider_action"]
 
 
@@ -117,46 +120,79 @@ def print_terminal_line(line, *, output=None, width=None):
     destination.flush()
 
 
-def run_command(argv, *, cwd=None, env=None):
-    """Stream bounded output while retaining the machine response for reconciliation."""
+def stream_process(argv, *, cwd=None, env=None, timeout=DEFAULT_TIMEOUT):
+    """Execute argv, streaming decoded lines bounded by size and deadline."""
     if not isinstance(argv, list) or not argv or any(not isinstance(value, str) for value in argv):
         raise ValueError("invalid provider argv")
+    if not isinstance(timeout, (int, float)) or timeout <= 0:
+        raise ValueError("invalid timeout")
     process = subprocess.Popen(argv, cwd=cwd, env=env, stdin=None, stdout=subprocess.PIPE,
-                               stderr=None, text=True, errors="strict", bufsize=1)
+                               stderr=None, bufsize=0)
     output, size = [], 0
+    buffer = ""
+    decoder = codecs.getincrementaldecoder("utf-8")(errors="strict")
+    deadline = time.monotonic() + timeout
     try:
-        for line in process.stdout:
-            size += len(line.encode("utf-8"))
-            if size > CENTER["MAX_BYTES"]:
-                process.kill()
-                raise ValueError("provider output exceeded byte limit")
-            output.append(line)
-            print_terminal_line(line)
+        with selectors.DefaultSelector() as selector:
+            os.set_blocking(process.stdout.fileno(), False)
+            selector.register(process.stdout, selectors.EVENT_READ)
+            while selector.get_map():
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError("command timed out")
+                events = selector.select(remaining)
+                if not events:
+                    raise TimeoutError("command timed out")
+                for key, _ in events:
+                    try:
+                        chunk = os.read(key.fileobj.fileno(), 65536)
+                    except (BlockingIOError, InterruptedError):
+                        continue
+                    if not chunk:
+                        selector.unregister(key.fileobj)
+                        continue
+                    size += len(chunk)
+                    if size > CENTER["MAX_BYTES"]:
+                        raise ValueError("provider output exceeded byte limit")
+                    buffer += decoder.decode(chunk)
+                    while "\n" in buffer:
+                        line, buffer = buffer.split("\n", 1)
+                        line_with_nl = line + "\n"
+                        output.append(line_with_nl)
+                        print_terminal_line(line_with_nl)
+            buffer += decoder.decode(b"", final=True)
+            if buffer:
+                output.append(buffer)
+                print_terminal_line(buffer)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("command timed out")
+            try:
+                status = process.wait(timeout=remaining)
+            except subprocess.TimeoutExpired as error:
+                raise TimeoutError("command timed out") from error
+            return status, "".join(output)
     finally:
+        try:
+            if process.poll() is None:
+                process.kill()
+                process.wait()
+        except OSError:
+            pass
         process.stdout.close()
-    status = process.wait()
+
+
+def run_command(argv, *, cwd=None, env=None, timeout=DEFAULT_TIMEOUT):
+    """Stream bounded output while retaining the machine response for reconciliation."""
+    status, payload = stream_process(argv, cwd=cwd, env=env, timeout=timeout)
     if status:
-        raise subprocess.CalledProcessError(status, argv, "".join(output))
-    return "".join(output)
+        raise subprocess.CalledProcessError(status, argv, payload)
+    return payload
 
 
-def run_protocol_command(argv):
+def run_protocol_command(argv, *, timeout=DEFAULT_TIMEOUT):
     """Stream stdout exactly; a nonzero status may still carry a valid terminal bundle."""
-    process = subprocess.Popen(argv, stdin=None, stdout=subprocess.PIPE, stderr=None,
-                               text=True, errors="strict", bufsize=1)
-    output, size = [], 0
-    try:
-        for line in process.stdout:
-            size += len(line.encode("utf-8"))
-            if size > CENTER["MAX_BYTES"]:
-                process.kill()
-                raise ValueError("provider output exceeded byte limit")
-            output.append(line)
-            print_terminal_line(line)
-    finally:
-        process.stdout.close()
-    status = process.wait()
-    payload = "".join(output)
+    status, payload = stream_process(argv, timeout=timeout)
     if status not in {0, 1} or not payload:
         raise subprocess.CalledProcessError(status, argv, payload)
     return payload
