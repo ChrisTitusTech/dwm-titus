@@ -116,6 +116,10 @@ ShellRoot {
         timezoneState: systemManagementModel.nativeStates.timezone || null
     }
 
+    WeatherModel {
+        id: weather
+    }
+
     LauncherModel {
         id: launcherModel
 
@@ -1146,6 +1150,7 @@ ShellRoot {
             screen: modelData
             state: dwmState
             clock: clock
+            weather: weather
             networkModel: networkModel
             controlsModel: controlsModel
             bluetoothModel: bluetoothModel

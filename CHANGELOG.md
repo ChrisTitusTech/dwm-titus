@@ -6,6 +6,12 @@ versions from `config.mk`.
 
 ## [Unreleased]
 
+### Added
+
+- Show optional current weather next to the panel clock from the keyless
+  Open-Meteo API. It stays off, with no network access, until
+  `~/.config/dwm-titus/weather.conf` sets a location.
+
 ### Fixed
 
 - Install `NetworkManager-wifi` with the Fedora image and full package set, and

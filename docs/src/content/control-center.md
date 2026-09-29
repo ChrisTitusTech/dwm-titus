@@ -52,6 +52,27 @@ and can restore the safe all-on default. The redesigned panel retains the
 active-window title, status segments, and system tray, and shows all nine dwm
 tags (workspaces). Hovering icon-only panel controls displays a text tooltip.
 
+## Panel Weather
+
+An optional weather pill next to the clock shows the current conditions and
+temperature, with a hover tooltip for the day's high and low and wind. It is
+off by default and contacts nothing until you create
+`~/.config/dwm-titus/weather.conf`:
+
+```ini
+place=Ipswich
+latitude=52.0567
+longitude=1.1482
+temperature=celsius
+wind=mph
+```
+
+`latitude` and `longitude` are required. `temperature` accepts `celsius` or
+`fahrenheit`, and `wind` accepts `kmh`, `mph`, `ms`, or `kn`. Forecasts come
+from the keyless [Open-Meteo](https://open-meteo.com/) API every 15 minutes,
+retrying after 5 minutes on failure. The pill hides while the file is invalid
+or the last reading is more than an hour old. Delete the file to turn it off.
+
 The panel, popovers, and control-center cards use fully opaque colors. Their
 palette follows the active theme in `themes.toml` and updates when that file is
 changed.
