@@ -79,12 +79,39 @@ def trusted_desktop_helper():
     return helper
 
 
+def format_progress_record(line):
+    fields = line.rstrip("\n").split("\t")
+    record_type = fields[0]
+    if record_type in {"system-management-protocol", "complete"}:
+        return None
+    if record_type == "operation" and len(fields) >= 8:
+        state, progress, detail = fields[4], fields[5], fields[7]
+        if progress.isdigit() and 0 <= int(progress) <= 100:
+            return f"[{int(progress):>3}%] {detail}"
+        status = "OK" if state == "succeeded" else "FAIL" if state == "failed" else state.upper()
+        return f"[{status}] {detail}"
+    if record_type == "package" and len(fields) >= 3:
+        action = fields[1].capitalize()
+        pkg_name = fields[2].split(";")[0] if ";" in fields[2] else fields[2]
+        summary = f" - {fields[3]}" if len(fields) >= 4 and fields[3] else ""
+        return f"-> {action}: {pkg_name}{summary}"
+    if record_type == "audit" and len(fields) >= 8:
+        state, detail = fields[4], fields[7]
+        status = "OK" if state == "succeeded" else "FAIL" if state == "failed" else state.upper()
+        return f"[{status}] {detail}"
+    if record_type == "error" and len(fields) >= 4:
+        return f"[ERROR] {fields[3]}"
+    return "  |  ".join(fields)
+
+
 def print_terminal_line(line, *, output=None, width=None):
     """Render machine fields readably without changing the retained payload."""
     destination = sys.stdout if output is None else output
+    formatted = format_progress_record(line)
+    if formatted is None:
+        return
     columns = shutil.get_terminal_size((102, 24)).columns - 2 if width is None else width
-    rendered = "  |  ".join(line.rstrip("\n").split("\t"))
-    wrapped = textwrap.wrap(rendered, width=max(40, columns), subsequent_indent="  ",
+    wrapped = textwrap.wrap(formatted, width=max(40, columns), subsequent_indent="  ",
                             break_long_words=False, break_on_hyphens=False)
     destination.write("\n".join(wrapped or [""]) + "\n")
     destination.flush()
@@ -95,15 +122,18 @@ def run_command(argv, *, cwd=None, env=None):
     if not isinstance(argv, list) or not argv or any(not isinstance(value, str) for value in argv):
         raise ValueError("invalid provider argv")
     process = subprocess.Popen(argv, cwd=cwd, env=env, stdin=None, stdout=subprocess.PIPE,
-                               stderr=subprocess.STDOUT, text=True, errors="strict", bufsize=1)
+                               stderr=None, text=True, errors="strict", bufsize=1)
     output, size = [], 0
-    for line in process.stdout:
-        size += len(line.encode("utf-8"))
-        if size > CENTER["MAX_BYTES"]:
-            process.kill()
-            raise ValueError("provider output exceeded byte limit")
-        output.append(line)
-        print_terminal_line(line)
+    try:
+        for line in process.stdout:
+            size += len(line.encode("utf-8"))
+            if size > CENTER["MAX_BYTES"]:
+                process.kill()
+                raise ValueError("provider output exceeded byte limit")
+            output.append(line)
+            print_terminal_line(line)
+    finally:
+        process.stdout.close()
     status = process.wait()
     if status:
         raise subprocess.CalledProcessError(status, argv, "".join(output))
@@ -115,13 +145,16 @@ def run_protocol_command(argv):
     process = subprocess.Popen(argv, stdin=None, stdout=subprocess.PIPE, stderr=None,
                                text=True, errors="strict", bufsize=1)
     output, size = [], 0
-    for line in process.stdout:
-        size += len(line.encode("utf-8"))
-        if size > CENTER["MAX_BYTES"]:
-            process.kill()
-            raise ValueError("provider output exceeded byte limit")
-        output.append(line)
-        print_terminal_line(line)
+    try:
+        for line in process.stdout:
+            size += len(line.encode("utf-8"))
+            if size > CENTER["MAX_BYTES"]:
+                process.kill()
+                raise ValueError("provider output exceeded byte limit")
+            output.append(line)
+            print_terminal_line(line)
+    finally:
+        process.stdout.close()
     status = process.wait()
     payload = "".join(output)
     if status not in {0, 1} or not payload:
@@ -208,6 +241,10 @@ def execute_fedora(operation, action):
         terminal = run_protocol_command([helper, "watch-operation", operations[0][1]]) if operations else initial
         protocol_action = operations[0][2] if operations else "updates-install-all"
     terminal_state = parse_operation_stream(terminal, protocol_action) if records(terminal, "operation") else None
+    if action == "update" and terminal_state is None:
+        reconciled = run_command([helper, "snapshot"])
+        return result("failed", "failed", "PackageKit did not start the update transaction",
+                      fedora_restart(reconciled))
     reconciled = run_command([helper, "snapshot"])
     state = terminal_state["state"] if terminal_state else "interrupted" if records(reconciled, "active-operation") else "succeeded"
     restart = fedora_restart(reconciled)
@@ -346,8 +383,21 @@ def completion_hold(value, *, input_stream=None, output=None):
     destination.write("\n" + value.get("detail", "Operation finished") + "\n")
     destination.write("Done. Press any key to close\n")
     destination.flush()
-    if input_stream is not None or getattr(stream, "isatty", lambda: False)():
+    if input_stream is not None:
         stream.read(1)
+    elif getattr(stream, "isatty", lambda: False)():
+        try:
+            import termios
+            import tty
+            fd = stream.fileno()
+            old = termios.tcgetattr(fd)
+            try:
+                tty.setcbreak(fd)
+                stream.read(1)
+            finally:
+                termios.tcsetattr(fd, termios.TCSADRAIN, old)
+        except (OSError, ValueError, ImportError):
+            stream.read(1)
 
 
 def main(argv=None):

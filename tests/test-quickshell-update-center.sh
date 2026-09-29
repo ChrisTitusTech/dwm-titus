@@ -21,7 +21,7 @@ assert image.getpixel((0, 0))[3] == 0, "bar icon background must be transparent"
 assert image.getbbox() is not None, "bar icon must contain visible artwork"
 PY
 
-if rg -n '/home/|file://' "$assets"; then
+if grep -rnaE '/home/|file://' "$assets"; then
 	printf '%s\n' 'Update Center assets contain a host-local path.' >&2
 	exit 1
 fi
@@ -69,7 +69,7 @@ grep -Fq 'event.key === Qt.Key_R' "$window"
 grep -Fq 'event.key === Qt.Key_S' "$window"
 grep -Fq 'event.key === Qt.Key_Escape' "$window"
 
-if rg -n -i 'update all|notification|notify-send' "$row" "$window" "$model"; then
+if grep -niE 'update all|notification|notify-send' "$row" "$window" "$model"; then
 	printf '%s\n' 'Update Center UI must have independent provider actions and silent discovery.' >&2
 	exit 1
 fi

@@ -317,6 +317,7 @@ def rescan_provider(provider):
 
 def terminal_closed(operation, now=None):
     release = False
+    changed = False
     with operation_lock():
         value = read_operation()
         if value is None or value["operation"] != operation:
@@ -333,6 +334,9 @@ def terminal_closed(operation, now=None):
             value = {**value, "phase": "interrupted", "outcome": "unknown",
                      "detail": "Terminal identity is missing or changed; recovery is required", "updated": now or int(time.time())}
             write_operation(value)
+            changed = True
+    if not release and not changed:
+        return value
     try:
         rescan_provider(value["provider"])
     except (OSError, ValueError):
@@ -1031,7 +1035,7 @@ def flatpak_columns(payload):
     rows = {}
     for line in bounded_lines(payload):
         fields = line.split("\t")
-        if len(fields) != 2 or not re.fullmatch(r"(?:app|runtime)/" + APPLICATION_ID + r"/[A-Za-z0-9_-]+/[A-Za-z0-9._-]+", fields[0]):
+        if len(fields) != 2 or not re.fullmatch(APPLICATION_ID + r"/[A-Za-z0-9_-]+/[A-Za-z0-9._-]+", fields[0]):
             raise ValueError("incompatible Flatpak columns")
         if fields[0] in rows or len(rows) >= MAX_ITEMS:
             raise ValueError("duplicate or excessive Flatpak refs")
@@ -1049,17 +1053,18 @@ def scan_flatpak():
     items, managed = [], 0
     try:
         for scope in ("system", "user"):
-            inventory = flatpak_columns(run_bounded([executable, "list", "--" + scope,
-                                        "--columns=ref:full,version"], timeout=20, env=environment, cwd="/"))
-            updates = flatpak_columns(run_bounded([executable, "remote-ls", "--" + scope,
-                                      "--updates", "--columns=ref:full,version"], timeout=60, env=environment, cwd="/"))
-            managed += len(inventory)
-            for ref, version in sorted(updates.items()):
-                if ref not in inventory:
-                    raise ValueError("Flatpak update absent from installed inventory")
-                kind, name, _, _ = ref.split("/")
-                url = "https://flathub.org/apps/" + name if kind == "app" else ""
-                items.append(ItemResult("update", name, inventory[ref], version, ref, scope, url))
+            for kind in ("app", "runtime"):
+                inventory = flatpak_columns(run_bounded([executable, "list", "--" + scope,
+                                            "--" + kind, "--columns=ref:full,version"], timeout=20, env=environment, cwd="/"))
+                updates = flatpak_columns(run_bounded([executable, "remote-ls", "--" + scope,
+                                          "--updates", "--" + kind, "--columns=ref:full,version"], timeout=60, env=environment, cwd="/"))
+                managed += len(inventory)
+                for ref, version in sorted(updates.items()):
+                    if ref not in inventory:
+                        raise ValueError("Flatpak update absent from installed inventory")
+                    name, _, _ = ref.split("/")
+                    url = "https://flathub.org/apps/" + name if kind == "app" else ""
+                    items.append(ItemResult("update", name, inventory[ref], version, ref, scope, url))
         return validate_result(ProviderResult("flatpak", pending=len(items), managed=managed,
                               update_available=True, items=tuple(items)))
     except ScanFailure:

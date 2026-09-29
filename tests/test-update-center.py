@@ -565,8 +565,8 @@ class OptionalFailureTests(unittest.TestCase):
 
     def test_flatpak_system_success_then_user_failure_keeps_error_visible(self):
         from unittest.mock import patch
-        ref = "app/org.example.App/x86_64/stable"
-        for fail_index in (0, 1, 2, 3):
+        ref = "org.example.App/x86_64/stable"
+        for fail_index in range(8):
             with self.subTest(call=fail_index), workspace() as folder:
                 function = self.api["scan_flatpak"]
                 calls = []
@@ -831,12 +831,23 @@ class FlatpakDiscoveryTests(unittest.TestCase):
         return result, calls
 
     def test_scoped_inventory_and_updates_keep_duplicate_refs(self):
-        ref = "app/org.example.App/x86_64/stable"
-        result, calls = self.scan([ref + "\t1\n", ref + "\t2\n", ref + "\t1\n", ref + "\t3\n"])
-        self.assertEqual(calls, [["/usr/bin/flatpak", "list", "--system", "--columns=ref:full,version"],
-                                ["/usr/bin/flatpak", "remote-ls", "--system", "--updates", "--columns=ref:full,version"],
-                                ["/usr/bin/flatpak", "list", "--user", "--columns=ref:full,version"],
-                                ["/usr/bin/flatpak", "remote-ls", "--user", "--updates", "--columns=ref:full,version"]])
+        ref = "org.example.App/x86_64/stable"
+        result, calls = self.scan([
+            ref + "\t1\n", ref + "\t2\n",
+            "", "",
+            ref + "\t1\n", ref + "\t3\n",
+            "", "",
+        ])
+        self.assertEqual(calls, [
+            ["/usr/bin/flatpak", "list", "--system", "--app", "--columns=ref:full,version"],
+            ["/usr/bin/flatpak", "remote-ls", "--system", "--updates", "--app", "--columns=ref:full,version"],
+            ["/usr/bin/flatpak", "list", "--system", "--runtime", "--columns=ref:full,version"],
+            ["/usr/bin/flatpak", "remote-ls", "--system", "--updates", "--runtime", "--columns=ref:full,version"],
+            ["/usr/bin/flatpak", "list", "--user", "--app", "--columns=ref:full,version"],
+            ["/usr/bin/flatpak", "remote-ls", "--user", "--updates", "--app", "--columns=ref:full,version"],
+            ["/usr/bin/flatpak", "list", "--user", "--runtime", "--columns=ref:full,version"],
+            ["/usr/bin/flatpak", "remote-ls", "--user", "--updates", "--runtime", "--columns=ref:full,version"],
+        ])
         self.assertEqual((result.pending, result.managed), (2, 2))
         self.assertEqual([(item.scope, item.current, item.available) for item in result.items],
                          [("system", "1", "2"), ("user", "1", "3")])
@@ -844,15 +855,20 @@ class FlatpakDiscoveryTests(unittest.TestCase):
 
     def test_absent_and_incompatible_flatpak_hide_without_human_fallback(self):
         self.assertEqual(self.scan([], executable=None), (None, []))
-        for text in ("Application ID Version Branch\n", "app/bad/x86_64/stable\t2\n", "a\tb\tc\n"):
+        for text in ("Application ID Version Branch\n", "bad/x86_64/stable\t2\n", "a\tb\tc\n"):
             with self.subTest(text=text):
                 result, calls = self.scan([text])
                 self.assertIsNone(result)
                 self.assertEqual(len(calls), 1)
 
     def test_runtime_has_no_fabricated_flathub_link_and_empty_versions_unknown(self):
-        ref = "runtime/org.example.Platform/x86_64/stable"
-        result, _ = self.scan([ref + "\t\n", ref + "\t\n", "", ""])
+        ref = "org.example.Platform/x86_64/stable"
+        result, _ = self.scan([
+            "", "",
+            ref + "\t\n", ref + "\t\n",
+            "", "",
+            "", "",
+        ])
         self.assertEqual((result.items[0].current, result.items[0].available, result.items[0].url),
                          ("unknown", "unknown", ""))
 

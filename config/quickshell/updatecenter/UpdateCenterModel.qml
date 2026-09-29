@@ -28,8 +28,9 @@ Scope {
     property bool pendingForceRefresh: false
     property bool pendingSettingsReload: false
     property string pendingTerminalClose: ""
-    readonly property bool online: root.connectivitySource.devices.values.some(
-        device => device.connected)
+    readonly property bool online: (!root.connectivitySource || !root.connectivitySource.devices
+        || !root.connectivitySource.devices.values || root.connectivitySource.devices.values.length === 0)
+        || root.connectivitySource.devices.values.some(device => device.connected)
     readonly property bool busy: root.activeOperation !== null
     readonly property bool scanning: scanProcess.running
     readonly property bool settingsLoading: settingsStatusProcess.running

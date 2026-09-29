@@ -102,7 +102,7 @@ Rectangle {
     activeFocusOnTab: true
     Accessible.role: Accessible.ListItem
     Accessible.name: root.provider.name + ", " + root.statusSummary()
-    Accessible.description: "Managed items " + (root.provider.managed === null ? "unknown" : root.provider.managed)
+    Accessible.description: root.provider.managed !== null ? "Managed items " + root.provider.managed : root.provider.name + " updates"
 
     Keys.onPressed: function(event) {
         if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
@@ -153,8 +153,8 @@ Rectangle {
 
                 UiText {
                     Layout.fillWidth: true
-                    text: root.statusSummary() + "  |  Managed "
-                        + (root.provider.managed === null ? "unknown" : root.provider.managed)
+                    text: root.statusSummary()
+                        + (root.provider.managed !== null ? "  |  Managed " + root.provider.managed : "")
                         + "  |  " + root.relativeCheckAge
                     color: root.provider.freshness === "error" ? Theme.danger
                         : root.provider.freshness === "stale" ? Theme.warning : Theme.menuMutedText

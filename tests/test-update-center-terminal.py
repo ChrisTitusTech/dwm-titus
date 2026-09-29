@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 """Durable Update Center terminal lifecycle and fixed provider adapters."""
+import contextlib
 import io
 import json
 import os
@@ -7,6 +8,7 @@ import runpy
 import subprocess
 import sys
 import tempfile
+import termios
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -83,6 +85,17 @@ class ReservationTests(Environment):
                         rescan_provider=lambda provider: None):
             repeated = self.api["terminal_closed"](op["operation"], now=13)
         self.assertEqual((repeated["phase"], repeated["outcome"]), ("interrupted", "unknown"))
+
+    def test_terminal_closed_does_not_rescan_when_terminal_is_alive_and_phase_unchanged(self):
+        op = self.api["reserve_operation"]("mise", "update", now=10)
+        self.api["record_terminal"](op["operation"], 123, "123:7", now=11)
+        rescanned = []
+        with patch.dict(self.api["terminal_closed"].__globals__,
+                        process_identity=lambda pid: "123:7",
+                        rescan_provider=lambda provider: rescanned.append(provider)):
+            result = self.api["terminal_closed"](op["operation"], now=12)
+        self.assertEqual(rescanned, [])
+        self.assertEqual(result["phase"], "launched")
 
     def test_matching_interrupted_owner_can_reserve_recovery_but_other_provider_cannot(self):
         previous = self.api["reserve_operation"]("flatpak", "update", now=10)
@@ -296,6 +309,28 @@ class RunnerTests(Environment):
         self.assertNotIn("dwm-system-\nmanagement", output.getvalue())
         self.assertNotIn("\t", output.getvalue())
 
+    def test_terminal_formats_operation_and_package_progress_cleanly(self):
+        output = io.StringIO()
+        self.api["print_terminal_line"](
+            "operation\top-123\tupdates-install-all\tupdate\trunning\t50\tyes\tInstalling updates\n",
+            output=output,
+        )
+        self.assertEqual(output.getvalue().strip(), "[ 50%] Installing updates")
+
+        output = io.StringIO()
+        self.api["print_terminal_line"](
+            "package\tinstalling\tfirefox;128.0;x86_64;updates\tWeb browser\n",
+            output=output,
+        )
+        self.assertEqual(output.getvalue().strip(), "-> Installing: firefox - Web browser")
+
+        output = io.StringIO()
+        self.api["print_terminal_line"](
+            "system-management-protocol\t1\t0\n",
+            output=output,
+        )
+        self.assertEqual(output.getvalue(), "")
+
     def operation_stream(self, state="succeeded"):
         operation = "op-" + "c" * 32
         return ("system-management-protocol\t1\t0\n"
@@ -318,6 +353,32 @@ class RunnerTests(Environment):
         with self.assertRaisesRegex(ValueError, "PackageKit operation"):
             self.run_adapter("fedora", "update", [self.fedora_snapshot(),
                 self.operation_stream().replace("complete\toperation", "complete\tsnapshot")])
+
+    def test_fedora_update_without_operation_records_reports_failure(self):
+        snapshot = self.fedora_snapshot(restart="none")
+        no_operation_stream = (
+            "system-management-protocol\t1\t0\n"
+            "error\tupdates\tauthorization\tAuthentication was dismissed\n"
+            "complete\toperation\n"
+        )
+        result, calls, phases = self.run_adapter("fedora", "update", [snapshot, no_operation_stream, snapshot])
+        self.assertEqual(result["outcome"], "failed")
+        self.assertEqual(result["phase"], "failed")
+        self.assertIn("did not start", result["detail"])
+
+    def test_run_command_isolates_stderr_from_machine_output(self):
+        code = 'import sys; sys.stderr.write("warning: unmanaged\\n"); sys.stdout.write("{\\"ok\\": true}\\n")'
+        devnull = os.open(os.devnull, os.O_WRONLY)
+        old_stderr = os.dup(2)
+        try:
+            os.dup2(devnull, 2)
+            with contextlib.redirect_stdout(io.StringIO()):
+                output = self.api["run_command"]([sys.executable, "-c", code])
+        finally:
+            os.dup2(old_stderr, 2)
+            os.close(old_stderr)
+            os.close(devnull)
+        self.assertEqual(output.strip(), '{"ok": true}')
 
     def test_desktop_uses_trusted_status_check_start_and_recover(self):
         ready = json.dumps({"schema": 1, "state": "available", "installed": "a" * 40,
@@ -390,6 +451,23 @@ class RunnerTests(Environment):
             output = io.StringIO()
             self.api["completion_hold"]({"outcome": outcome}, input_stream=io.StringIO("x"), output=output)
             self.assertIn("Done. Press any key to close", output.getvalue())
+
+    def test_completion_hold_uses_cbreak_on_tty(self):
+        calls = []
+        class MockTTYStream(io.StringIO):
+            def isatty(self):
+                return True
+            def fileno(self):
+                return 42
+
+        stream = MockTTYStream("q")
+        output = io.StringIO()
+        with patch.object(sys, "stdin", stream), \
+             patch("tty.setcbreak", lambda fd: calls.append(("setcbreak", fd))), \
+             patch("termios.tcgetattr", lambda fd: ["mock_settings"]), \
+             patch("termios.tcsetattr", lambda fd, when, settings: calls.append(("tcsetattr", fd, when, settings))):
+            self.api["completion_hold"]({"detail": "All good"}, output=output)
+        self.assertEqual(calls, [("setcbreak", 42), ("tcsetattr", 42, termios.TCSADRAIN, ["mock_settings"])])
 
     def test_runner_main_commits_terminal_state_then_holds_for_injected_key(self):
         operation = self.api["CENTER"]["reserve_operation"]("mise", "update", now=10)

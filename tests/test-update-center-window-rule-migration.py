@@ -64,6 +64,17 @@ rules = [
         self.assertIn("invalid TOML", result.stderr)
         self.assertEqual(migrated, original)
 
+    def test_adds_rule_when_last_rule_lacks_trailing_comma(self):
+        original = '''rules = [
+  { class="Alacritty", isterminal=1 }
+]
+'''
+        result, migrated = self.run_migration(original)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        rules = tomllib.loads(migrated)["rules"]
+        self.assertEqual(len(rules), 2)
+
+
 
 if __name__ == "__main__":
     unittest.main()
