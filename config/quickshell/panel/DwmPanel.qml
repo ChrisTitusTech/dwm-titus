@@ -31,6 +31,7 @@ PanelWindow {
     property var desktopUpdateModel: null
     required property var state
     required property var clock
+    required property var weather
     required property var networkModel
     required property var controlsModel
     required property var bluetoothModel
@@ -157,6 +158,38 @@ PanelWindow {
                     text: root.clock.panelText
                     color: Theme.textStrong
                     font.bold: true
+                }
+            }
+
+            PanelPill {
+                id: weatherPill
+                visible: root.weather.available
+                Layout.preferredWidth: weatherRow.implicitWidth + Theme.pillHorizontalPadding * 2
+                Layout.preferredHeight: Theme.pillHeight
+                outlined: true
+                hovered: weatherMouse.containsMouse
+
+                RowLayout {
+                    id: weatherRow
+                    anchors.centerIn: parent
+                    spacing: Theme.compactSpacing
+
+                    IconText {
+                        text: root.weather.icon
+                        color: Theme.textStrong
+                        font.pixelSize: Theme.scaledFontSize(14 * 1.2, 8)
+                    }
+
+                    UiText {
+                        text: root.weather.panelText
+                        color: Theme.textStrong
+                    }
+                }
+
+                MouseArea {
+                    id: weatherMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
                 }
             }
 
@@ -384,6 +417,14 @@ PanelWindow {
         anchorWindow: root
         anchorItem: logoButton
         label: "Control Center"
+        anchorY: Theme.panelHeight
+    }
+
+    PanelTooltip {
+        visible: root.weather.available && weatherMouse.containsMouse
+        anchorWindow: root
+        anchorItem: weatherPill
+        label: root.weather.tooltipText
         anchorY: Theme.panelHeight
     }
 

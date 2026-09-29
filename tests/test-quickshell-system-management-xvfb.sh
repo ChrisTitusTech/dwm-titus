@@ -629,6 +629,22 @@ if [ "$clock_status" -ne 0 ] || ! grep -F 'Shared clock tests: PASS' "$work/shar
 	exit 1
 fi
 
+mkdir -p "$work/weather-model" "$work/weather-config"
+cp -a "$repo/config/quickshell/core" "$work/weather-model/"
+cp "$repo/tests/qml/WeatherModel.qml" "$work/weather-model/shell.qml"
+timeout --foreground --kill-after=2s 20s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$work/weather-config" \
+	XDG_DATA_HOME="$data_home" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= \
+	quickshell --no-duplicate --path "$work/weather-model/shell.qml" >"$work/weather-model.log" 2>&1 &
+quickshell_pid=$!
+weather_status=0
+wait "$quickshell_pid" || weather_status=$?
+quickshell_pid=
+if [ "$weather_status" -ne 0 ] || ! grep -F 'Weather model tests: PASS' "$work/weather-model.log" ||
+	grep -Fq 'Weather model FAILED:' "$work/weather-model.log"; then
+	cat "$work/weather-model.log" >&2
+	exit 1
+fi
+
 mkdir -p "$work/regional-preflight-parser"
 cp "$repo/tests/qml/SystemRegionalPreflightParser.qml" "$work/regional-preflight-parser/shell.qml"
 cp "$repo/config/quickshell/systemmanagement/SystemRegionalPreflightProtocol.js" "$work/regional-preflight-parser/"
