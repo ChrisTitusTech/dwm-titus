@@ -38,6 +38,7 @@ INSTALL_COMMANDS = \
 	scripts/dwm-keybinds \
 	scripts/dwm-lock \
 	scripts/dwm-lock-watch \
+	scripts/migrate-update-center-window-rule \
 	scripts/dwm-panel-settings \
 	scripts/dwm-update-center \
 	scripts/dwm-update-center-terminal \
@@ -298,6 +299,10 @@ install-user-files:
 	test -f ${CFG_DIR}/dwm-titus/hotkeys.toml || install -Dm644 config/hotkeys.toml ${CFG_DIR}/dwm-titus/hotkeys.toml
 	test -f ${CFG_DIR}/dwm-titus/themes.toml  || install -Dm644 config/themes.toml  ${CFG_DIR}/dwm-titus/themes.toml
 	test -f ${CFG_DIR}/dwm-titus/window-rules.toml || install -Dm644 config/window-rules.toml ${CFG_DIR}/dwm-titus/window-rules.toml
+	@echo "==> Migrating Update Center window rule..."
+	HOME="${USER_HOME}" XDG_CONFIG_HOME="${XDG_CONFIG_HOME}" \
+		scripts/migrate-update-center-window-rule || \
+		echo "  Preserving existing window rules after migration warning."
 	@echo "==> Migrating legacy graphical-session startup..."
 	HOME="${USER_HOME}" XDG_CONFIG_HOME="${XDG_CONFIG_HOME}" scripts/migrate-graphical-session.sh
 	@echo "==> Installing Meslo font aliases..."
@@ -553,6 +558,7 @@ check-update-center-terminal:
 
 check-update-center-window-rule:
 	tests/test-update-center-window-rule.sh
+	/usr/bin/python3 tests/test-update-center-window-rule-migration.py
 
 check-quickshell-update-center-model:
 	tests/test-quickshell-update-center-model.sh

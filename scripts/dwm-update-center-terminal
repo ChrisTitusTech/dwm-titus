@@ -9,6 +9,7 @@ import runpy
 import shutil
 import subprocess
 import sys
+import textwrap
 import time
 from pathlib import Path
 
@@ -32,6 +33,8 @@ def set_terminal_identity(environment=None, output=None):
     destination = sys.stdout if output is None else output
     destination.write("\033]0;" + TERMINAL_TITLE + "\007")
     destination.flush()
+    if environment.get("DWM_UPDATE_CENTER_TERMINAL_IDENTITY") == "1":
+        return True
     display_name, raw_window = environment.get("DISPLAY"), environment.get("WINDOWID")
     if not display_name or not raw_window or not re.fullmatch(r"(?:0x[0-9A-Fa-f]+|[1-9][0-9]*)", raw_window):
         return False
@@ -76,6 +79,17 @@ def trusted_desktop_helper():
     return helper
 
 
+def print_terminal_line(line, *, output=None, width=None):
+    """Render machine fields readably without changing the retained payload."""
+    destination = sys.stdout if output is None else output
+    columns = shutil.get_terminal_size((102, 24)).columns - 2 if width is None else width
+    rendered = "  |  ".join(line.rstrip("\n").split("\t"))
+    wrapped = textwrap.wrap(rendered, width=max(40, columns), subsequent_indent="  ",
+                            break_long_words=False, break_on_hyphens=False)
+    destination.write("\n".join(wrapped or [""]) + "\n")
+    destination.flush()
+
+
 def run_command(argv, *, cwd=None, env=None):
     """Stream bounded output while retaining the machine response for reconciliation."""
     if not isinstance(argv, list) or not argv or any(not isinstance(value, str) for value in argv):
@@ -89,7 +103,7 @@ def run_command(argv, *, cwd=None, env=None):
             process.kill()
             raise ValueError("provider output exceeded byte limit")
         output.append(line)
-        print(line, end="", flush=True)
+        print_terminal_line(line)
     status = process.wait()
     if status:
         raise subprocess.CalledProcessError(status, argv, "".join(output))
@@ -107,7 +121,7 @@ def run_protocol_command(argv):
             process.kill()
             raise ValueError("provider output exceeded byte limit")
         output.append(line)
-        print(line, end="", flush=True)
+        print_terminal_line(line)
     status = process.wait()
     payload = "".join(output)
     if status not in {0, 1} or not payload:

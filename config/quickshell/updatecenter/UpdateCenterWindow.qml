@@ -16,7 +16,7 @@ ClickAwayPopup {
     property string saveStatus: ""
     property int nowSeconds: Math.floor(Date.now() / 1000)
     readonly property bool ageClockRunning: ageTimer.running
-    readonly property int cardWidth: Theme.scaledSize(430)
+    readonly property int cardWidth: Theme.scaledSize(480)
     readonly property int maximumHeight: panelWindow && panelWindow.screen
         ? Math.max(260, panelWindow.screen.height - Theme.panelHeight - Theme.popupMargin)
         : 260

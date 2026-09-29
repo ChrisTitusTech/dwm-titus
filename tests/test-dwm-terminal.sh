@@ -20,6 +20,7 @@ EOF
 cat >"$work/bin/alacritty" <<'SCRIPT'
 #!/bin/sh
 printf '%s\n' "$0" >"$DWM_TERMINAL_TEST_OUT"
+printf 'identity=%s\n' "${DWM_UPDATE_CENTER_TERMINAL_IDENTITY:-}" >>"$DWM_TERMINAL_TEST_OUT"
 printf '%s\n' "$@" >>"$DWM_TERMINAL_TEST_OUT"
 SCRIPT
 chmod +x "$work/bin/alacritty"
@@ -38,6 +39,17 @@ DWM_TERMINAL_TEST_OUT="$work/out" \
 grep -Fqx "$work/bin/alacritty" "$work/out"
 grep -Fqx -- "--class" "$work/out"
 grep -Fqx "dwm-test" "$work/out"
+
+DWM_TERMINAL_TEST_OUT="$work/update-center-out" \
+	PATH="$work/bin" \
+	"$BASH_BIN" "$HELPER" --update-center /usr/bin/dwm-update-center-terminal op-00000000000000000000000000000000 fedora update
+grep -Fqx 'identity=1' "$work/update-center-out"
+grep -Fqx -- '--class' "$work/update-center-out"
+grep -Fqx 'DwmUpdateCenter,dwm-update-center' "$work/update-center-out"
+grep -Fqx -- '--title' "$work/update-center-out"
+grep -Fqx 'dwm update center' "$work/update-center-out"
+grep -Fqx -- '-e' "$work/update-center-out"
+grep -Fqx '/usr/bin/dwm-update-center-terminal' "$work/update-center-out"
 
 sed -i 's/terminal = "alacritty"/terminal = "kitty"/' \
 	"$XDG_CONFIG_HOME/dwm-titus/hotkeys.toml"

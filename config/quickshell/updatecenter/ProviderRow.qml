@@ -124,13 +124,9 @@ Rectangle {
             Layout.fillWidth: true
             spacing: Theme.spacingXl
 
-            Rectangle {
+            Item {
                 Layout.preferredWidth: Theme.scaledSize(32)
                 Layout.preferredHeight: Theme.scaledSize(32)
-                color: "#111827"
-                border.color: "#94a3b8"
-                border.width: 1
-                radius: Theme.controlRadius
                 Accessible.role: Accessible.Graphic
                 Accessible.name: root.provider.name + " logo"
 
@@ -170,7 +166,7 @@ Rectangle {
             ShellButton {
                 label: root.providerBusy ? "Busy" : root.providerRecoverable ? "Recover" : "Update"
                 accessibleDescription: root.provider.name + " provider action"
-                enabled: root.providerRecoverable || !root.globalBusy
+                enabled: root.providerRecoverable || (!root.globalBusy && root.provider.updateAvailable)
                 primary: root.providerRecoverable
                 onActivated: root.requestAction()
             }

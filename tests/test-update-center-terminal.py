@@ -46,7 +46,7 @@ class ReservationTests(Environment):
             first = self.api["launch_operation"]("flatpak", "update", terminal="/usr/bin/dwm-terminal",
                                                   runner="/usr/bin/dwm-update-center-terminal", now=10)
             self.assertRegex(first["operation"], r"^op-[0-9a-f]{32}$")
-            self.assertEqual(calls[0][0], ["/usr/bin/dwm-terminal", "-e", "/usr/bin/dwm-update-center-terminal",
+            self.assertEqual(calls[0][0], ["/usr/bin/dwm-terminal", "--update-center", "/usr/bin/dwm-update-center-terminal",
                                           first["operation"], "flatpak", "update"])
             self.assertFalse(calls[0][1].get("shell", False))
             with self.assertRaisesRegex(BlockingIOError, "active"):
@@ -281,6 +281,21 @@ class RunnerTests(Environment):
                 "action\tupdates-cancel\tunavailable\tdelegated\tupdates\tCancel\tIdle\n"
                 f"{active}complete\tsnapshot\n")
 
+    def test_terminal_protocol_output_wraps_at_fields_without_splitting_words(self):
+        output = io.StringIO()
+        self.api["print_terminal_line"](
+            "provider\tsecurity\tpartial read-only\tdwm-system-management\t"
+            "Bounded read-only observations; inspect individual state details\n",
+            output=output,
+            width=52,
+        )
+        lines = output.getvalue().splitlines()
+        self.assertGreater(len(lines), 1)
+        self.assertTrue(all(len(line) <= 52 for line in lines))
+        self.assertIn("dwm-system-management", output.getvalue())
+        self.assertNotIn("dwm-system-\nmanagement", output.getvalue())
+        self.assertNotIn("\t", output.getvalue())
+
     def operation_stream(self, state="succeeded"):
         operation = "op-" + "c" * 32
         return ("system-management-protocol\t1\t0\n"
@@ -443,6 +458,12 @@ class RunnerTests(Environment):
         self.assertEqual(self.api["TERMINAL_INSTANCE"], b"dwm-update-center")
         self.assertEqual(self.api["TERMINAL_CLASS"], b"DwmUpdateCenter")
         self.assertNotIn(self.operation, output.getvalue())
+
+    def test_terminal_wrapper_identity_is_accepted_without_windowid(self):
+        output = io.StringIO()
+        self.assertTrue(self.api["set_terminal_identity"](
+            {"DWM_UPDATE_CENTER_TERMINAL_IDENTITY": "1"}, output))
+        self.assertIn("dwm update center", output.getvalue())
 
     def test_fixed_x11_title_and_class_are_applied_without_provider_input(self):
         calls = []

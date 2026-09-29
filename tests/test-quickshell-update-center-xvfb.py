@@ -346,21 +346,19 @@ with tempfile.TemporaryDirectory(prefix="update-center-xvfb-", dir=tmp_root) as 
         time.sleep(0.2)
         light_image = screenshot()
         assert color_bounds(light_image, (244, 244, 244))[4] > 1000
-        tile_bounds = color_bounds(light_image, (17, 24, 39))
-        assert tile_bounds[4] > 100, "Contrasting provider icon tile was not visible in light mode"
         call("dark")
         call("anchorToButton")
         time.sleep(0.2)
         dark_image = screenshot()
         card_bounds = color_bounds(dark_image, (32, 38, 48))
-        assert card_bounds[:4] == (46, 31, 473, card_bounds[3]), \
+        assert card_bounds[:4] == (21, 31, 498, card_bounds[3]), \
             f"Rendered card did not center below the button at x=260: {card_bounds}"
         assert card_bounds[4] > 1000
         call("setAnchor", 620)
         time.sleep(0.2)
         clamped_image = screenshot()
         clamped_bounds = color_bounds(clamped_image, (32, 38, 48))
-        assert clamped_bounds[0] == 211 and clamped_bounds[2] == 638, \
+        assert clamped_bounds[0] == 161 and clamped_bounds[2] == 638, \
             f"Narrow-screen button anchoring did not clamp the card: {clamped_bounds}"
         call("setAnchor", 320)
         call("reducedMotion")
@@ -371,7 +369,7 @@ with tempfile.TemporaryDirectory(prefix="update-center-xvfb-", dir=tmp_root) as 
         run(env, "xdotool", "windowfocus", popup_id, check=True)
         time.sleep(0.2)
         before_refresh, before_save = map(int, call("counts").split(":"))
-        run(env, "xdotool", "mousemove", "500", "318", "click", "1", check=True)
+        run(env, "xdotool", "mousemove", "525", "318", "click", "1", check=True)
         wait_for(lambda: call("saveStatus") == "Preferences saved", "Save did not report successful persistence")
         clicked_refresh, clicked_save = map(int, call("counts").split(":"))
         assert clicked_refresh == before_refresh and clicked_save == before_save + 1

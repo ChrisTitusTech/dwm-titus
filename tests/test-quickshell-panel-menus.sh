@@ -23,6 +23,10 @@ grep -Fq 'signal popupRequested(var panelWindow, string popupId)' "$panel/DwmPan
 grep -Fq 'model: root.state.workspaceIndexes(root.screen)' "$panel/DwmPanel.qml"
 grep -Fq 'sourceComponent: TrayArea {}' "$panel/DwmPanel.qml"
 grep -Fq 'RunningAppsArea { desktopState: root.state }' "$panel/DwmPanel.qml"
+grep -Fq 'implicitWidth: buttonContent.implicitWidth + (Theme.controlPaddingX * 2)' "$core/ShellButton.qml"
+grep -Fq 'property url leadingIcon: ""' "$core/ShellButton.qml"
+grep -Fq '&& root.label.length > 0 ? root.labelSpacing : 0' \
+	"$core/ShellButton.qml"
 
 python3 - "$panel/DwmPanel.qml" "$shell" <<'PY'
 import sys
@@ -35,9 +39,10 @@ button = panel.index('objectName: "updateCenterIndicator"')
 right = panel.index('Item {\n                Layout.fillWidth: true', button)
 assert clock < button < right, "Update Center is not immediately after the center clock"
 assert 'required property var updateCenterModel' in panel
-assert 'label: root.updateCenterModel.totalUpdates > 0 ? "󰜈 "' in panel
-assert ': "󰏗"' in panel
+assert 'leadingIcon: "../assets/update-center/dwm-update-center.png"' in panel
+assert 'label: root.updateCenterModel.totalUpdates > 0' in panel
 assert 'root.updateCenterModel.totalUpdates.toString()' in panel
+assert 'labelSpacing: 4' in panel
 assert 'visible: root.updateCenterModel.shouldShow()' in panel
 assert 'root.popupRequested(root, "updatecenter")' in panel
 assert 'function updateCenterAnchorX()' in panel

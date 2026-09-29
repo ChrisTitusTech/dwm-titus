@@ -169,8 +169,11 @@ PanelWindow {
                 id: updateCenterIndicator
                 objectName: "updateCenterIndicator"
                 visible: root.updateCenterModel.shouldShow()
-                label: root.updateCenterModel.totalUpdates > 0 ? "󰜈 "
-                    + root.updateCenterModel.totalUpdates.toString() : "󰏗"
+                leadingIcon: "../assets/update-center/dwm-update-center.png"
+                leadingIconSize: Theme.scaledSize(14)
+                label: root.updateCenterModel.totalUpdates > 0
+                    ? root.updateCenterModel.totalUpdates.toString() : ""
+                labelSpacing: 4
                 accessibleDescription: root.updateCenterModel.totalUpdates > 0
                     ? root.updateCenterModel.totalUpdates.toString() + " updates available"
                     : "Updates are current"

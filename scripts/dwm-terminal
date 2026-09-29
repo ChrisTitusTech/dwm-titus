@@ -15,6 +15,15 @@ if [[ ${1:-} == "--print-command" ]]; then
 	print_only=1
 	shift
 fi
+update_center=0
+if [[ ${1:-} == "--update-center" ]]; then
+	update_center=1
+	shift
+	(($# > 0)) || {
+		printf '%s\n' 'dwm-terminal: --update-center requires a command.' >&2
+		exit 2
+	}
+fi
 
 find_herdr() {
 	local candidate
@@ -96,6 +105,27 @@ for terminal in "${terminals[@]}"; do
 		if ((print_only)); then
 			printf '%s\n' "$terminal"
 			exit 0
+		fi
+		if ((update_center)); then
+			case ${terminal##*/} in
+			alacritty)
+				DWM_UPDATE_CENTER_TERMINAL_IDENTITY=1 exec "$terminal" \
+					--class DwmUpdateCenter,dwm-update-center --title 'dwm update center' -e "$@"
+				;;
+			kitty)
+				DWM_UPDATE_CENTER_TERMINAL_IDENTITY=1 exec "$terminal" \
+					--class DwmUpdateCenter --name dwm-update-center --title 'dwm update center' "$@"
+				;;
+			dwmterm | st)
+				DWM_UPDATE_CENTER_TERMINAL_IDENTITY=1 exec "$terminal" \
+					-n dwm-update-center -c DwmUpdateCenter -t 'dwm update center' -e "$@"
+				;;
+			xterm)
+				DWM_UPDATE_CENTER_TERMINAL_IDENTITY=1 exec "$terminal" \
+					-name dwm-update-center -class DwmUpdateCenter -title 'dwm update center' -e "$@"
+				;;
+			esac
+			continue
 		fi
 
 		if (($# == 0)) && herdr=$(find_herdr); then

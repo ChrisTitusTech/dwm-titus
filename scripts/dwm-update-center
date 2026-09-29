@@ -282,7 +282,7 @@ def launch_operation(provider, action="update", *, terminal=None, runner=None, n
     value = reserve_operation(provider, action, now=now)
     terminal = terminal or str(Path(__file__).resolve().with_name("dwm-terminal"))
     runner = runner or str(Path(__file__).resolve().with_name("dwm-update-center-terminal"))
-    argv = [terminal, "-e", runner, value["operation"], provider, action]
+    argv = [terminal, "--update-center", runner, value["operation"], provider, action]
     child = None
     try:
         child = subprocess_popen(argv, start_new_session=True, close_fds=True)
