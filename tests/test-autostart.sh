@@ -4,6 +4,11 @@ set -eu
 
 DWM_AUTOSTART_NO_INPUT_WATCH=1
 export DWM_AUTOSTART_NO_INPUT_WATCH
+# These displays are mocked, not live X servers. Do not let the real wallpaper
+# helper spend its 2s RandR deadline discovering monitors on arbitrary host X
+# sockets before the asynchronous feh assertion. Wallpaper tests cover RandR.
+DWM_TEST_WALLPAPER_MONITOR_COUNT=1
+export DWM_TEST_WALLPAPER_MONITOR_COUNT
 TEST_REAL_UID=$(id -u)
 export TEST_REAL_UID
 
@@ -99,6 +104,9 @@ make_mock_command() {
 	cat >"$work/bin/$name" <<'EOF'
 #!/bin/sh
 name=$(basename "$0")
+if [ "$name" = dwm-initial-update ]; then
+    [ "$*" = --watch ] || exit 2
+fi
 # The wallpaper helper probes a candidate before applying it. Probes are not
 # launches and must return the loadable filename like real feh does.
 if [ "$name" = feh ] && [ "${1:-}" = --loadable ]; then
@@ -222,6 +230,15 @@ cat >"$work/bin/xset" <<'EOF'
 exit 0
 EOF
 
+# A deliberately unresponsive RandR probe must never be used by this mock-X
+# fixture. The monitor-count seam avoids both host access and its timeout.
+cat >"$work/bin/xrandr" <<'EOF'
+#!/bin/sh
+: >"${TEST_STATE:?}/unexpected-randr-probe"
+sleep 4
+exit 1
+EOF
+
 cat >"$work/bin/setsid" <<'EOF'
 #!/bin/sh
 if [ "$1" = "-f" ]; then
@@ -242,7 +259,7 @@ exec /usr/bin/chmod "$@"
 EOF
 /usr/bin/chmod +x "$work/bin/chmod"
 
-for name in feh picom dwm-status dwm-lock-watch light-locker dex dex-autostart; do
+for name in feh picom dwm-status dwm-lock-watch dwm-initial-update dwm-migrate-update-center-window-rule light-locker dex dex-autostart; do
 	make_mock_command "$name"
 done
 
@@ -534,6 +551,9 @@ EOF
 		fi
 		# Each startup applies wallpaper asynchronously, unlike resident services.
 		wait_for_count "$state/feh.count" "$iteration"
+		test ! -e "$state/unexpected-randr-probe"
+		wait_for_count "$state/dwm-initial-update.count" "$iteration"
+		wait_for_count "$state/dwm-migrate-update-center-window-rule.count" "$iteration"
 		wait_for_marker "$state/picom.running"
 		wait_for_marker "$state/dwm-status.running"
 		wait_for_marker "$state/dwm-lock-watch.running"

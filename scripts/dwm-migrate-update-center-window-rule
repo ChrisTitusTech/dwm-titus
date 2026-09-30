@@ -2,6 +2,8 @@
 
 import os
 import re
+import shutil
+import stat
 import sys
 import tempfile
 import tomllib
@@ -66,7 +68,15 @@ def rules_array_end(text):
 def migrate(path):
     if path.is_symlink():
         raise ValueError("refusing to replace a symlink")
-    original = path.read_text()
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(descriptor, "rb") as source:
+        info = os.fstat(source.fileno())
+        if not stat.S_ISREG(info.st_mode):
+            raise ValueError("window rules must be a regular file")
+        data = source.read(4 * 1024 * 1024 + 1)
+    if len(data) > 4 * 1024 * 1024:
+        raise ValueError("window rules exceed the 4 MiB migration limit")
+    original = data.decode("utf-8")
     try:
         document = tomllib.loads(original)
     except tomllib.TOMLDecodeError as error:
@@ -103,6 +113,12 @@ def migrate(path):
             output.flush()
             os.fsync(output.fileno())
         os.chmod(temporary, mode)
+        # Keep a unique recovery copy even for direct source-installer migrations.
+        backup_fd, backup = tempfile.mkstemp(prefix=f"{path.name}.before-update-center.", dir=path.parent)
+        os.close(backup_fd)
+        shutil.copy2(path, backup)
+        with open(backup, "rb") as saved:
+            os.fsync(saved.fileno())
         os.replace(temporary, path)
     finally:
         if os.path.exists(temporary):
@@ -117,14 +133,15 @@ def main():
     if len(sys.argv) == 2:
         path = Path(sys.argv[1])
     else:
-        config_home = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+        configured = os.environ.get("XDG_CONFIG_HOME", "")
+        config_home = Path(configured) if os.path.isabs(configured) else Path.home() / ".config"
         path = config_home / "dwm-titus" / "window-rules.toml"
     if not path.exists():
         return 0
     try:
         changed = migrate(path)
     except (OSError, ValueError) as error:
-        print(f"migrate-update-center-window-rule: {error}", file=sys.stderr)
+        print(f"dwm-migrate-update-center-window-rule: {error}", file=sys.stderr)
         return 1
     if changed:
         print(f"dwm-titus: added Update Center window rule to {path}")

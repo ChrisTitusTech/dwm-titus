@@ -227,7 +227,7 @@ class ReservationTests(Environment):
         operation = self.api["reserve_operation"]("fedora", "update", now=10)
         for phase, outcome in (("completed", "pending"), ("failed", "succeeded"),
                                ("interrupted", "failed"), ("running", "succeeded"),
-                               ("closed", "unknown"), ("flatpak-user", "pending")):
+                               ("closed", "pending"), ("flatpak-user", "pending")):
             with self.subTest(phase=phase, outcome=outcome), self.assertRaisesRegex(ValueError, "invalid operation"):
                 self.api["update_operation"](operation["operation"], phase=phase, outcome=outcome)
 
@@ -454,6 +454,61 @@ class RunnerTests(Environment):
         self.assertEqual(result["phase"], "failed")
         self.assertIn("did not start", result["detail"])
 
+    def test_interrupted_fedora_recovery_acknowledges_without_claiming_success(self):
+        handoff = "terminal-handoff\top-" + "c" * 32 + "\tupdates-install-all\tupdate\n"
+        snapshot = self.fedora_snapshot(active=handoff)
+        result, calls, _ = self.run_adapter("fedora", "recover", [snapshot,
+            self.operation_stream("interrupted"), snapshot, "", self.fedora_snapshot()])
+        self.assertEqual([call[0][1] for call in calls],
+                         ["snapshot", "watch-operation", "snapshot", "ack-operation", "snapshot"])
+        self.assertEqual(calls[3][0][2], "op-" + "c" * 32)
+        self.assertEqual((result["outcome"], result["phase"]), ("unknown", "failed"))
+        self.assertIn("outcome remains unknown", result["detail"])
+        banner = self.api["format_completion_banner"](result)
+        self.assertIn("OUTCOME UNKNOWN", banner)
+        self.assertNotIn("ERROR", banner)
+
+    def test_interrupted_fedora_recovery_does_not_ack_active_or_changed_work(self):
+        handoff = "terminal-handoff\top-" + "c" * 32 + "\tupdates-install-all\tupdate\n"
+        active = "active-operation\top-" + "d" * 32 + "\tupdates-install-all\tupdate\trunning\tunknown\tno\tStarted\tWorking\n"
+        for retained in (active, handoff.replace("c" * 32, "d" * 32)):
+            with self.subTest(retained=retained):
+                result, calls, _ = self.run_adapter("fedora", "recover", [self.fedora_snapshot(active=handoff),
+                    self.operation_stream("interrupted"), self.fedora_snapshot(active=retained)])
+                self.assertEqual((result["outcome"], result["phase"]), ("unknown", "interrupted"))
+                self.assertNotIn("ack-operation", [call[0][1] for call in calls])
+
+    def test_interrupted_fedora_recovery_requires_confirmed_acknowledgment(self):
+        handoff = "terminal-handoff\top-" + "c" * 32 + "\tupdates-install-all\tupdate\n"
+        snapshot = self.fedora_snapshot(active=handoff)
+        result, _, _ = self.run_adapter("fedora", "recover", [snapshot,
+            self.operation_stream("interrupted"), snapshot, "", snapshot])
+        self.assertEqual((result["outcome"], result["phase"]), ("unknown", "interrupted"))
+
+    def test_backend_canceled_replay_and_authorizing_cancel_are_accepted(self):
+        backend = runpy.run_path(str(ROOT / "scripts/dwm-system-management"))
+        operation = backend["JournalOperation"]("op-" + "c" * 32, "updates-install-all",
+            "2026-09-05T01:00:00Z", "2026-09-05T01:01:00Z", "update", "canceled", None,
+            "Canceled before dispatch", "a" * 64, "/18_adcbcaed", "none", "none", False,
+            "01234567-89ab-cdef-0123-456789abcdef", 123, 0)
+        for authorizing in (False, True):
+            with self.subTest(authorizing=authorizing):
+                output = []
+                if authorizing:
+                    stream = backend["OperationStream"](operation.operation_id, operation.action_id,
+                        operation.started_at, "Starting", output.append)
+                    stream.transition("authorizing", "Waiting for authorization")
+                    stream.finish(operation)
+                else:
+                    backend["replay_terminal_operation"](operation, output.append)
+                payload = "".join(output)
+                self.assertEqual(self.api["parse_operation_stream"](payload, "updates-install-all")["state"], "canceled")
+                handoff = "terminal-handoff\t" + operation.operation_id + "\tupdates-install-all\tupdate\n"
+                result, calls, _ = self.run_adapter("fedora", "recover",
+                    [self.fedora_snapshot(active=handoff), payload, self.fedora_snapshot(active=handoff), ""])
+                self.assertEqual((result["outcome"], result["phase"]), ("failed", "failed"))
+                self.assertEqual(calls[-1][0][1:], ["ack-operation", operation.operation_id])
+
     def test_run_command_isolates_stderr_from_machine_output(self):
         code = 'import sys; sys.stderr.write("warning: unmanaged\\n"); sys.stdout.write("{\\"ok\\": true}\\n")'
         devnull = os.open(os.devnull, os.O_WRONLY)
@@ -518,6 +573,20 @@ class RunnerTests(Environment):
         self.assertEqual((already_res["outcome"], already_res["phase"]), ("succeeded", "completed"))
         self.assertIn("already recovered", already_res["detail"])
 
+    def test_desktop_recovery_waits_for_independent_active_worker(self):
+        for final_state, outcome, phase in (("current", "succeeded", "completed"),
+                                          ("failed", "failed", "failed"),
+                                          ("interrupted", "unknown", "interrupted")):
+            with self.subTest(final_state=final_state), patch("time.sleep") as sleep, \
+                    contextlib.redirect_stdout(io.StringIO()):
+                responses = [json.dumps({"state": state, "detail": state, "restart": "none"})
+                             for state in ("building", "installing", final_state)]
+                result, calls, phases = self.run_adapter("dwm-titus", "recover", responses)
+                self.assertEqual([call[0][1] for call in calls], ["status", "status", "status"])
+                self.assertEqual(phases, ["recovering"])
+                self.assertEqual(sleep.call_count, 2)
+                self.assertEqual((result["outcome"], result["phase"]), (outcome, phase))
+
     def test_flatpak_system_first_partial_and_recovery_rechecks_both_scopes(self):
         result, calls, phases = self.run_adapter("flatpak", "update")
         self.assertEqual([call[0][1:] for call in calls], [["update", "--system", "--noninteractive"],
@@ -560,10 +629,11 @@ class RunnerTests(Environment):
                 self.assertNotIn("rollback", result["detail"].lower())
 
     def test_mise_uses_managed_inventory_and_preserves_cooldown(self):
-        inventory = json.dumps({"node": [{"version": "20", "installed": True}]})
+        inventory = json.dumps({"node": [{"version": "20.0.0", "installed": True, "requested_version": "20"},
+                                          {"version": "22.0.0", "installed": True, "requested_version": "22"}]})
         result, calls, phases = self.run_adapter("mise", "update", [inventory, "", inventory])
-        self.assertEqual(calls[0][0][1:], ["ls", "--installed", "--json"])
-        self.assertEqual(calls[1][0][1:], ["upgrade", "--", "node@20"])
+        self.assertEqual(calls[0][0][1:], ["ls", "--current", "--installed", "--json"])
+        self.assertEqual(calls[1][0][1:], ["upgrade", "--", "node"])
         self.assertNotIn("MISE_MINIMUM_RELEASE_AGE", calls[1][0])
         self.assertEqual(result["outcome"], "succeeded")
         self.assertEqual(phases, ["mise-inventory", "mise-update", "mise-recheck"])
@@ -620,7 +690,7 @@ class RunnerTests(Environment):
         self.assertIn("\033[32m● \033[0mDone! Press any key to close...", held[0])
 
     def test_terminal_outcome_keeps_active_slot_through_success_and_failure_hold(self):
-        for outcome, phase, code in (("succeeded", "completed", 0), ("failed", "failed", 1)):
+        for outcome, phase, code in (("succeeded", "completed", 0), ("failed", "failed", 1), ("unknown", "failed", 1)):
             with self.subTest(outcome=outcome):
                 operation = self.api["CENTER"]["reserve_operation"]("fedora", "update", now=10)
                 observed = []

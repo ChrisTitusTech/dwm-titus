@@ -66,6 +66,7 @@ OPERATION_PHASES = {"reserved", "launched", "running", "preparing", "fedora-exec
                     "interrupted", "system-failed", "system-complete/user-failed", "closed"}
 OPERATION_FIELDS = {"schema", "operation", "provider", "action", "phase", "outcome",
                     "provider_phase", "created", "updated", "terminal_pid", "terminal_identity",
+                    "launcher_pid", "launcher_identity",
                     "recovery_of", "recovery_phase", "recovery_provider_phase", "detail"}
 
 
@@ -95,6 +96,8 @@ def operation_lock():
 
 
 def validate_operation(value):
+    if isinstance(value, dict) and set(value) == OPERATION_FIELDS - {"launcher_pid", "launcher_identity"}:
+        value = {**value, "launcher_pid": 0, "launcher_identity": ""}
     providers = {meta.identifier for meta in REGISTRY}
     phase_provider = {"fedora-executing": "fedora", "desktop-starting": "dwm-titus",
                       "flatpak-system": "flatpak", "flatpak-system-complete": "flatpak",
@@ -108,6 +111,8 @@ def validate_operation(value):
             or type(value.get("created")) is not int or type(value.get("updated")) is not int
             or type(value.get("terminal_pid")) is not int or value["terminal_pid"] < 0
             or not isinstance(value.get("terminal_identity"), str) or len(value["terminal_identity"]) > 128
+            or type(value.get("launcher_pid")) is not int or value["launcher_pid"] < 0
+            or not isinstance(value.get("launcher_identity"), str) or len(value["launcher_identity"]) > 128
             or not isinstance(value.get("recovery_of"), str)
             or value["recovery_of"] and not OPERATION_PATTERN.fullmatch(value["recovery_of"])
             or value.get("recovery_phase") not in {"", "interrupted", "system-failed", "system-complete/user-failed"}
@@ -116,10 +121,11 @@ def validate_operation(value):
                                                    or value["recovery_provider_phase"] != "reserved"))
             or (value["action"] == "recover" and (not value["recovery_of"] or not value["recovery_phase"]))
             or (value["phase"] == "completed" and value["outcome"] != "succeeded")
-            or (value["phase"] in {"failed", "system-failed", "system-complete/user-failed"}
+            or (value["phase"] == "failed" and value["outcome"] not in {"failed", "unknown"})
+            or (value["phase"] in {"system-failed", "system-complete/user-failed"}
                 and value["outcome"] != "failed")
             or (value["phase"] == "interrupted" and value["outcome"] != "unknown")
-            or (value["phase"] == "closed" and value["outcome"] not in {"succeeded", "failed"})
+            or (value["phase"] == "closed" and value["outcome"] not in {"succeeded", "failed", "unknown"})
             or (value["phase"] not in {"completed", "failed", "interrupted", "system-failed",
                                        "system-complete/user-failed", "closed"} and value["outcome"] != "pending")
             or (value["phase"] in phase_provider and phase_provider[value["phase"]] != value["provider"])
@@ -201,6 +207,7 @@ def reserve_operation(provider, action, now=None):
                  "action": action, "phase": "reserved", "provider_phase": "reserved",
                  "outcome": "pending", "created": now,
                  "updated": now, "terminal_pid": 0, "terminal_identity": "",
+                 "launcher_pid": os.getpid(), "launcher_identity": process_identity(os.getpid()) or "",
                  "recovery_of": existing["operation"] if action == "recover" and existing is not None else "",
                  "recovery_phase": existing["phase"] if action == "recover" and existing is not None else "",
                  "recovery_provider_phase": existing["provider_phase"] if action == "recover" and existing is not None else "reserved",
@@ -214,6 +221,8 @@ def process_identity(pid):
         return None
     try:
         stat_fields = (Path("/proc") / str(pid) / "stat").read_text().rsplit(") ", 1)[1].split()
+        if stat_fields[0] == "Z":
+            return None
         return str(pid) + ":" + stat_fields[19]
     except (OSError, IndexError, ValueError):
         return None
@@ -340,10 +349,15 @@ def terminal_closed(operation, now=None):
     try:
         rescan_provider(value["provider"])
     except (OSError, ValueError):
-        return value
+        # A discovery failure cannot keep a finished, closed terminal's slot.
+        # The UI requests its own refresh after observing the closed receipt.
+        if not release:
+            return value
     if release:
         with operation_lock():
             current = read_operation()
+            if current is not None and current["operation"] == operation and current["phase"] == "closed":
+                return current
             if current is None or current["operation"] != operation or current["phase"] not in {"completed", "failed"}:
                 raise ValueError("operation changed during terminal reconciliation")
             value = {**current, "phase": "closed", "updated": now or int(time.time())}
@@ -610,7 +624,10 @@ def cache_directory(path, create=False):
                 if not create:
                     yield None
                     return
-                os.mkdir(part, 0o700, dir_fd=fd)
+                try:
+                    os.mkdir(part, 0o700, dir_fd=fd)
+                except FileExistsError:
+                    pass  # Another startup helper may have created this component.
                 child = os.open(part, DIRECTORY_FLAGS, dir_fd=fd)
             info = os.fstat(child)
             safe = (info.st_uid in {0, os.getuid()} and
@@ -753,12 +770,23 @@ def unavailable_optional_result(result, code):
 def active_cache_results(results, active):
     """Missing optional commands cannot erase cached error/recovery evidence."""
     optional = {meta.identifier for meta in REGISTRY if not meta.core}
+    operation = active_operation()
+    owner = operation["provider"] if operation is not None else None
     retained = []
+    def missing_owner(result):
+        return replace(unavailable_optional_result(result, "missing-provider"), error_code="missing-provider",
+            detail="Restore the missing " + result.identifier + " executable, then refresh Update Center. "
+                   "If recovery is required, close its terminal and choose Recover.")
     for result in results:
         if result.identifier in active:
             retained.append(result)
+        elif result.identifier in optional and result.identifier == owner:
+            retained.append(missing_owner(result))
         elif result.identifier in optional and exceptional_result(result):
             retained.append(unavailable_optional_result(result, "missing-provider"))
+    if owner in optional and owner not in active and not any(result.identifier == owner for result in retained):
+        retained.append(missing_owner(ProviderResult(owner, "unavailable")))
+    retained.sort(key=lambda result: next(index for index, meta in enumerate(REGISTRY) if meta.identifier == result.identifier))
     return retained
 
 
@@ -770,7 +798,8 @@ def snapshot(path, scanners, *, force=False, provider=None, now=None):
     if provider is not None and provider not in scanners:
         raise ValueError("provider is not available")
     old = read_cache(path)
-    old = active_cache_results(old, active) if old is not None else None
+    retained = active_cache_results(old or [], active)
+    old = retained if old is not None or retained else None
     previous = {result.identifier: result for result in old or []}
     missing_core = {meta.identifier for meta in REGISTRY if meta.core and meta.identifier in active} - previous.keys()
     if old is not None and not missing_core and not force and provider is None:
@@ -1140,23 +1169,26 @@ def scan_mise():
             raise TimeoutError("Mise scan timed out")
         return run_bounded([executable, *arguments], timeout=remaining, env=environment, cwd="/")
     try:
-        inventory = mise_inventory(query(["ls", "--installed", "--json"]))
+        inventory = mise_inventory(query(["ls", "--current", "--installed", "--json"]))
         items = []
-        for name, version in inventory:
-            value = machine_json(query(["outdated", "--json", "--", name + "@" + version]))
+        for name in sorted({name for name, _ in inventory}):
+            # Let mise preserve configured version ranges rather than pinning
+            # the request to the already installed concrete version.
+            value = machine_json(query(["outdated", "--json", "--", name]))
             if not isinstance(value, dict) or set(value) - {name}:
                 raise ValueError("incompatible Mise outdated tools")
             if not value:
                 continue
             entry = value[name]
-            if (not isinstance(entry, dict) or entry.get("current") != version
+            if (not isinstance(entry, dict) or (name, entry.get("current")) not in inventory
                     or not isinstance(entry.get("latest"), str)
                     or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.+-]{0,255}", entry["latest"])):
                 raise ValueError("incompatible Mise outdated version")
+            version = entry["current"]
             if entry["latest"] != version:
                 items.append(ItemResult("update", name, version, entry["latest"], name + "@" + version, "user"))
         return validate_result(ProviderResult("mise", pending=len(items), managed=len(inventory),
-                              update_available=True, items=tuple(items)))
+                              update_available=bool(items), items=tuple(items)))
     except ScanFailure:
         raise
     except ValueError:
@@ -1171,6 +1203,187 @@ def discover_scanners():
             if meta.core or optional_executable(meta.identifier) is not None}
 
 
+def connectivity_state(state):
+    """Interpret NetworkManager's global NMState, including wired connections."""
+    if type(state) is not int:
+        return "unknown"
+    if state in {50, 60, 70}:
+        return "online"
+    if state in {10, 20, 30, 40}:
+        return "offline"
+    return "unknown"
+
+
+def action_snapshot(value):
+    row = "active\tnone" if value is None else "operation\t" + "\t".join(
+        escape(str(value[field])) for field in ("operation", "provider", "action", "phase", "outcome"))
+    return "update-center-action-protocol\t1\t0\n" + row + "\ncomplete\taction\n"
+
+
+def watch_operation():
+    """Watch atomic journal replacement and kernel terminal-exit notifications."""
+    from gi.repository import Gio, GLib
+    with cache_directory(coordination_path(), create=True):
+        pass
+    loop = GLib.MainLoop()
+    monitor = Gio.File.new_for_path(str(coordination_path())).monitor_directory(
+        Gio.FileMonitorFlags.WATCH_MOVES, None)
+    pending = 0
+    pid_source, pid_fd, watched = 0, None, None
+    legacy_timer, legacy_operation = 0, None
+    last = None
+
+    def clear_pid():
+        nonlocal pid_source, pid_fd, watched
+        if pid_source:
+            GLib.source_remove(pid_source)
+        if pid_fd is not None:
+            os.close(pid_fd)
+        pid_source, pid_fd, watched = 0, None, None
+
+    def queue(*_args):
+        nonlocal pending
+        if not pending:
+            pending = GLib.idle_add(observe)
+
+    def exited(*_args):
+        nonlocal pid_source
+        pid_source = 0
+        queue()
+        return False
+
+    def observe():
+        nonlocal pending, pid_source, pid_fd, watched, last, legacy_timer, legacy_operation
+        pending = 0
+        value = None
+        try:
+            value = active_operation()
+            recoverable = {"closed", "interrupted", "system-failed", "system-complete/user-failed"}
+            launch_pending = value is not None and value["terminal_pid"] == 0 and value["phase"] not in recoverable
+            if launch_pending and value["launcher_pid"] > 0 and process_identity(value["launcher_pid"]) != value["launcher_identity"]:
+                with operation_lock():
+                    current = read_operation()
+                    if current is None or current["operation"] != value["operation"]:
+                        queue()
+                        return False
+                    value = current
+                    if value["terminal_pid"] == 0 and value["phase"] not in recoverable:
+                        value = {**value, "phase": "interrupted", "outcome": "unknown", "updated": int(time.time()),
+                                 "detail": "Terminal launcher exited before recording its child; recovery is required"}
+                        write_operation(value)
+                launch_pending = False
+            if launch_pending and value["launcher_pid"] == 0:
+                # Older receipts have no observable launch owner. Give an in-flight
+                # legacy launch one bounded grace period, never recurring polling.
+                if legacy_operation != value["operation"]:
+                    if legacy_timer:
+                        GLib.source_remove(legacy_timer)
+                    legacy_operation = value["operation"]
+                    def expire():
+                        nonlocal legacy_timer
+                        legacy_timer = 0
+                        try:
+                            with operation_lock():
+                                current = active_operation()
+                                if (current is not None and current["operation"] == legacy_operation
+                                        and current["terminal_pid"] == 0 and current["launcher_pid"] == 0
+                                        and current["phase"] not in recoverable):
+                                    write_operation({**current, "phase": "interrupted", "outcome": "unknown",
+                                        "updated": int(time.time()),
+                                        "detail": "Legacy terminal launch could not be verified; recovery is required"})
+                        except (OSError, ValueError) as error:
+                            print("Legacy update operation watch failed: " + str(error), file=sys.stderr)
+                            loop.quit()
+                        queue()
+                        return False
+                    legacy_timer = GLib.timeout_add_seconds(30, expire)
+            elif legacy_timer:
+                GLib.source_remove(legacy_timer)
+                legacy_timer, legacy_operation = 0, None
+            if value is not None and value["terminal_pid"] > 0:
+                value = terminal_closed(value["operation"])
+            identity = None if value is None or value["phase"] in recoverable else (
+                (value["launcher_pid"], value["launcher_identity"]) if value["terminal_pid"] == 0
+                else (value["terminal_pid"], value["terminal_identity"]))
+            if identity != watched:
+                clear_pid()
+                if identity is not None and identity[0] > 0:
+                    try:
+                        pid_fd = os.pidfd_open(identity[0])
+                    except ProcessLookupError:
+                        queue()
+                    else:
+                        # The fd must describe the recorded process, not a reused PID.
+                        observed = process_identity(identity[0])
+                        if observed is None or identity[1] and observed != identity[1]:
+                            clear_pid()
+                            queue()
+                        else:
+                            watched = identity
+                            pid_source = GLib.io_add_watch(pid_fd, GLib.IO_IN | GLib.IO_HUP, exited)
+            payload = action_snapshot(value)
+            if payload != last:
+                sys.stdout.write(payload)
+                sys.stdout.flush()
+                last = payload
+        except (OSError, ValueError) as error:
+            current = read_operation()
+            if value is not None and current is not None and current["operation"] != value["operation"]:
+                queue()
+                return False
+            print("Update operation watch failed: " + str(error), file=sys.stderr)
+            loop.quit()
+        return False
+
+    def changed(_monitor, path, other, _event):
+        if any(item is not None and item.get_basename() == "operation.json" for item in (path, other)):
+            queue()
+
+    monitor.connect("changed", changed)
+    queue()
+    try:
+        loop.run()
+    finally:
+        monitor.cancel()
+        clear_pid()
+        if legacy_timer:
+            GLib.source_remove(legacy_timer)
+
+
+def watch_connectivity():
+    """Stream global state changes without polling or activating NetworkManager."""
+    last = None
+    def emit(value):
+        nonlocal last
+        if value != last:
+            print("connectivity\t1\t" + value, flush=True)
+            last = value
+    try:
+        from gi.repository import Gio, GLib
+        proxy = Gio.DBusProxy.new_for_bus_sync(
+            Gio.BusType.SYSTEM, Gio.DBusProxyFlags.DO_NOT_AUTO_START, None,
+            "org.freedesktop.NetworkManager", "/org/freedesktop/NetworkManager",
+            "org.freedesktop.NetworkManager", None)
+        def changed(*_args):
+            value = proxy.get_cached_property("State") if proxy.get_name_owner() else None
+            emit(connectivity_state(value.unpack() if value is not None else None))
+        proxy.connect("g-properties-changed", changed)
+        proxy.connect("notify::g-name-owner", changed)
+        loop = GLib.MainLoop()
+        def closed(*_args):
+            emit("unknown")
+            loop.quit()
+        proxy.get_connection().connect("closed", closed)
+        changed()
+        loop.run()
+    except (ImportError, OSError):
+        emit("unknown")
+    except Exception as error:
+        # An unavailable system bus must not veto otherwise functional providers.
+        emit("unknown")
+        print("NetworkManager connectivity unavailable: " + str(error), file=sys.stderr)
+
+
 def main(argv=None):
     args = sys.argv[1:] if argv is None else argv
     providers = {meta.identifier for meta in REGISTRY}
@@ -1179,12 +1392,18 @@ def main(argv=None):
     operation_command = args == ["active"] or (len(args) == 2 and args[0] in {"launch", "recover"}
         and args[1] in providers) or (len(args) == 2 and args[0] == "terminal-closed"
         and OPERATION_PATTERN.fullmatch(args[1]) is not None)
-    if not snapshot_command and not operation_command:
+    if not snapshot_command and not operation_command and args not in (["watch-connectivity"], ["watch-operation"]):
         print("usage: snapshot [--force] | rescan PROVIDER | launch PROVIDER | active | "
-              "terminal-closed OPERATION_ID | recover PROVIDER", file=sys.stderr)
+              "terminal-closed OPERATION_ID | recover PROVIDER | watch-connectivity | watch-operation", file=sys.stderr)
         return 2
     try:
         require_fedora()
+        if args == ["watch-connectivity"]:
+            watch_connectivity()
+            return 0
+        if args == ["watch-operation"]:
+            watch_operation()
+            return 0
         if operation_command:
             if args == ["active"]:
                 value = active_operation()

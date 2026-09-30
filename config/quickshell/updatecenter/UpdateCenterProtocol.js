@@ -125,9 +125,10 @@ function parseAction(payload) {
                 || operationPhases.indexOf(values[4]) < 0 || operationOutcomes.indexOf(values[5]) < 0)
             throw new Error("invalid operation");
         if ((values[4] === "completed" && values[5] !== "succeeded")
-                || (["failed", "system-failed", "system-complete/user-failed"].indexOf(values[4]) >= 0 && values[5] !== "failed")
+                || (values[4] === "failed" && ["failed", "unknown"].indexOf(values[5]) < 0)
+                || (["system-failed", "system-complete/user-failed"].indexOf(values[4]) >= 0 && values[5] !== "failed")
                 || (values[4] === "interrupted" && values[5] !== "unknown")
-                || (values[4] === "closed" && ["succeeded", "failed"].indexOf(values[5]) < 0)
+                || (values[4] === "closed" && ["succeeded", "failed", "unknown"].indexOf(values[5]) < 0)
                 || (["completed", "failed", "interrupted", "system-failed", "system-complete/user-failed", "closed"].indexOf(values[4]) < 0
                     && values[5] !== "pending")) throw new Error("inconsistent operation");
         return deepFreeze({ operationId: values[1], providerId: values[2], action: values[3], phase: values[4], outcome: values[5] });

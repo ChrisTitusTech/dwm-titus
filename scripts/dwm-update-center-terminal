@@ -335,8 +335,8 @@ def parse_operation_stream(payload, action):
     terminal_states = {"succeeded", "failed", "permission-denied", "canceled", "interrupted"}
     kind = "update" if action == "updates-install-all" else "refresh" if action == "updates-refresh" else ""
     allowed = {
-        "pending": {"pending", "authorizing", "running", "failed", "interrupted"},
-        "authorizing": {"authorizing", "running", "permission-denied", "failed", "interrupted"},
+        "pending": {"pending", "authorizing", "running", "canceled", "failed", "interrupted"},
+        "authorizing": {"authorizing", "running", "permission-denied", "canceled", "failed", "interrupted"},
         "running": {"running", "cancel-requested", *terminal_states},
         "cancel-requested": {"cancel-requested", *terminal_states},
     }
@@ -387,8 +387,25 @@ def execute_fedora(operation, action):
         return result("failed", "failed", "PackageKit did not start the update transaction",
                       fedora_restart(reconciled))
     reconciled = run_command([helper, "snapshot"], stream=False)
-    state = terminal_state["state"] if terminal_state else "interrupted" if records(reconciled, "active-operation") else "succeeded"
+    unresolved = records(reconciled, "active-operation") or records(reconciled, "terminal-handoff")
+    state = terminal_state["state"] if terminal_state else "interrupted" if unresolved else "succeeded"
     restart = fedora_restart(reconciled)
+    if action == "recover" and state == "interrupted" and terminal_state is not None:
+        expected = [terminal_state["operation"], protocol_action,
+                    "update" if protocol_action == "updates-install-all" else "refresh"]
+        handoffs = records(reconciled, "terminal-handoff")
+        if not records(reconciled, "active-operation") and len(handoffs) == 1 and handoffs[0][1:] == expected:
+            # Acknowledge the retained result only after authoritative reconciliation.
+            # Its audit remains in PackageKit's journal; this is not success evidence.
+            run_command([helper, "ack-operation", terminal_state["operation"]], stream=False)
+            acknowledged = run_command([helper, "snapshot"], stream=False)
+            restart = fedora_restart(acknowledged)
+            if not records(acknowledged, "active-operation") and not records(acknowledged, "terminal-handoff"):
+                return result("unknown", "failed", "PackageKit state refreshed and interrupted result acknowledged; "
+                              "the previous update outcome remains unknown. " + terminal_state["detail"], restart)
+    if action == "recover" and terminal_state is None and not records(reconciled, "active-operation") \
+            and not records(reconciled, "terminal-handoff"):
+        return result("unknown", "failed", "PackageKit state refreshed; the previous update outcome remains unknown.", restart)
     if terminal_state is not None and state != "interrupted":
         run_command([helper, "ack-operation", terminal_state["operation"]], stream=False)
     if state != "succeeded":
@@ -446,15 +463,20 @@ def execute_desktop(operation, action, *, output=None):
     helper = trusted_desktop_helper()
     status = desktop_value(run_command([helper, "status"], stream=False))
     if action == "recover":
-        if status.get("state") != "interrupted":
+        if status["state"] == "interrupted":
+            desktop_operation = status.get("operation")
+            if not isinstance(desktop_operation, str) or not re.fullmatch(r"[0-9a-f]{32}", desktop_operation):
+                raise ValueError("desktop recovery identity unavailable")
+            checkpoint(operation, "recovering", "Recovering the trusted desktop update", output=destination)
+            terminal = desktop_value(run_command([helper, "recover", desktop_operation], stream=False))
+        elif status["state"] in {"available", "drift", "current", "complete", "restart-required"}:
             return result("succeeded", "completed",
                           "Desktop update is already recovered: " + status.get("detail", "Ready"),
                           status.get("restart", "none"))
-        desktop_operation = status.get("operation")
-        if not isinstance(desktop_operation, str) or not re.fullmatch(r"[0-9a-f]{32}", desktop_operation):
-            raise ValueError("desktop recovery identity unavailable")
-        checkpoint(operation, "recovering", "Recovering the trusted desktop update", output=destination)
-        terminal = desktop_value(run_command([helper, "recover", desktop_operation], stream=False))
+        else:
+            # Closing a terminal does not stop the independent desktop worker.
+            checkpoint(operation, "recovering", "Reattaching to the trusted desktop update", output=destination)
+            terminal = status
     else:
         checked = desktop_value(run_command([helper, "check"], stream=False))
         revision = checked.get("available")
@@ -536,7 +558,7 @@ def execute_flatpak(operation, action):
 
 
 def managed_mise(program):
-    payload = run_command([program, "ls", "--installed", "--json"], cwd="/", env=dict(os.environ), stream=False)
+    payload = run_command([program, "ls", "--current", "--installed", "--json"], cwd="/", env=dict(os.environ), stream=False)
     return CENTER["mise_inventory"](payload)
 
 
@@ -548,7 +570,7 @@ def execute_mise(operation, action):
         checkpoint(operation, "recovering", "Retrying from the current Mise managed inventory")
     if inventory:
         checkpoint(operation, "mise-update", "Updating Mise managed tools")
-        run_command([program, "upgrade", "--", *[name + "@" + version for name, version in inventory]],
+        run_command([program, "upgrade", "--", *sorted({name for name, _ in inventory})],
                     cwd="/", env=dict(os.environ))
     checkpoint(operation, "mise-recheck", "Rechecking Mise managed inventory")
     managed_mise(program)
@@ -565,6 +587,8 @@ def execute_provider(operation, provider, action):
 
 def format_completion_banner(value):
     detail = value.get("detail", "Operation finished")
+    if value.get("outcome") == "unknown":
+        return f"\n\033[1;33m==> OUTCOME UNKNOWN:\033[0m {detail}\n"
     if detail == "Desktop update installed, verified, and active.":
         return "\n\033[1;32mUpdate Installed Successfully!\033[0m\n"
     if "Restart required, or Log out and back in" in detail or detail == "Installed and verified. Log out and back in to activate the updated desktop.":

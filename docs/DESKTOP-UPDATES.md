@@ -10,10 +10,12 @@ continue to manage the Quickshell application and other RPM packages.
 Opening System checks once, with a five-minute cache. **Check again** bypasses
 that cache. **Update desktop** previews the operation and missing required
 packages; **Confirm update** starts it. System-file installation asks for
-administrator authorization through polkit once for the whole update. The
-installed helper retains that operation's approval through preparation,
-installation, completion, and any immediate cleanup. It does not save your
-password. A later update or explicit recovery starts with a new approval.
+administrator authorization once for the whole update. Existing non-interactive
+sudo authorization is reused when available; otherwise polkit asks for approval.
+The installed helper retains that operation's authorization through preparation,
+installation, completion, and any immediate cleanup. It does not save passwords,
+change sudo policy or its configured credential timeout. Later updates and explicit
+recovery check authorization again, reusing an existing grant when possible.
 Settings closes when the administrator request starts so its always-on-top window cannot hide the
 password dialog. The separate **Desktop update** window appears after the initial
 authorization dialog finishes, so it cannot cover the password prompt. It remains open through shell
@@ -33,6 +35,44 @@ does not stop the update. Reopening it reads the saved operation, including
 interrupted or completed work. Progress updates automatically as the saved operation changes. The Settings card shows
 the update log location during active and failed operations. No background polling runs while
 idle.
+
+## Panel Update Center
+
+Click the update icon beside the clock to open the Update Center. It lists
+Fedora packages, the managed desktop, and optional Flatpak and mise providers.
+Expand a provider to inspect its available updates, then choose **Update** for
+that provider. Updates run in a dedicated floating terminal; closing the panel
+leaves the operation running. Read the terminal result and press a key to close
+it. Interrupted work retains recovery guidance instead of claiming success.
+Choosing **Recover** reattaches to desktop work that is still running. For a
+Fedora update whose result cannot be established, recovery rechecks PackageKit
+and releases the retained handoff only after no active work remains. The result
+stays unknown; recovery does not claim the packages were installed. Operation
+changes and terminal exits are watched without continuous background polling.
+If an optional provider disappears while its operation is retained, its row stays
+visible with guidance to restore the tool, refresh Update Center, then choose
+**Recover** when needed.
+
+Refresh preferences control the periodic repository check and whether the panel
+icon remains visible when everything is current. Remote repositories provide no
+local change subscription, so they are checked at the configured interval.
+Connectivity changes use NetworkManager signals, including wired connections;
+reconnecting triggers a fresh check. Manual refresh remains available offline.
+An unavailable connectivity service does not prevent provider checks.
+
+The mise provider updates installed versions selected by the global configuration,
+preserving requested version ranges and minimum release-age settings. It does
+not upgrade inactive installations or force a new major version. The adapter uses
+[mise's configured-range upgrade behavior](https://mise.jdx.dev/cli/upgrade.html).
+Flatpak updates process system and user scopes separately and preserve recovery
+evidence when only one scope completes.
+
+Source installation and later desktop updates back up existing window rules
+before adding the Update Center terminal's floating/no-swallow rule. Login also
+performs this idempotent migration for the first upgrade from an older worker.
+Personal rules and unrelated settings remain intact. The fresh-image initial
+package-update offer and mirror measurement continue through the existing
+[first-update workflow](INITIAL-UPDATE.md).
 
 ## Installation and compatibility
 
@@ -154,7 +194,7 @@ dwm-desktop-update status
 dwm-desktop-update recover OPERATION_ID
 ```
 
-Recovery requests administrator authorization once to restore the system files and
+Recovery reuses existing authorization or requests approval once to restore the system files and
 restores the managed user directories from the recorded copies. It refuses to
 replace a newer installation or user files changed after the interruption.
 Save conflicting changes separately before recovery; do not reset or delete a

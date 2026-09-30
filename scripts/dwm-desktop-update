@@ -951,23 +951,52 @@ def copy_private_tree(source, destination, symlinks=True):
             shutil.copy2(child, target, follow_symlinks=not symlinks)
 
 
+def user_manifest(path):
+    if path.is_dir():
+        return tree_manifest(path)
+    # Root permissions have their own journal field and become private on swap.
+    record = fingerprint(path)
+    record.pop("mode", None)
+    return record
+
+
+def sync_user_path(path):
+    if path.is_dir():
+        sync_tree(path)
+    else:
+        sync_file(path)
+
+
+def private_mode(path):
+    return 0o700 if path.is_dir() else 0o600
+
+
 def prepare_user(source, operation):
     validate_update_paths()
     config, data, _ = paths()
     targets = [data, config / "quickshell"]
+    migrator = source / "scripts/dwm-migrate-update-center-window-rule"
+    if migrator.is_file() and (config / "dwm-titus/window-rules.toml").exists():
+        # Personal rules join the same staged, verified, reversible transaction.
+        targets.append(config / "dwm-titus/window-rules.toml")
     prepared = []
     with contextlib.ExitStack() as cleanup:
         for index, target in enumerate(targets):
             if target.is_symlink():
-                raise RuntimeError("Managed update directories cannot be symlinks: " + str(target))
+                raise RuntimeError("Managed update paths cannot be symlinks: " + str(target))
+            if index == 2 and not target.is_file():
+                raise RuntimeError("Window rules must be a regular file: " + str(target))
             ensure_directory(target.parent)
             staged = target.parent / (".dwm-update-" + operation + "-" + str(index))
             if staged.exists() or staged.is_symlink():
                 raise RuntimeError("Update staging path already exists")
             cleanup.callback(shutil.rmtree, staged, True)
-            original = tree_manifest(target) if target.exists() else None
+            original = user_manifest(target) if target.exists() else None
             original_mode = stat.S_IMODE(target.stat().st_mode) if target.exists() else 0o755
-            if target.exists():
+            if index == 2:
+                staged.mkdir(mode=0o700)
+                shutil.copy2(target, staged / "window-rules.toml")
+            elif target.exists():
                 copy_private_tree(target, staged)
             else:
                 staged.mkdir(mode=0o700)
@@ -987,16 +1016,38 @@ def prepare_user(source, operation):
                     elif old.exists():
                         shutil.rmtree(old)
                     shutil.copytree(source / name, old, symlinks=True)
-            else:
+            elif index == 1:
                 shutil.rmtree(staged)
                 copy_private_tree(source / "config/quickshell", staged, symlinks=False)
+            else:
+                sandbox_run(["/usr/bin/python3", migrator, staged / "window-rules.toml"],
+                            writable=(staged,), readonly=(source,), cwd=staged)
             staged.chmod(0o700)
             sync_tree(staged)
             sync_directory(staged.parent)
-            prepared.append({"target": str(target), "backup": str(staged), "existed": target.exists(), "swapped": False,
-                             "original": original, "originalMode": original_mode, "replacement": tree_manifest(staged)})
+            staging_root = staged
+            if index == 2:
+                staged = staged / "window-rules.toml"
+            prepared.append({"target": str(target), "backup": str(staged), "staging": str(staging_root), "existed": target.exists(), "swapped": False,
+                             "original": original, "originalMode": original_mode, "replacement": user_manifest(staged)})
         cleanup.pop_all()
     return prepared
+
+
+def cleanup_staging(paths):
+    """Remove exact temporary roots, attempting every cleanup before reporting errors."""
+    failures = []
+    for path in paths:
+        path = Path(path)
+        try:
+            if path.is_symlink() or not path.is_dir():
+                path.unlink(missing_ok=True)
+            else:
+                shutil.rmtree(path)
+        except OSError as error:
+            failures.append(str(path) + ": " + str(error))
+    if failures:
+        raise RuntimeError("Temporary desktop update cleanup failed: " + "; ".join(failures))
 
 
 def make_bundle(stage, candidate, destination):
@@ -1128,22 +1179,22 @@ def worker(operation):
                 system_applied = True
                 for entry in prepared:
                     target, backup = Path(entry["target"]), Path(entry["backup"])
-                    current = tree_manifest(target) if target.exists() else None
+                    current = user_manifest(target) if target.exists() else None
                     if current != entry["original"] or (entry["existed"] and stat.S_IMODE(target.stat().st_mode) != entry["originalMode"]):
                         raise RuntimeError("Managed files changed during the update; preserving those changes for recovery")
                     # Record intent before the atomic swap. Recovery compares the receipts.
                     entry["swapped"] = True
                     write_json(directory / "user-backup.json", prepared)
                     if entry["existed"]:
-                        sync_tree(target)
-                        target.chmod(0o700)
+                        sync_user_path(target)
+                        target.chmod(private_mode(target))
                         exchange(target, backup)
                     else:
                         os.rename(backup, target)
                     target.chmod(entry["originalMode"])
-                    sync_directory(target)
+                    sync_user_path(target)
                     if backup.exists():
-                        sync_directory(backup)
+                        sync_user_path(backup)
                     sync_directory(target.parent)
                 save_status(state, value, state="installing", detail="Installing update [100%]", percent=100)
                 save_status(state, value, state="verifying", detail="Verifying installed files and running post-install [  1%]", percent=1)
@@ -1162,6 +1213,9 @@ def worker(operation):
                                          if entry["target"] == str(config / "quickshell"))
                 if tree_manifest(config / "quickshell") != shell_replacement:
                     raise RuntimeError("Managed Quickshell verification failed")
+                for entry in prepared:
+                    if entry["target"] == str(config / "dwm-titus/window-rules.toml") and user_manifest(config / "dwm-titus/window-rules.toml") != entry["replacement"]:
+                        raise RuntimeError("Personal configuration migration verification failed")
                 record_user(source)
                 receipt = read_json(state / "installed.json")
                 receipt["checkout"] = str(data) if (data / ".git").exists() else ""
@@ -1228,15 +1282,14 @@ def worker(operation):
                             systemStarted=system_started, systemApplied=system_applied, canUpdate=False)
                 return 1
             finally:
-                privileged.close()
+                temporary_roots = [source, stage, directory / "bundle.tar"]
                 if not system_started:
-                    for entry in prepared:
-                        if not entry["swapped"]:
-                            shutil.rmtree(entry["backup"])
-                for temporary in (source, stage):
-                    if temporary.exists():
-                        shutil.rmtree(temporary)
-                (directory / "bundle.tar").unlink(missing_ok=True)
+                    temporary_roots = [Path(entry["staging"]) for entry in prepared
+                                       if not entry["swapped"]] + temporary_roots
+                try:
+                    privileged.close()
+                finally:
+                    cleanup_staging(temporary_roots)
     return 0
 
 
@@ -1276,13 +1329,13 @@ def recover(operation):
                 if not entry["swapped"]:
                     continue
                 target = Path(entry["target"])
-                current = tree_manifest(target) if target.exists() else None
-                if target.exists() and "originalMode" in entry and stat.S_IMODE(target.stat().st_mode) not in (0o700, entry["originalMode"]):
+                current = user_manifest(target) if target.exists() else None
+                if target.exists() and "originalMode" in entry and stat.S_IMODE(target.stat().st_mode) not in (private_mode(target), entry["originalMode"]):
                     raise RuntimeError("Managed directory permissions changed after the interruption: " + str(target))
                 if current not in (entry["original"], entry["replacement"]):
                     raise RuntimeError("Managed files changed after the interruption. Save those changes before recovery: " + str(target))
                 if current == entry["replacement"] and entry["existed"]:
-                    if tree_manifest(Path(entry["backup"])) != entry["original"]:
+                    if user_manifest(Path(entry["backup"])) != entry["original"]:
                         raise RuntimeError("Recovery copy changed: " + entry["backup"])
             preview = read_json(directory / "preview.json")
             trusted_installation(Path(preview["manifest"]))
@@ -1293,24 +1346,24 @@ def recover(operation):
             privileged.request("rollback", operation, timeout=600)
             for entry in reversed(prepared):
                 target, backup = Path(entry["target"]), Path(entry["backup"])
-                current = tree_manifest(target) if target.exists() else None
+                current = user_manifest(target) if target.exists() else None
                 if entry["swapped"] and current not in (entry["original"], entry["replacement"]):
                     raise RuntimeError("Managed files changed during recovery; save those changes before retrying")
                 if entry["swapped"] and current == entry["replacement"]:
                     if entry["existed"]:
-                        if tree_manifest(backup) != entry["original"]:
+                        if user_manifest(backup) != entry["original"]:
                             raise RuntimeError("Recovery copy changed: " + str(backup))
-                        sync_tree(backup)
-                        target.chmod(0o700)
+                        sync_user_path(backup)
+                        target.chmod(private_mode(target))
                         exchange(target, backup)
                     else:
-                        target.chmod(0o700)
+                        target.chmod(private_mode(target))
                         os.rename(target, backup)
                 if entry["swapped"] and entry["existed"] and target.exists():
                     target.chmod(entry.get("originalMode", 0o700))
-                    sync_directory(target)
+                    sync_user_path(target)
                 if backup.exists():
-                    sync_directory(backup)
+                    sync_user_path(backup)
                 sync_directory(target.parent)
             for name, saved in (("installed.json", "installed-before.json"), ("build-config.h", "build-config-before.h")):
                 if (directory / saved).exists():

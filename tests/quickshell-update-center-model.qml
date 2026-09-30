@@ -1,7 +1,7 @@
 import QtQuick
 import Quickshell
-import Quickshell.Networking
 import qs.updatecenter
+import "updatecenter/UpdateCenterProtocol.js" as Protocol
 
 ShellRoot {
     id: test
@@ -10,50 +10,30 @@ ShellRoot {
     property var retainedProviders: null
     property bool startupSaveDispatched: false
     property int transitionTick: 0
+    readonly property var initiallyFullModel: initiallyFullLoader.item
 
     function require(condition, message) {
         if (!condition) throw new Error(message);
     }
 
-    QtObject {
-        id: connectivityDevice
-        property bool connected: false
-    }
-
-    QtObject {
-        id: initiallyConnectedDevice
-        property bool connected: true
-    }
-
-    QtObject {
-        id: connectivity
-        property var devices: QtObject {
-            property var values: [connectivityDevice]
-        }
-    }
-
-    QtObject {
-        id: initiallyFullConnectivity
-        property var devices: QtObject {
-            property var values: [initiallyConnectedDevice]
-        }
-    }
-
     UpdateCenterModel {
         id: model
-        connectivitySource: connectivity
+        connectivityState: "offline"
     }
 
-    UpdateCenterModel {
-        id: initiallyFullModel
-        connectivitySource: initiallyFullConnectivity
+    Loader {
+        id: initiallyFullLoader
+        active: true
+        sourceComponent: Component {
+            UpdateCenterModel { connectivityState: "online" }
+        }
     }
 
     Loader {
         id: restarted
         active: false
         sourceComponent: Component {
-            UpdateCenterModel { connectivitySource: connectivity }
+            UpdateCenterModel {}
         }
     }
 
@@ -78,6 +58,18 @@ ShellRoot {
                 }
                 if (test.step === 0 && test.ticks > 10 && model.initialCacheLoaded
                         && initiallyFullModel.initialCacheLoaded && model.savedRefreshSeconds === 900) {
+                    const operationEnvelope = "update-center-action-protocol\t1\t0\noperation\top-00000000000000000000000000000000\tfedora\trecover\t";
+                    for (const phase of ["failed", "closed"])
+                        test.require(Protocol.parseAction(operationEnvelope + phase + "\tunknown\ncomplete\taction\n") !== null,
+                            "reconciled unknown outcomes must remain representable without claiming success");
+                    test.require(Protocol.parseAction(operationEnvelope + "completed\tunknown\ncomplete\taction\n") === null,
+                        "unknown outcomes must not be reported as completed success");
+                    test.require(!model.online && initiallyFullModel.online, "global connectivity applies regardless of Wi-Fi device inventory");
+                    test.require(!model.acceptConnectivity("connectivity\t2\tonline") && !model.online,
+                        "malformed connectivity must preserve prior state");
+                    test.require(model.acceptConnectivity("connectivity\t1\tunknown") && model.online,
+                        "unavailable NetworkManager must allow provider checks");
+                    model.acceptConnectivity("connectivity\t1\toffline");
                     const cachedProviders = model.providers;
                     const cachedTotalUpdates = model.totalUpdates;
                     model.savedAlwaysShow = false;
@@ -128,6 +120,7 @@ ShellRoot {
                     model.draftAlwaysShow = false;
                     test.require(model.saveSettings(), "subsequent save must use the refreshed baseline");
                     test.step = 1;
+                    initiallyFullLoader.active = false;
                 } else if (test.step === 1 && model.savedRefreshSeconds === 1000) {
                     test.require(model.settingsBaseline === "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
                         "successful subsequent save must refresh its baseline");
@@ -138,7 +131,7 @@ ShellRoot {
                     test.step = 2;
                 } else if (test.step === 2 && model.settingsError.indexOf("changed") >= 0) {
                     test.require(model.savedRefreshSeconds === 1000, "concurrent save errors must not mutate saved settings");
-                    connectivityDevice.connected = true;
+                    test.require(model.acceptConnectivity("connectivity\t1\tonline"), "global online event must be accepted");
                     test.transitionTick = test.ticks;
                     test.step = 20;
                 } else if (test.step === 20 && test.ticks >= test.transitionTick + 5) {
@@ -156,13 +149,13 @@ ShellRoot {
                 } else if (test.step === 3 && model.providers[0].detail === "force-2") {
                     test.require(!model.pendingForceRefresh, "required force refresh must coalesce and drain after the active scan");
                     test.require(model.periodicRefreshRunning, "periodic timer must start after connectivity restoration");
-                    connectivityDevice.connected = false;
+                    test.require(model.acceptConnectivity("connectivity\t1\toffline"), "global offline event must be accepted");
                     test.require(!model.periodicRefreshRunning, "periodic timer must stop when connectivity is lost");
                     test.require(!model.scheduledRefresh(), "offline state must suppress scheduled scans");
                     test.require(model.refresh(true), "manual force refresh must bypass the schedule");
                     test.step = 4;
                 } else if (test.step === 4 && model.providers[0].detail === "force-3") {
-                    connectivityDevice.connected = true;
+                    test.require(model.acceptConnectivity("connectivity\t1\tonline"), "global online event must be accepted");
                     test.step = 5;
                 } else if (test.step === 5 && model.providers[0].detail === "force-4") {
                     test.retainedProviders = model.providers;

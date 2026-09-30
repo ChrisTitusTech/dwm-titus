@@ -187,6 +187,20 @@ ShellRoot {{
             return model.probeAction;
         }}
         function probeOpen(url: string): string {{ model.probeUrl = ""; probeRow.requestOpen({{ url: url }}); return model.probeUrl; }}
+        function probeMissingRecovery(): string {{
+            const original = probeRow.provider;
+            probeRow.provider = {{ id: "mise", name: "Mise", status: "unavailable", pending: 0, managed: null,
+                freshness: "error", lastSuccess: 0, updateAvailable: false, errorCode: "missing-provider",
+                detail: "Restore the missing mise executable, then refresh and choose Recover.", restart: "none", items: [] }};
+            probeRow.providerRecoverable = true;
+            probeRow.globalBusy = true;
+            probeRow.expanded = false;
+            const result = probeRow.statusLabel() + "|" + probeRow.visibleDetail() + "|" + String(probeRow.requestAction());
+            probeRow.provider = original;
+            probeRow.providerRecoverable = false;
+            probeRow.globalBusy = false;
+            return result;
+        }}
         function accessibleName(): string {{ return probeRow.Accessible.name; }}
         function setProbeRestart(value: string): string {{
             probeRow.provider = {{
@@ -324,6 +338,7 @@ with tempfile.TemporaryDirectory(prefix="update-center-xvfb-", dir=tmp_root) as 
         assert call("probeAction", "update") == "update:fedora"
         assert call("probeAction", "recover") == "recover:fedora"
         assert call("probeAction", "busy") == "", "Busy provider dispatched an action"
+        assert call("probeMissingRecovery") == "Recovery required|Restore the missing mise executable, then refresh and choose Recover.|false"
         assert call("probeOpen", "https://example.test/release") == "https://example.test/release"
         assert call("probeOpen", "file:///tmp/untrusted") == ""
         assert call("probeOpen", "javascript:alert(1)") == ""

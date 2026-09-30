@@ -17,6 +17,7 @@ Rectangle {
     property int nowSeconds: Math.floor(Date.now() / 1000)
     property int instantiatedItemDelegates: 0
     readonly property bool providerBusy: root.globalBusy && !root.providerRecoverable
+    readonly property bool providerMissing: root.provider.status === "unavailable" && root.provider.errorCode === "missing-provider"
     readonly property string relativeCheckAge: root.formatCheckAge(root.provider.lastSuccess, root.nowSeconds)
     readonly property var providerIcons: ({
         "fedora": "../assets/update-center/fedora.svg",
@@ -120,7 +121,7 @@ Rectangle {
     }
 
     function requestAction() {
-        if (root.providerBusy) return false;
+        if (root.providerBusy || root.providerMissing) return false;
         if (root.providerRecoverable) root.recoverRequested(root.provider.id);
         else root.updateRequested(root.provider.id);
         return true;
@@ -212,7 +213,7 @@ Rectangle {
             ShellButton {
                 label: root.providerBusy ? "Busy" : root.providerRecoverable ? "Recover" : "Update"
                 accessibleDescription: root.provider.name + " provider action"
-                enabled: root.providerRecoverable || (!root.globalBusy && root.provider.updateAvailable)
+                enabled: !root.providerMissing && (root.providerRecoverable || (!root.globalBusy && root.provider.updateAvailable))
                 primary: root.providerRecoverable
                 onActivated: root.requestAction()
             }
@@ -227,7 +228,7 @@ Rectangle {
 
         UiText {
             Layout.fillWidth: true
-            visible: root.expanded && root.visibleDetail().length > 0
+            visible: (root.expanded || root.providerMissing) && root.visibleDetail().length > 0
             text: root.visibleDetail()
             color: root.provider.errorCode.length > 0 ? Theme.danger : Theme.menuMutedText
             font.pixelSize: Theme.fontBodySmallSize

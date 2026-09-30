@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Disposable fixture repositories must not spawn background Git maintenance
+# that races their removal or rewrites the host-immutability snapshot.
+export GIT_CONFIG_COUNT=2
+export GIT_CONFIG_KEY_0=gc.auto GIT_CONFIG_VALUE_0=0
+export GIT_CONFIG_KEY_1=maintenance.auto GIT_CONFIG_VALUE_1=false
+
 repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 [[ -x $repo/scripts/run-tests-podman ]] || {
 	printf 'Missing executable scripts/run-tests-podman\n' >&2

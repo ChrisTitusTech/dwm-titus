@@ -8,25 +8,23 @@ commands=$repo/config/quickshell/core/Commands.qml
 
 test -f "$protocol"
 test -f "$model"
-grep -Fq 'import Quickshell.Networking' "$model"
-grep -Fq 'property var connectivitySource: Networking' "$model"
-grep -Fq 'root.connectivitySource.devices.values.some' "$model"
-grep -Fq 'device => device.connected' "$model"
-if grep -Eq 'Network(Connectivity|State)' "$model"; then
-	printf '%s\n' 'Update Center QML uses a connectivity API unavailable in Fedora Quickshell.' >&2
-	exit 1
-fi
+grep -Fq 'Commands.updateCenterCommand("watch-connectivity", [])' "$model"
+grep -Fq 'stdout: SplitParser { onRead: line => root.acceptConnectivity(line) }' "$model"
+grep -Fq 'readonly property bool online: root.connectivityState !== "offline"' "$model"
 grep -Fq 'if (!root.connectivityReady) return;' "$model"
 grep -Fq 'if (!root.startupDelayElapsed) return;' "$model"
 grep -Fq 'interval: 30000' "$model"
 grep -Fq 'root.pendingForceRefresh = true;' "$model"
-grep -Fq 'Commands.updateCenterCommand("terminal-closed", [operationId])' "$model"
-grep -Fq 'operationProcess.needsAuthoritativeRefresh = true;' "$model"
+grep -Fq 'Commands.updateCenterCommand("watch-operation", [])' "$model"
+if grep -Eq 'operationTimer|pendingTerminalClose|interval: 2000' "$model"; then
+	printf '%s\n' 'Update operation state must not be polled.' >&2
+	exit 1
+fi
 grep -Fq 'property bool pendingSettingsReload: false' "$model"
 grep -Fq 'exitStatus === 0 && exitCode === 0' "$model"
 grep -Fq 'function updateCenterCommand(action, args)' "$commands"
 grep -Fq 'function updateCenterSettingsCommand(action, args)' "$commands"
-[ "$(grep -Fc 'Process {' "$model")" -eq 4 ]
+[ "$(grep -Fc 'Process {' "$model")" -eq 6 ]
 if grep -Eq '(^|[^A-Za-z])(XMLHttpRequest|LocalStorage|FileDialog|StandardPaths)([^A-Za-z]|$)' "$model"; then
 	printf '%s\n' 'Update Center QML must not read or write files directly.' >&2
 	exit 1
@@ -45,6 +43,33 @@ cp "$repo/config/quickshell/core/Commands.qml" "$tmp/config/core/Commands.qml"
 cp "$repo/config/quickshell/updatecenter/UpdateCenterModel.qml" "$tmp/config/updatecenter/UpdateCenterModel.qml"
 cp "$repo/config/quickshell/updatecenter/UpdateCenterProtocol.js" "$tmp/config/updatecenter/UpdateCenterProtocol.js"
 
+cat >"$tmp/state/watch-fixture.py" <<'PYFIXTURE'
+import os
+from pathlib import Path
+from gi.repository import Gio, GLib
+root = Path(os.environ["DWM_UPDATE_CENTER_FIXTURE"])
+last = None
+def emit(*_args):
+    global last
+    path = root / "operation"
+    fields = path.read_text().strip().split("\t") if path.exists() else []
+    if len(fields) == 5:
+        if fields[3] in {"completed", "failed"}:
+            fields[3] = "closed"
+        row = "operation\t" + "\t".join(fields)
+    elif fields in ([], [""]):
+        row = "active\tnone"
+    else:
+        return
+    if row != last:
+        print("update-center-action-protocol\t1\t0\n" + row + "\ncomplete\taction", flush=True)
+        last = row
+monitor = Gio.File.new_for_path(str(root)).monitor_directory(Gio.FileMonitorFlags.NONE, None)
+monitor.connect("changed", emit)
+emit()
+GLib.MainLoop().run()
+PYFIXTURE
+
 fixture=$tmp/data/dwm-titus/scripts/dwm-update-center
 cat >"$fixture" <<'EOF'
 #!/bin/sh
@@ -55,6 +80,8 @@ emit_operation() {
 	printf '%b\noperation\t%s\t%s\t%s\t%s\t%s\ncomplete\taction\n' "$header" "$1" "$2" "$3" "$4" "$5"
 }
 case ${1-} in
+watch-connectivity) sleep 20 ;;
+watch-operation) exec /usr/bin/python3 "$root/watch-fixture.py" ;;
 snapshot)
 	if [ "${2-}" = --force ]; then
 		count=$(($(cat "$root/scan-count" 2>/dev/null || printf 0) + 1))
@@ -157,7 +184,7 @@ export XDG_DATA_HOME="$tmp/data"
 export XDG_CACHE_HOME="$tmp/cache"
 export XDG_STATE_HOME="$tmp/runtime-state"
 export XDG_CONFIG_HOME="$tmp/xdg-config"
-export QT_QPA_PLATFORM=offscreen
+export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-offscreen}"
 timeout 20 quickshell --no-duplicate --path "$tmp/config/shell.qml" --no-color
 
 printf '%s\n' 'Quickshell Update Center model contract: PASS'

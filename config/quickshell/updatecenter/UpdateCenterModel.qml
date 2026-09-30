@@ -1,7 +1,6 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
-import Quickshell.Networking
 import qs.core
 import "UpdateCenterProtocol.js" as Protocol
 
@@ -15,7 +14,7 @@ Scope {
     property int draftRefreshSeconds: 3600
     property bool draftAlwaysShow: true
     property var activeOperation: null
-    property var connectivitySource: Networking
+    property string connectivityState: "unknown"
     property string message: ""
     property string settingsError: ""
     property int savedRefreshSeconds: 3600
@@ -27,10 +26,7 @@ Scope {
     property bool startupDelayElapsed: false
     property bool pendingForceRefresh: false
     property bool pendingSettingsReload: false
-    property string pendingTerminalClose: ""
-    readonly property bool online: (!root.connectivitySource || !root.connectivitySource.devices
-        || !root.connectivitySource.devices.values || root.connectivitySource.devices.values.length === 0)
-        || root.connectivitySource.devices.values.some(device => device.connected)
+    readonly property bool online: root.connectivityState !== "offline"
     readonly property bool busy: root.activeOperation !== null
     readonly property bool scanning: scanProcess.running
     readonly property bool settingsLoading: settingsStatusProcess.running
@@ -72,6 +68,14 @@ Scope {
         return root.refresh(true);
     }
 
+    function acceptConnectivity(line) {
+        const fields = line.split("\t");
+        if (fields.length !== 3 || fields[0] !== "connectivity" || fields[1] !== "1"
+                || ["online", "offline", "unknown"].indexOf(fields[2]) < 0) return false;
+        root.connectivityState = fields[2];
+        return true;
+    }
+
     function drainScanQueue() {
         if (!root.pendingForceRefresh || scanProcess.running || !root.online) return false;
         root.pendingForceRefresh = false;
@@ -109,11 +113,7 @@ Scope {
         }
         const previouslyActive = root.activeOperation !== null;
         root.activeOperation = parsed.operationId.length > 0 && parsed.phase !== "closed" ? parsed : null;
-        operationTimer.running = root.activeOperation !== null;
-        if (root.activeOperation !== null && source !== "terminal-closed")
-            root.pendingTerminalClose = root.activeOperation.operationId;
-        if (previouslyActive && root.activeOperation === null) {
-            root.pendingTerminalClose = "";
+        if ((previouslyActive && root.activeOperation === null) || parsed.phase === "closed") {
             root.refresh(true);
         }
         return true;
@@ -135,33 +135,17 @@ Scope {
         return true;
     }
 
-    function refreshOperation() {
-        if (operationProcess.running) return false;
-        operationProcess.command = Commands.updateCenterCommand("active", []);
-        operationProcess.requestKind = "active";
-        operationProcess.responseAccepted = false;
-        operationProcess.running = true;
-        return true;
-    }
-
-    function reconcileTerminalClose(operationId) {
-        if (operationProcess.running || !/^op-[0-9a-f]{32}$/.test(operationId)) return false;
-        operationProcess.command = Commands.updateCenterCommand("terminal-closed", [operationId]);
-        operationProcess.requestKind = "terminal-closed";
-        operationProcess.responseAccepted = false;
-        operationProcess.running = true;
-        return true;
-    }
-
-    function drainOperationQueue() {
-        if (operationProcess.running) return;
-        if (root.pendingTerminalClose.length > 0) {
-            const operationId = root.pendingTerminalClose;
-            root.pendingTerminalClose = "";
-            root.reconcileTerminalClose(operationId);
-        } else if (operationProcess.needsAuthoritativeRefresh) {
-            operationProcess.needsAuthoritativeRefresh = false;
-            root.refreshOperation();
+    function acceptOperationLine(line) {
+        if (line === "update-center-action-protocol\t1\t0") operationWatch.buffer = "";
+        if (operationWatch.buffer.length + line.length > 8192) {
+            operationWatch.buffer = "";
+            root.message = "Update operation watch returned an invalid response";
+            return;
+        }
+        operationWatch.buffer += line + "\n";
+        if (line === "complete\taction") {
+            root.reconcileOperation(operationWatch.buffer, "watch");
+            operationWatch.buffer = "";
         }
     }
 
@@ -233,7 +217,6 @@ Scope {
 
     Component.onCompleted: {
         root.refreshSettings();
-        root.refreshOperation();
         root.refresh(false);
         startupTimer.start();
         root.connectivityReady = true;
@@ -255,14 +238,6 @@ Scope {
     }
 
     Timer {
-        id: operationTimer
-        interval: 2000
-        repeat: true
-        running: false
-        onTriggered: root.refreshOperation()
-    }
-
-    Timer {
         id: scanDrainTimer
         interval: 0
         repeat: false
@@ -270,17 +245,20 @@ Scope {
     }
 
     Timer {
-        id: operationDrainTimer
-        interval: 0
-        repeat: false
-        onTriggered: root.drainOperationQueue()
-    }
-
-    Timer {
         id: settingsDrainTimer
         interval: 0
         repeat: false
         onTriggered: root.drainSettingsQueue()
+    }
+
+    Process {
+        id: connectivityProcess
+        command: Commands.updateCenterCommand("watch-connectivity", [])
+        running: true
+        stdout: SplitParser { onRead: line => root.acceptConnectivity(line) }
+        onExited: (exitCode, exitStatus) => { // qmllint disable signal-handler-parameters
+            root.connectivityState = "unknown";
+        }
     }
 
     Process {
@@ -297,21 +275,30 @@ Scope {
     }
 
     Process {
+        id: operationWatch
+        property string buffer: ""
+        command: Commands.updateCenterCommand("watch-operation", [])
+        running: true
+        stdout: SplitParser { onRead: line => root.acceptOperationLine(line) }
+        onExited: (exitCode, exitStatus) => { // qmllint disable signal-handler-parameters
+            root.message = "Update operation watch stopped; reopen the desktop shell to reconnect";
+        }
+    }
+
+    Process {
         id: operationProcess
         command: Commands.updateCenterCommand("active", [])
         running: false
         property string requestKind: "active"
         property bool responseAccepted: false
-        property bool needsAuthoritativeRefresh: false
         stdout: StdioCollector { id: operationOutput }
         stderr: StdioCollector { onStreamFinished: if (this.text.trim().length > 0) root.message = this.text.trim() }
         onExited: (exitCode, exitStatus) => { // qmllint disable signal-handler-parameters
             if (exitStatus === 0 && exitCode === 0)
-                operationProcess.responseAccepted = root.reconcileOperation(operationOutput.text, operationProcess.requestKind);
+                operationProcess.responseAccepted = Protocol.parseAction(operationOutput.text) !== null;
             if ((operationProcess.requestKind === "launch" || operationProcess.requestKind === "recover")
                     && (!operationProcess.responseAccepted || exitStatus !== 0 || exitCode !== 0))
-                operationProcess.needsAuthoritativeRefresh = true;
-            operationDrainTimer.start();
+                root.message = root.message || "Update operation request failed; retained state is being observed";
         }
     }
 

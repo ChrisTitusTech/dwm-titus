@@ -588,13 +588,15 @@ installation roots still require the source installer. Changes to the release's
 build/source-update package list are handled within the reserved transaction:
 only validated RPM names are passed to DNF, and the resulting manifest must
 match that prepared list. DNF owns package recovery; desktop rollback does not
-uninstall packages. Authorization uses polkit and requires one visible approval per update or
-explicit recovery operation. A root-owned helper retains that approval only
-for the transaction. Updates bind the operation, generation, and selected
-revision; recovery remains limited to the original operation and its owner.
+uninstall packages. After explicit update or recovery confirmation, authorization
+reuses an existing non-interactive sudo grant when available. Otherwise it uses
+polkit for one visible approval. The updater must not create passwordless sudo
+rules, store passwords, or change configured credential timeouts. A root-owned helper
+retains its operation-bound authorization only for the transaction. Updates bind
+the operation, generation, and selected revision; recovery remains limited to the original operation and its owner.
 A private pipe carries at most eight allowlisted phase requests; EOF, completion,
 or the one-hour session deadline ends the grant. Passwords are never saved, and
-there is no blanket authorization cache for other programs or updates.
+the updater creates no blanket authorization cache for other programs or updates.
 Existing installations bootstrap this support through the source
 installer; the GUI does not elevate a repository copy.
 

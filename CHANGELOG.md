@@ -6,6 +6,19 @@ versions from `config.mk`.
 
 ## [Unreleased]
 
+### Added
+
+- Add the panel Update Center for Fedora, desktop, Flatpak, and mise updates,
+  with provider counts, refresh preferences, terminal progress, and recovery.
+  Existing window rules gain a backed-up floating/no-swallow rule for its
+  terminals during source and desktop updates.
+
+### Changed
+
+- Reuse existing non-interactive sudo authorization for confirmed desktop
+  updates and recovery, falling back to polkit when unavailable. Passwords and
+  authorization policy are not stored or changed by the updater.
+
 ### Fixed
 
 - Install `NetworkManager-wifi` with the Fedora image and full package set, and
