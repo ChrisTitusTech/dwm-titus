@@ -63,13 +63,13 @@ dwm_packages() {
 	fedora:source-update)
 		# Dependencies introduced after the initial installation that the supported
 		# source-checkout synchronization path must reconcile for existing systems.
-		printf '%s\n' xsettingsd xkbset bubblewrap libseccomp
+		printf '%s\n' xsettingsd xkbset bubblewrap libseccomp NetworkManager-wifi
 		;;
 	fedora:desktop-optional)
 		printf '%s\n' \
 			Thunar gvfs gvfs-smb tumbler thunar-archive-plugin file-roller \
 			xdg-user-dirs gnome-keyring gnome-keyring-pam NetworkManager \
-			rsync
+			NetworkManager-wifi rsync
 		;;
 	fedora:gaming)
 		if [[ ${ARCH:-$(uname -m)} == x86_64 ]]; then

@@ -6,6 +6,13 @@ versions from `config.mk`.
 
 ## [Unreleased]
 
+### Fixed
+
+- Install `NetworkManager-wifi` with the Fedora image and full package set, and
+  reconcile it on existing source checkouts. Without the Wi-Fi plugin,
+  NetworkManager leaves wireless interfaces unmanaged, so scans and connections
+  fail after installation even when the kernel driver is present.
+
 ## [0.7.2] - 2026-09-24
 
 ### Added

@@ -106,6 +106,7 @@ for required_command in xsettingsd dump_xsettings xkbset bwrap; do
 		exit 1
 	}
 done
+grep -Fq 'rpm -q NetworkManager-wifi' "$source_update_probe"
 run_check() {
 	PATH="$test_bin:$PATH" \
 		DWM_DEV_SYNC_SKIP_RUNTIME=1 \

@@ -155,6 +155,7 @@ qt5ct
 google-noto-color-emoji-fonts
 google-noto-sans-mono-fonts
 NetworkManager
+NetworkManager-wifi
 rsync
 Thunar
 gvfs
