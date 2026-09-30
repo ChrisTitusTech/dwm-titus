@@ -2,6 +2,7 @@
 """Run one validated Update Center provider operation in an interactive terminal."""
 import codecs
 import ctypes
+import getpass
 import io
 import json
 import os
@@ -64,7 +65,36 @@ def set_terminal_identity(environment=None, output=None):
         return False
 
 
-def checkpoint(operation, phase, detail):
+PROVIDER_TITLES = {
+    "fedora": ("Update system packages", "Recover system packages"),
+    "flatpak": ("Update Flatpak packages", "Recover Flatpak packages"),
+    "dwm-titus": ("Update DWM-Titus", "Recover DWM-Titus"),
+    "mise": ("Update mise tools", "Recover mise tools"),
+}
+
+
+def print_provider_header(provider, action, *, output=None):
+    destination = sys.stdout if output is None else output
+    pair = PROVIDER_TITLES.get(provider)
+    if pair:
+        title = pair[1] if action == "recover" else pair[0]
+    else:
+        title = f"{action.capitalize()} {provider}"
+    destination.write(f"\033[32m\n{title}\033[0m\n")
+    destination.flush()
+
+
+def print_step(detail, *, output=None):
+    destination = sys.stdout if output is None else output
+    text = detail.rstrip(".")
+    if not (text.endswith("completed") or text.endswith("complete")):
+        text = text + "..."
+    destination.write(f"\033[1;34m::\033[0m {text}\n")
+    destination.flush()
+
+
+def checkpoint(operation, phase, detail, *, output=None):
+    print_step(detail, output=output)
     return CENTER["update_operation"](operation, phase=phase, provider_phase=phase, detail=detail)
 
 
@@ -82,45 +112,118 @@ def trusted_desktop_helper():
     return helper
 
 
-def format_progress_record(line):
+class ProgressTracker:
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.pending_pkg = None
+        self.current_percent = None
+
+    @staticmethod
+    def format_package(phase, name, pct=None):
+        pct_str = f" \033[32m[{pct:>3}%]\033[0m" if pct is not None else ""
+        return f"\033[1;34m->\033[0m \033[1m{phase}:\033[0m {name}{pct_str}"
+
+    def flush_pending(self, pct=None):
+        if self.pending_pkg is None:
+            return None
+        name, phase, item_pct = self.pending_pkg
+        self.pending_pkg = None
+        effective_pct = pct if pct is not None else item_pct if item_pct is not None else self.current_percent
+        return self.format_package(phase, name, effective_pct)
+
+    def handle_package_progress(self, name, phase, percent_str):
+        if not name:
+            return self.flush_pending()
+        flushed = self.flush_pending()
+        item_pct = int(percent_str) if percent_str.isdigit() and 0 <= int(percent_str) <= 100 else None
+        self.pending_pkg = (name, phase.capitalize(), item_pct)
+        return flushed
+
+    def handle_operation(self, state, progress_str, detail):
+        if progress_str.isdigit() and 0 <= int(progress_str) <= 100:
+            self.current_percent = int(progress_str)
+        is_telemetry = detail.startswith("Observed signals:") or detail == "unknown"
+        if is_telemetry:
+            if self.pending_pkg is not None:
+                return self.flush_pending(self.current_percent)
+            return None
+        lines = []
+        flushed = self.flush_pending()
+        if flushed:
+            lines.append(flushed)
+        if progress_str.isdigit() and 0 <= int(progress_str) <= 100:
+            lines.append(f"\033[32m[{int(progress_str):>3}%]\033[0m {detail}")
+        else:
+            status_color = "\033[32m" if state == "succeeded" else "\033[31m" if state == "failed" else "\033[33m"
+            status = "OK" if state == "succeeded" else "FAIL" if state == "failed" else state.upper()
+            lines.append(f"{status_color}[{status}]\033[0m {detail}")
+        return "\n".join(lines)
+
+    def handle_audit(self, state, detail):
+        lines = []
+        flushed = self.flush_pending()
+        if flushed:
+            lines.append(flushed)
+        status_color = "\033[32m" if state == "succeeded" else "\033[31m" if state == "failed" else "\033[33m"
+        status = "OK" if state == "succeeded" else "FAIL" if state == "failed" else state.upper()
+        lines.append(f"{status_color}[{status}]\033[0m {detail}")
+        self.reset()
+        return "\n".join(lines)
+
+
+DEFAULT_PROGRESS_TRACKER = ProgressTracker()
+
+
+def format_progress_record(line, tracker=None):
+    if tracker is None:
+        tracker = DEFAULT_PROGRESS_TRACKER
     fields = line.rstrip("\n").split("\t")
     record_type = fields[0]
-    if record_type in {"system-management-protocol", "complete"}:
+    if record_type == "system-management-protocol":
+        tracker.reset()
         return None
+    if record_type == "complete":
+        return tracker.flush_pending()
     if record_type == "operation" and len(fields) >= 8:
         state, progress, detail = fields[4], fields[5], fields[7]
-        if progress.isdigit() and 0 <= int(progress) <= 100:
-            return f"[{int(progress):>3}%] {detail}"
-        status = "OK" if state == "succeeded" else "FAIL" if state == "failed" else state.upper()
-        return f"[{status}] {detail}"
+        return tracker.handle_operation(state, progress, detail)
+    if record_type == "package-progress" and len(fields) >= 5:
+        name, phase, percent = fields[2], fields[3], fields[4]
+        return tracker.handle_package_progress(name, phase, percent)
     if record_type == "package" and len(fields) >= 3:
+        flushed = tracker.flush_pending()
         action = fields[1].capitalize()
         pkg_name = fields[2].split(";")[0] if ";" in fields[2] else fields[2]
         summary = f" - {fields[3]}" if len(fields) >= 4 and fields[3] else ""
-        return f"-> {action}: {pkg_name}{summary}"
+        pkg_line = f"\033[1;34m->\033[0m \033[1m{action}:\033[0m {pkg_name}{summary}"
+        return f"{flushed}\n{pkg_line}" if flushed else pkg_line
     if record_type == "audit" and len(fields) >= 8:
         state, detail = fields[4], fields[7]
-        status = "OK" if state == "succeeded" else "FAIL" if state == "failed" else state.upper()
-        return f"[{status}] {detail}"
+        return tracker.handle_audit(state, detail)
     if record_type == "error" and len(fields) >= 4:
-        return f"[ERROR] {fields[3]}"
+        flushed = tracker.flush_pending()
+        err_line = f"\033[1;31m[ERROR]\033[0m {fields[3]}"
+        return f"{flushed}\n{err_line}" if flushed else err_line
     return "  |  ".join(fields)
 
 
-def print_terminal_line(line, *, output=None, width=None):
+def print_terminal_line(line, *, output=None, width=None, tracker=None):
     """Render machine fields readably without changing the retained payload."""
     destination = sys.stdout if output is None else output
-    formatted = format_progress_record(line)
-    if formatted is None:
+    formatted = format_progress_record(line, tracker=tracker)
+    if not formatted:
         return
     columns = shutil.get_terminal_size((102, 24)).columns - 2 if width is None else width
-    wrapped = textwrap.wrap(formatted, width=max(40, columns), subsequent_indent="  ",
-                            break_long_words=False, break_on_hyphens=False)
-    destination.write("\n".join(wrapped or [""]) + "\n")
+    for entry in formatted.splitlines():
+        wrapped = textwrap.wrap(entry, width=max(40, columns), subsequent_indent="  ",
+                                break_long_words=False, break_on_hyphens=False)
+        destination.write("\n".join(wrapped or [""]) + "\n")
     destination.flush()
 
 
-def stream_process(argv, *, cwd=None, env=None, timeout=DEFAULT_TIMEOUT):
+def stream_process(argv, *, cwd=None, env=None, timeout=DEFAULT_TIMEOUT, stream=True):
     """Execute argv, streaming decoded lines bounded by size and deadline."""
     if not isinstance(argv, list) or not argv or any(not isinstance(value, str) for value in argv):
         raise ValueError("invalid provider argv")
@@ -130,6 +233,7 @@ def stream_process(argv, *, cwd=None, env=None, timeout=DEFAULT_TIMEOUT):
                                stderr=None, bufsize=0)
     output, size = [], 0
     buffer = ""
+    tracker = ProgressTracker()
     decoder = codecs.getincrementaldecoder("utf-8")(errors="strict")
     deadline = time.monotonic() + timeout
     try:
@@ -159,11 +263,13 @@ def stream_process(argv, *, cwd=None, env=None, timeout=DEFAULT_TIMEOUT):
                         line, buffer = buffer.split("\n", 1)
                         line_with_nl = line + "\n"
                         output.append(line_with_nl)
-                        print_terminal_line(line_with_nl)
+                        if stream:
+                            print_terminal_line(line_with_nl, tracker=tracker)
             buffer += decoder.decode(b"", final=True)
             if buffer:
                 output.append(buffer)
-                print_terminal_line(buffer)
+                if stream:
+                    print_terminal_line(buffer, tracker=tracker)
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise TimeoutError("command timed out")
@@ -182,9 +288,9 @@ def stream_process(argv, *, cwd=None, env=None, timeout=DEFAULT_TIMEOUT):
         process.stdout.close()
 
 
-def run_command(argv, *, cwd=None, env=None, timeout=DEFAULT_TIMEOUT):
+def run_command(argv, *, cwd=None, env=None, timeout=DEFAULT_TIMEOUT, stream=True):
     """Stream bounded output while retaining the machine response for reconciliation."""
-    status, payload = stream_process(argv, cwd=cwd, env=env, timeout=timeout)
+    status, payload = stream_process(argv, cwd=cwd, env=env, timeout=timeout, stream=stream)
     if status:
         raise subprocess.CalledProcessError(status, argv, payload)
     return payload
@@ -198,8 +304,8 @@ def run_protocol_command(argv, *, timeout=DEFAULT_TIMEOUT):
     return payload
 
 
-def result(outcome, phase, detail, restart="none"):
-    return {"outcome": outcome, "phase": phase, "detail": detail[:8192], "restart": restart}
+def result(outcome, phase, detail, restart="none", hold=True):
+    return {"outcome": outcome, "phase": phase, "detail": detail[:8192], "restart": restart, "hold": hold}
 
 
 def records(payload, kind):
@@ -261,7 +367,7 @@ def fedora_restart(payload):
 def execute_fedora(operation, action):
     helper = str(CENTER_PATH.with_name("dwm-system-management"))
     checkpoint(operation, "preparing", "Preparing authoritative PackageKit state")
-    initial = run_command([helper, "snapshot"])
+    initial = run_command([helper, "snapshot"], stream=False)
     if action == "update":
         generations = records(initial, "snapshot-generation")
         if len(generations) != 1 or not re.fullmatch(r"[0-9a-f]{64}", generations[0][1]):
@@ -278,14 +384,14 @@ def execute_fedora(operation, action):
         protocol_action = operations[0][2] if operations else "updates-install-all"
     terminal_state = parse_operation_stream(terminal, protocol_action) if records(terminal, "operation") else None
     if action == "update" and terminal_state is None:
-        reconciled = run_command([helper, "snapshot"])
+        reconciled = run_command([helper, "snapshot"], stream=False)
         return result("failed", "failed", "PackageKit did not start the update transaction",
                       fedora_restart(reconciled))
-    reconciled = run_command([helper, "snapshot"])
+    reconciled = run_command([helper, "snapshot"], stream=False)
     state = terminal_state["state"] if terminal_state else "interrupted" if records(reconciled, "active-operation") else "succeeded"
     restart = fedora_restart(reconciled)
     if terminal_state is not None and state != "interrupted":
-        run_command([helper, "ack-operation", terminal_state["operation"]])
+        run_command([helper, "ack-operation", terminal_state["operation"]], stream=False)
     if state != "succeeded":
         return result("unknown" if state == "interrupted" else "failed",
                       "interrupted" if state == "interrupted" else "failed",
@@ -300,33 +406,118 @@ def desktop_value(payload):
     return value
 
 
-def execute_desktop(operation, action):
+class DesktopStatusFormatter:
+    def __init__(self, *, output=None):
+        self.destination = sys.stdout if output is None else output
+        self.last_base = None
+        self.dot_count = 0
+
+    def update(self, detail, percent=-1):
+        if percent is not None and int(percent) >= 0:
+            pct = int(percent)
+            base = re.sub(r"\s*\[.*\]$", "", detail).strip()
+            if base != self.last_base:
+                if self.last_base is not None:
+                    self.destination.write("\n")
+                self.last_base = base
+            self.destination.write(f"\r\033[K{base} \033[32m[{pct:>3}%]\033[0m")
+            self.destination.flush()
+            return
+
+        base = detail.rstrip(". ")
+        if base != self.last_base:
+            if self.last_base is not None:
+                self.destination.write("\n")
+            self.dot_count = 1
+            self.last_base = base
+        else:
+            self.dot_count = (self.dot_count % 5) + 1
+        dots = " " + " ".join(["."] * (self.dot_count - 1)) if self.dot_count > 1 else ""
+        self.destination.write(f"\r\033[K{base}.{dots}")
+        self.destination.flush()
+
+    def close(self):
+        if self.last_base is not None:
+            self.destination.write("\n")
+            self.destination.flush()
+
+
+def validate_sudo_password(password):
+    try:
+        proc = subprocess.run(["sudo", "-k", "-S", "-v", "-p", ""],
+                              input=(password + "\n").encode(),
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return proc.returncode == 0
+    except OSError:
+        return False
+
+
+def prompt_sudo_password(*, input_stream=None, output=None, validator=None):
+    destination = sys.stdout if output is None else output
+    destination.write("Enter Sudo Password:  ")
+    destination.flush()
+    if input_stream is not None:
+        password = input_stream.readline().rstrip("\r\n")
+    else:
+        try:
+            password = getpass.getpass(prompt="", stream=destination)
+        except (OSError, Exception):
+            password = sys.stdin.readline().rstrip("\r\n")
+    check = validator if validator is not None else validate_sudo_password
+    if check(password):
+        return True
+    destination.write("\033[1;31mIncorrect Password - Press any key to quit. . .\033[0m")
+    destination.flush()
+    stream = sys.stdin if input_stream is None else input_stream
+    if input_stream is not None:
+        stream.read(1)
+    else:
+        wait_for_key(stream)
+    destination.write("\n")
+    destination.flush()
+    return False
+
+
+def execute_desktop(operation, action, *, input_stream=None, output=None, sudo_validator=None):
+    destination = sys.stdout if output is None else output
+    if not prompt_sudo_password(input_stream=input_stream, output=destination, validator=sudo_validator):
+        return result("failed", "failed", "Incorrect Password", hold=False)
+    destination.write("\n")
+    destination.flush()
     helper = trusted_desktop_helper()
-    status = desktop_value(run_command([helper, "status"]))
+    status = desktop_value(run_command([helper, "status"], stream=False))
     if action == "recover":
+        if status.get("state") != "interrupted":
+            return result("succeeded", "completed",
+                          "Desktop update is already recovered: " + status.get("detail", "Ready"),
+                          status.get("restart", "none"))
         desktop_operation = status.get("operation")
         if not isinstance(desktop_operation, str) or not re.fullmatch(r"[0-9a-f]{32}", desktop_operation):
             raise ValueError("desktop recovery identity unavailable")
-        checkpoint(operation, "recovering", "Recovering the trusted desktop update")
-        terminal = desktop_value(run_command([helper, "recover", desktop_operation]))
+        checkpoint(operation, "recovering", "Recovering the trusted desktop update", output=destination)
+        terminal = desktop_value(run_command([helper, "recover", desktop_operation], stream=False))
     else:
-        checked = desktop_value(run_command([helper, "check"]))
+        checked = desktop_value(run_command([helper, "check"], stream=False))
         revision = checked.get("available")
         if not isinstance(revision, str) or not re.fullmatch(r"[0-9a-f]{40}", revision):
             raise ValueError("verified desktop revision unavailable")
-        checkpoint(operation, "desktop-starting", "Starting the trusted desktop update")
-        terminal = desktop_value(run_command([helper, "start", revision]))
-    reconciled = desktop_value(run_command([helper, "status"])) if action == "update" else terminal
+        checkpoint(operation, "desktop-starting", "Starting the trusted desktop update", output=destination)
+        terminal = desktop_value(run_command([helper, "start", revision], stream=False))
+    reconciled = desktop_value(run_command([helper, "status"], stream=False)) if action == "update" else terminal
     deadline = time.monotonic() + 1800
-    while reconciled["state"] in CENTER["DESKTOP_ACTIVE"] | {"checking"}:
-        if time.monotonic() >= deadline:
-            return result("unknown", "interrupted", "Desktop updater remains active; reconnect with recovery")
-        print(reconciled.get("detail", "Desktop update running"), flush=True)
-        time.sleep(1)
-        reconciled = desktop_value(run_command([helper, "status"]))
+    formatter = DesktopStatusFormatter(output=destination)
+    try:
+        while reconciled["state"] in CENTER["DESKTOP_ACTIVE"] | {"checking"}:
+            if time.monotonic() >= deadline:
+                return result("unknown", "interrupted", "Desktop updater remains active; reconnect with recovery")
+            formatter.update(reconciled.get("detail", "Desktop update running"), percent=reconciled.get("percent", -1))
+            time.sleep(1)
+            reconciled = desktop_value(run_command([helper, "status"], stream=False))
+    finally:
+        formatter.close()
     state = reconciled["state"]
     restart = reconciled.get("restart", "none")
-    if state in {"current", "complete", "restart-required"}:
+    if state in {"current", "complete", "restart-required"} or (action == "recover" and "Previous desktop files restored" in reconciled.get("detail", "")):
         return result("succeeded", "completed", reconciled.get("detail", "Desktop update complete"), restart)
     if state == "interrupted":
         return result("unknown", "interrupted", reconciled.get("detail", "Desktop recovery required"), restart)
@@ -334,8 +525,8 @@ def execute_desktop(operation, action):
 
 
 def scan_flatpak_scope(program, scope):
-    run_command([program, "list", "--" + scope, "--columns=ref:full,version"])
-    run_command([program, "remote-ls", "--" + scope, "--updates", "--columns=ref:full,version"])
+    run_command([program, "list", "--" + scope, "--columns=ref:full,version"], stream=False)
+    run_command([program, "remote-ls", "--" + scope, "--updates", "--columns=ref:full,version"], stream=False)
 
 
 def flatpak_recovery_basis(operation):
@@ -386,7 +577,7 @@ def execute_flatpak(operation, action):
 
 
 def managed_mise(program):
-    payload = run_command([program, "ls", "--installed", "--json"], cwd="/", env=dict(os.environ))
+    payload = run_command([program, "ls", "--installed", "--json"], cwd="/", env=dict(os.environ), stream=False)
     return CENTER["mise_inventory"](payload)
 
 
@@ -413,15 +604,23 @@ def execute_provider(operation, provider, action):
             "flatpak": execute_flatpak, "mise": execute_mise}[provider](operation, action)
 
 
-def completion_hold(value, *, input_stream=None, output=None):
-    stream = sys.stdin if input_stream is None else input_stream
-    destination = sys.stdout if output is None else output
-    destination.write("\n" + value.get("detail", "Operation finished") + "\n")
-    destination.write("Done. Press any key to close\n")
-    destination.flush()
-    if input_stream is not None:
-        stream.read(1)
-    elif getattr(stream, "isatty", lambda: False)():
+def format_completion_banner(value):
+    detail = value.get("detail", "Operation finished")
+    if detail == "Desktop update installed, verified, and active.":
+        return "\n\033[1;32mUpdate Installed Successfully!\033[0m\n"
+    if "Restart required, or Log out and back in" in detail or detail == "Installed and verified. Log out and back in to activate the updated desktop.":
+        return "\n\033[1;32mUpdate Installed Successfully! \033[1;33mRestart required, or Log out and back in for update to take effect.\033[0m\n"
+    if "Quickshell did not respond" in detail or "Quickshell restart timed out" in detail:
+        return "\n\033[1;33mUpdate Files Installed, but Quickshell restart timed out, \033[1;31mPlease Log out and back in.\033[0m\n"
+    if "Previous desktop files restored" in detail or "Recovery completed" in detail:
+        return "\n\033[1;32mRecovery completed, \033[1;31mPlease Log out and back in for recovery to take effect.\033[0m\n"
+    if value.get("outcome") == "succeeded":
+        return f"\n\033[1;32m==>\033[0m {detail}\n"
+    return f"\n\033[1;31m==> ERROR:\033[0m {detail}\n"
+
+
+def wait_for_key(stream):
+    if getattr(stream, "isatty", lambda: False)():
         try:
             import termios
             import tty
@@ -434,6 +633,27 @@ def completion_hold(value, *, input_stream=None, output=None):
                 termios.tcsetattr(fd, termios.TCSADRAIN, old)
         except (OSError, ValueError, ImportError):
             stream.read(1)
+    else:
+        try:
+            stream.read(1)
+        except OSError:
+            pass
+
+
+def completion_hold(value, *, input_stream=None, output=None):
+    if value.get("hold") is False:
+        return
+    stream = sys.stdin if input_stream is None else input_stream
+    destination = sys.stdout if output is None else output
+    destination.write(format_completion_banner(value))
+    destination.write("\n\033[32m● \033[0mDone! Press any key to close...")
+    destination.flush()
+    if input_stream is not None:
+        stream.read(1)
+    else:
+        wait_for_key(stream)
+    destination.write("\n")
+    destination.flush()
 
 
 def main(argv=None):
@@ -449,6 +669,7 @@ def main(argv=None):
         if active is None or (active["operation"], active["provider"], active["action"]) != tuple(args):
             raise ValueError("terminal operation does not own the active reservation")
         CENTER["update_operation"](operation, phase="running", detail="Provider operation running")
+        print_provider_header(provider, action)
         try:
             value = execute_provider(operation, provider, action)
         except Exception as error:

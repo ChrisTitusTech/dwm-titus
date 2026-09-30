@@ -274,11 +274,12 @@ class RunnerTests(Environment):
                 raise value
             return value
         with patch.dict(self.api["execute_provider"].__globals__, run_command=command, run_protocol_command=command,
-                        checkpoint=lambda operation, phase, detail: phases.append(phase),
+                        checkpoint=lambda operation, phase, detail, **k: phases.append(phase),
                         validate_provider_action=lambda provider, action: None,
                         flatpak_recovery_basis=lambda operation: recovery_basis,
                         executable=lambda name: "/usr/bin/" + name,
-                        trusted_desktop_helper=lambda: "/usr/bin/dwm-desktop-update"):
+                        trusted_desktop_helper=lambda: "/usr/bin/dwm-desktop-update",
+                        prompt_sudo_password=lambda **k: True):
             result = self.api["execute_provider"](self.operation, provider, action)
         return result, calls, phases
 
@@ -315,14 +316,28 @@ class RunnerTests(Environment):
             "operation\top-123\tupdates-install-all\tupdate\trunning\t50\tyes\tInstalling updates\n",
             output=output,
         )
-        self.assertEqual(output.getvalue().strip(), "[ 50%] Installing updates")
+        self.assertEqual(output.getvalue().strip(), "\033[32m[ 50%]\033[0m Installing updates")
 
         output = io.StringIO()
         self.api["print_terminal_line"](
             "package\tinstalling\tfirefox;128.0;x86_64;updates\tWeb browser\n",
             output=output,
         )
-        self.assertEqual(output.getvalue().strip(), "-> Installing: firefox - Web browser")
+        self.assertEqual(output.getvalue().strip(), "\033[1;34m->\033[0m \033[1mInstalling:\033[0m firefox - Web browser")
+
+        output = io.StringIO()
+        self.api["print_terminal_line"](
+            "audit\top-123\tupdates-install-all\tupdate\tsucceeded\t2026-09-05T01:00:00Z\t2026-09-05T01:01:00Z\tAll packages updated\n",
+            output=output,
+        )
+        self.assertEqual(output.getvalue().strip(), "\033[32m[OK]\033[0m All packages updated")
+
+        output = io.StringIO()
+        self.api["print_terminal_line"](
+            "error\tupdates\tfailure\tPackageKit transaction failed\n",
+            output=output,
+        )
+        self.assertEqual(output.getvalue().strip(), "\033[1;31m[ERROR]\033[0m PackageKit transaction failed")
 
         output = io.StringIO()
         self.api["print_terminal_line"](
@@ -330,6 +345,75 @@ class RunnerTests(Environment):
             output=output,
         )
         self.assertEqual(output.getvalue(), "")
+
+    def test_terminal_formats_package_progress_and_suppresses_observed_signals(self):
+        output = io.StringIO()
+        self.api["print_terminal_line"](
+            "package-progress\top-1\thunspell\tupdating\tunknown\n",
+            output=output,
+        )
+        self.api["print_terminal_line"](
+            "operation\top-1\tupdates-install-all\tupdate\trunning\t20\tyes\tObserved signals: install=0 update=2 remove=0 obsolete=0 unknown=0; sha256=abcdef; different=unknown; mismatch-samples=0\n",
+            output=output,
+        )
+        self.assertEqual(
+            output.getvalue().strip(),
+            "\033[1;34m->\033[0m \033[1mUpdating:\033[0m hunspell \033[32m[ 20%]\033[0m",
+        )
+        self.assertNotIn("Observed signals", output.getvalue())
+        self.assertNotIn("package-progress", output.getvalue())
+
+    def test_terminal_formats_sequential_package_progress_stream_cleanly(self):
+        output = io.StringIO()
+        stream = (
+            "package-progress\top-1\thunspell\tupdating\tunknown\n"
+            "operation\top-1\tupdates-install-all\tupdate\trunning\t20\tyes\tObserved signals: install=0 update=2;\n"
+            "operation\top-1\tupdates-install-all\tupdate\trunning\t24\tyes\tObserved signals: install=0 update=2;\n"
+            "package-progress\top-1\tperl-LWP-MediaTypes\tupdating\tunknown\n"
+            "operation\top-1\tupdates-install-all\tupdate\trunning\t28\tyes\tObserved signals: install=0 update=3;\n"
+            "package-progress\top-1\thunspell\tcleaning\tunknown\n"
+            "package-progress\top-1\thunspell-filesystem\tcleaning\tunknown\n"
+            "operation\top-1\tupdates-install-all\tupdate\trunning\t87\tyes\tObserved signals: install=0 update=4;\n"
+            "audit\top-1\tupdates-install-all\tupdate\tsucceeded\t2026-09-05T01:00:00Z\t2026-09-05T01:01:00Z\tAll packages updated\n"
+        )
+        for line in stream.splitlines(keepends=True):
+            self.api["print_terminal_line"](line, output=output)
+
+        expected = [
+            "\033[1;34m->\033[0m \033[1mUpdating:\033[0m hunspell \033[32m[ 20%]\033[0m",
+            "\033[1;34m->\033[0m \033[1mUpdating:\033[0m perl-LWP-MediaTypes \033[32m[ 28%]\033[0m",
+            "\033[1;34m->\033[0m \033[1mCleaning:\033[0m hunspell \033[32m[ 28%]\033[0m",
+            "\033[1;34m->\033[0m \033[1mCleaning:\033[0m hunspell-filesystem \033[32m[ 87%]\033[0m",
+            "\033[32m[OK]\033[0m All packages updated",
+        ]
+        self.assertEqual(output.getvalue().strip().splitlines(), expected)
+        self.assertNotIn("Observed signals", output.getvalue())
+        self.assertNotIn("package-progress", output.getvalue())
+
+    def test_provider_header_and_step_ansi_formatting(self):
+        headers = {
+            ("fedora", "update"): "\033[32m\nUpdate system packages\033[0m\n",
+            ("flatpak", "update"): "\033[32m\nUpdate Flatpak packages\033[0m\n",
+            ("dwm-titus", "update"): "\033[32m\nUpdate DWM-Titus\033[0m\n",
+            ("mise", "update"): "\033[32m\nUpdate mise tools\033[0m\n",
+            ("fedora", "recover"): "\033[32m\nRecover system packages\033[0m\n",
+            ("flatpak", "recover"): "\033[32m\nRecover Flatpak packages\033[0m\n",
+            ("dwm-titus", "recover"): "\033[32m\nRecover DWM-Titus\033[0m\n",
+            ("mise", "recover"): "\033[32m\nRecover mise tools\033[0m\n",
+        }
+        for (provider, action), expected in headers.items():
+            with self.subTest(provider=provider, action=action):
+                output = io.StringIO()
+                self.api["print_provider_header"](provider, action, output=output)
+                self.assertEqual(output.getvalue(), expected)
+
+        step_output = io.StringIO()
+        self.api["print_step"]("Updating system Flatpaks", output=step_output)
+        self.assertEqual(step_output.getvalue(), "\033[1;34m::\033[0m Updating system Flatpaks...\n")
+
+        complete_output = io.StringIO()
+        self.api["print_step"]("System Flatpak update completed", output=complete_output)
+        self.assertEqual(complete_output.getvalue(), "\033[1;34m::\033[0m System Flatpak update completed\n")
 
     def operation_stream(self, state="succeeded"):
         operation = "op-" + "c" * 32
@@ -414,6 +498,21 @@ class RunnerTests(Environment):
         _, calls, _ = self.run_adapter("dwm-titus", "recover", [interrupted, done])
         self.assertEqual([call[0][1] for call in calls], ["status", "recover"])
         self.assertEqual(calls[1][0][2], "d" * 32)
+        recovered_state = json.dumps({
+            "schema": 1, "state": "failed", "installed": "a" * 40, "available": "b" * 40,
+            "canUpdate": False, "detail": "Previous desktop files restored. Log out and back in, then check again.",
+            "restart": "session"
+        })
+        recovered_res, calls, _ = self.run_adapter("dwm-titus", "recover", [interrupted, recovered_state])
+        self.assertEqual((recovered_res["outcome"], recovered_res["phase"]), ("succeeded", "completed"))
+        already_ready = json.dumps({
+            "schema": 1, "state": "available", "installed": "a" * 40, "available": "b" * 40,
+            "canUpdate": True, "detail": "A desktop update is available", "restart": "none"
+        })
+        already_res, calls, _ = self.run_adapter("dwm-titus", "recover", [already_ready])
+        self.assertEqual([call[0][1] for call in calls], ["status"])
+        self.assertEqual((already_res["outcome"], already_res["phase"]), ("succeeded", "completed"))
+        self.assertIn("already recovered", already_res["detail"])
 
     def test_flatpak_system_first_partial_and_recovery_rechecks_both_scopes(self):
         result, calls, phases = self.run_adapter("flatpak", "update")
@@ -468,10 +567,17 @@ class RunnerTests(Environment):
         self.assertEqual(phases, ["mise-inventory", "recovering", "mise-update", "mise-recheck"])
 
     def test_completion_prompt_for_success_and_failure_and_test_stream(self):
-        for outcome in ("succeeded", "failed"):
-            output = io.StringIO()
-            self.api["completion_hold"]({"outcome": outcome}, input_stream=io.StringIO("x"), output=output)
-            self.assertIn("Done. Press any key to close", output.getvalue())
+        output_ok = io.StringIO()
+        self.api["completion_hold"]({"outcome": "succeeded", "detail": "All packages updated"},
+                                    input_stream=io.StringIO("x"), output=output_ok)
+        self.assertIn("\033[1;32m==>\033[0m All packages updated", output_ok.getvalue())
+        self.assertIn("\033[32m● \033[0mDone! Press any key to close...", output_ok.getvalue())
+
+        output_fail = io.StringIO()
+        self.api["completion_hold"]({"outcome": "failed", "detail": "Transaction failed"},
+                                    input_stream=io.StringIO("x"), output=output_fail)
+        self.assertIn("\033[1;31m==> ERROR:\033[0m Transaction failed", output_fail.getvalue())
+        self.assertIn("\033[32m● \033[0mDone! Press any key to close...", output_fail.getvalue())
 
     def test_completion_hold_uses_cbreak_on_tty(self):
         calls = []
@@ -501,11 +607,13 @@ class RunnerTests(Environment):
         with patch.dict(globals_, execute_provider=lambda *args: {
                 "outcome": "succeeded", "phase": "completed", "detail": "Verified", "restart": "none"},
                 completion_hold=hold, set_terminal_identity=lambda: True), \
-                patch.dict(self.api["CENTER"], rescan_provider=lambda provider: None):
+                patch.dict(self.api["CENTER"], rescan_provider=lambda provider: None), \
+                patch("sys.stdout", new_callable=io.StringIO) as stdout_capture:
             self.assertEqual(self.api["main"]([operation["operation"], "mise", "update"]), 0)
+        self.assertIn("\033[32m\nUpdate mise tools\033[0m\n", stdout_capture.getvalue())
         saved = self.api["CENTER"]["read_operation"]()
         self.assertEqual((saved["phase"], saved["outcome"]), ("completed", "succeeded"))
-        self.assertIn("Done. Press any key to close", held[0])
+        self.assertIn("\033[32m● \033[0mDone! Press any key to close...", held[0])
 
     def test_terminal_outcome_keeps_active_slot_through_success_and_failure_hold(self):
         for outcome, phase, code in (("succeeded", "completed", 0), ("failed", "failed", 1)):
@@ -527,7 +635,8 @@ class RunnerTests(Environment):
                 with patch.dict(globals_, execute_provider=lambda *args: {
                         "outcome": outcome, "phase": phase, "detail": "Terminal result", "restart": "none"},
                         completion_hold=hold, set_terminal_identity=lambda: True), \
-                        patch.dict(self.api["CENTER"], rescan_provider=lambda provider: None):
+                        patch.dict(self.api["CENTER"], rescan_provider=lambda provider: None), \
+                        patch("sys.stdout", new_callable=io.StringIO):
                     self.assertEqual(self.api["main"]([operation["operation"], "fedora", "update"]), code)
                 self.assertEqual(observed, [(phase, outcome)])
                 with patch.dict(self.api["CENTER"]["terminal_closed"].__globals__,
@@ -543,7 +652,8 @@ class RunnerTests(Environment):
         globals_ = self.api["main"].__globals__
         with patch.dict(globals_, execute_provider=fail, completion_hold=lambda value: None,
                         set_terminal_identity=lambda: True), \
-                patch.dict(self.api["CENTER"], rescan_provider=lambda provider: None):
+                patch.dict(self.api["CENTER"], rescan_provider=lambda provider: None), \
+                patch("sys.stdout", new_callable=io.StringIO):
             self.assertEqual(self.api["main"]([operation["operation"], "mise", "update"]), 1)
         saved = self.api["CENTER"]["read_operation"]()
         self.assertEqual((saved["phase"], saved["provider_phase"], saved["outcome"]),
@@ -588,6 +698,148 @@ class RunnerTests(Environment):
         self.assertEqual((hint.res_name, hint.res_class), (b"dwm-update-center", b"DwmUpdateCenter"))
         self.assertNotIn("bad", output.getvalue())
 
+    def test_prompt_sudo_password_valid(self):
+        output = io.StringIO()
+        input_stream = io.StringIO("correct_pass\n")
+        calls = []
+        def mock_validator(pw):
+            calls.append(pw)
+            return True
+        ok = self.api["prompt_sudo_password"](input_stream=input_stream, output=output, validator=mock_validator)
+        self.assertTrue(ok)
+        self.assertEqual(calls, ["correct_pass"])
+        self.assertIn("Enter Sudo Password:  ", output.getvalue())
+        self.assertNotIn("Incorrect Password", output.getvalue())
+
+    def test_prompt_sudo_password_invalid(self):
+        output = io.StringIO()
+        input_stream = io.StringIO("wrong_pass\nx\n")
+        calls = []
+        def mock_validator(pw):
+            calls.append(pw)
+            return False
+        ok = self.api["prompt_sudo_password"](input_stream=input_stream, output=output, validator=mock_validator)
+        self.assertFalse(ok)
+        self.assertEqual(calls, ["wrong_pass"])
+        self.assertIn("Enter Sudo Password:  ", output.getvalue())
+        self.assertIn("\033[1;31mIncorrect Password - Press any key to quit. . .\033[0m", output.getvalue())
+
+    def test_completion_hold_custom_status_banners(self):
+        cases = [
+            (
+                {"outcome": "succeeded", "detail": "Desktop update installed, verified, and active."},
+                "\033[1;32mUpdate Installed Successfully!\033[0m",
+            ),
+            (
+                {"outcome": "succeeded", "detail": "Installed and verified. Log out and back in to activate the updated desktop."},
+                "\033[1;32mUpdate Installed Successfully! \033[1;33mRestart required, or Log out and back in for update to take effect.\033[0m",
+            ),
+            (
+                {"outcome": "succeeded", "detail": "Files installed and verified, but Quickshell did not respond. Log out and back in."},
+                "\033[1;33mUpdate Files Installed, but Quickshell restart timed out, \033[1;31mPlease Log out and back in.\033[0m",
+            ),
+            (
+                {"outcome": "succeeded", "detail": "Previous desktop files restored. Log out and back in, then check again."},
+                "\033[1;32mRecovery completed, \033[1;31mPlease Log out and back in for recovery to take effect.\033[0m",
+            ),
+        ]
+        for val, expected_text in cases:
+            output = io.StringIO()
+            self.api["completion_hold"](val, input_stream=io.StringIO("q"), output=output)
+            self.assertIn(expected_text, output.getvalue())
+            self.assertIn("\033[32m● \033[0mDone! Press any key to close...", output.getvalue())
+
+    def test_desktop_status_dots_and_percentage_formatting(self):
+        output = io.StringIO()
+        formatter = self.api["DesktopStatusFormatter"](output=output)
+
+        # Indeterminate step with cycling dots (1 to 5 dots, then reset to 1)
+        formatter.update("Creating backup.....", percent=-1)
+        self.assertEqual(output.getvalue(), "\r\033[KCreating backup.")
+
+        formatter.update("Creating backup.....", percent=-1)
+        self.assertEqual(output.getvalue(), "\r\033[KCreating backup.\r\033[KCreating backup. .")
+
+        formatter.update("Creating backup.....", percent=-1)
+        formatter.update("Creating backup.....", percent=-1)
+        formatter.update("Creating backup.....", percent=-1)
+        # 5th update should have 5 dots
+        self.assertEqual(
+            output.getvalue().split("\r\033[K")[-1],
+            "Creating backup. . . . .",
+        )
+
+        formatter.update("Creating backup.....", percent=-1)
+        # 6th update resets to 1 dot
+        self.assertEqual(
+            output.getvalue().split("\r\033[K")[-1],
+            "Creating backup.",
+        )
+
+        # Transition to new step emits newline first
+        formatter.update("Fetching Upstream.....", percent=-1)
+        self.assertIn("Creating backup.\n\r\033[KFetching Upstream.", output.getvalue())
+
+        # Percentage step formats in-place with green badge
+        formatter.update("Building", percent=20)
+        self.assertIn("\n\r\033[KBuilding \033[32m[ 20%]\033[0m", output.getvalue())
+
+        formatter.close()
+        self.assertTrue(output.getvalue().endswith("\n"))
+
+
+class RootHelperAuthTests(unittest.TestCase):
+    def setUp(self):
+        self.root_api = runpy.run_path(str(ROOT / "scripts/dwm-desktop-update-root"))
+
+    def test_caller_uid_supports_pkexec_and_sudo(self):
+        self.assertIn("caller_uid", self.root_api)
+        caller_uid = self.root_api["caller_uid"]
+        with patch.dict(os.environ, {"PKEXEC_UID": "1000"}, clear=True):
+            self.assertEqual(caller_uid(), 1000)
+        with patch.dict(os.environ, {"SUDO_UID": "1001"}, clear=True):
+            self.assertEqual(caller_uid(), 1001)
+        with patch.dict(os.environ, {"PKEXEC_UID": "1000", "SUDO_UID": "1001"}, clear=True):
+            self.assertEqual(caller_uid(), 1000)
+        with patch.dict(os.environ, {"PKEXEC_UID": "", "SUDO_UID": ""}, clear=True):
+            self.assertIsNone(caller_uid())
+        with patch.dict(os.environ, {"SUDO_UID": "abc"}, clear=True):
+            self.assertIsNone(caller_uid())
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertIsNone(caller_uid())
+
+
+class DesktopUpdateAuthorizeWordingTests(unittest.TestCase):
+    def setUp(self):
+        self.update_api = runpy.run_path(str(ROOT / "scripts/dwm-desktop-update"))
+
+    def test_authorize_detail_omits_legacy_settings_dialog_message(self):
+        state = Path("/tmp")
+        value = {}
+        saved_details = []
+
+        def fake_save_status(s, v, **kwargs):
+            if "detail" in kwargs:
+                saved_details.append(kwargs["detail"])
+            v.update(kwargs)
+            return v
+
+        class FakePrivileged:
+            started = False
+            def start(self):
+                self.started = True
+            def request(self, action, *args, **kwargs):
+                return "ok"
+
+        with patch.dict(self.update_api["authorize"].__globals__, {"save_status": fake_save_status}):
+            self.update_api["authorize"](state, value, FakePrivileged(), "begin")
+
+        self.assertTrue(len(saved_details) >= 1)
+        first_detail = saved_details[0]
+        self.assertNotIn("Settings closes to reveal the password dialog", first_detail)
+        self.assertEqual(first_detail, "Administrator authorization: prepare the desktop update.")
+
 
 if __name__ == "__main__":
     unittest.main()
+

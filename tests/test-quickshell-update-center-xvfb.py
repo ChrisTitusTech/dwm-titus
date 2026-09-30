@@ -196,6 +196,19 @@ ShellRoot {{
             }};
             return probeRow.Accessible.name + "|" + probeRow.visibleDetail();
         }}
+        function probeStatusLabel(): string {{ return probeRow.statusLabel(); }}
+        function probeStatusLabelColor(): string {{ return String(probeRow.statusLabelColor()); }}
+        function setProbeScanning(value: bool): void {{ probeRow.scanning = value; }}
+        function mutedColor(): string {{ return String(Theme.menuMutedText); }}
+        function probePackageSummary(): string {{ return probeRow.packageSummary(); }}
+        function probeHasDetails(): string {{ return String(probeRow.hasDetails); }}
+        function setProbeDetail(detail: string): void {{
+            probeRow.provider = {{
+                id: "fedora", name: "Fedora", status: "available", pending: 0, managed: 1200,
+                freshness: "fresh", lastSuccess: 30, updateAvailable: false, errorCode: "",
+                detail: detail, restart: "none", items: []
+            }};
+        }}
         function counts(): string {{ return model.refreshCount + ":" + model.saveCount; }}
         function editorFocused(): string {{ return String(updateWindow.editorFocused()); }}
         function saveStatus(): string {{ return updateWindow.saveStatus; }}
@@ -318,6 +331,14 @@ with tempfile.TemporaryDirectory(prefix="update-center-xvfb-", dir=tmp_root) as 
         assert call("setProbeRestart", "session") == "Fedora, Restart session|Sign out and back in to complete this update."
         assert call("setProbeRestart", "system") == "Fedora, Restart system|Restart the system to complete this update."
         assert call("setProbeRestart", "none") == "Fedora, Up to date|"
+        assert call("probeStatusLabel") == "Up to date"
+        call("setProbeScanning", "true")
+        assert call("probeStatusLabel") == "Checking"
+        assert call("probeStatusLabelColor") == call("mutedColor"), "Checking must use default muted text color"
+        call("setProbeScanning", "false")
+        assert call("probePackageSummary") == "1200 Packages"
+        call("setProbeDetail", "System notice")
+        assert call("probeHasDetails") == "true", "Provider with detail but no items must have details available"
         assert call("highDelegateCount") == "0", "Collapsed provider retained item delegates"
         assert call("setProbeClock", 999_941, 1_000_000) == "59s ago"
         assert call("setProbeClock", 999_941, 1_000_001) == "1m ago", "Relative age did not react without a rescan"

@@ -100,32 +100,83 @@ fi
 
 terminals+=("${DEFAULT_TERMINALS[@]}")
 
+launch_update_center_terminal() {
+	local candidate=$1
+	shift
+
+	case ${candidate##*/} in
+	alacritty)
+		DWM_UPDATE_CENTER_TERMINAL_IDENTITY=1 exec "$candidate" \
+			--class DwmUpdateCenter,dwm-update-center --title 'dwm update center' \
+			-o font.size=9 -e "$@"
+		;;
+	kitty)
+		DWM_UPDATE_CENTER_TERMINAL_IDENTITY=1 exec "$candidate" \
+			--class DwmUpdateCenter --name dwm-update-center --title 'dwm update center' \
+			-o font_size=9 "$@"
+		;;
+	dwmterm)
+		DWM_UPDATE_CENTER_TERMINAL_IDENTITY=1 exec "$candidate" \
+			-n dwm-update-center -c DwmUpdateCenter -t 'dwm update center' \
+			-s 9 -e "$@"
+		;;
+	st)
+		DWM_UPDATE_CENTER_TERMINAL_IDENTITY=1 exec "$candidate" \
+			-n dwm-update-center -c DwmUpdateCenter -t 'dwm update center' \
+			-f 'monospace:size=9' -e "$@"
+		;;
+	xterm)
+		DWM_UPDATE_CENTER_TERMINAL_IDENTITY=1 exec "$candidate" \
+			-name dwm-update-center -class DwmUpdateCenter -title 'dwm update center' \
+			-fs 9 -e "$@"
+		;;
+	*)
+		return 1
+		;;
+	esac
+}
+
+if ((update_center)); then
+	if [[ -n ${DWM_UPDATE_CENTER_TERMINAL:-} ]]; then
+		if command -v "$DWM_UPDATE_CENTER_TERMINAL" >/dev/null 2>&1; then
+			if ((print_only)); then
+				printf '%s\n' "$DWM_UPDATE_CENTER_TERMINAL"
+				exit 0
+			fi
+			launch_update_center_terminal "$DWM_UPDATE_CENTER_TERMINAL" "$@" ||
+				DWM_UPDATE_CENTER_TERMINAL_IDENTITY=1 exec "$DWM_UPDATE_CENTER_TERMINAL" -e "$@" 2>/dev/null ||
+				DWM_UPDATE_CENTER_TERMINAL_IDENTITY=1 exec "$DWM_UPDATE_CENTER_TERMINAL" "$@"
+		fi
+	fi
+
+	update_center_candidates=()
+	if [[ -n ${DWM_TERMINAL:-} ]]; then
+		update_center_candidates+=("$DWM_TERMINAL")
+	fi
+	if terminal=$(configured_terminal 2>/dev/null); then
+		update_center_candidates+=("$terminal")
+	fi
+	update_center_candidates+=(alacritty kitty dwmterm st xterm)
+
+	for candidate in "${update_center_candidates[@]}"; do
+		if command -v "$candidate" >/dev/null 2>&1; then
+			if ((print_only)); then
+				printf '%s\n' "$candidate"
+				exit 0
+			fi
+			launch_update_center_terminal "$candidate" "$@" || continue
+		fi
+	done
+
+	printf '%s\n' 'dwm-terminal: no supported terminal emulator for update center found.' >&2
+	exit 127
+fi
+
 for terminal in "${terminals[@]}"; do
 	if command -v "$terminal" >/dev/null 2>&1; then
 		if ((print_only)); then
 			printf '%s\n' "$terminal"
 			exit 0
-		fi
-		if ((update_center)); then
-			case ${terminal##*/} in
-			alacritty)
-				DWM_UPDATE_CENTER_TERMINAL_IDENTITY=1 exec "$terminal" \
-					--class DwmUpdateCenter,dwm-update-center --title 'dwm update center' -e "$@"
-				;;
-			kitty)
-				DWM_UPDATE_CENTER_TERMINAL_IDENTITY=1 exec "$terminal" \
-					--class DwmUpdateCenter --name dwm-update-center --title 'dwm update center' "$@"
-				;;
-			dwmterm | st)
-				DWM_UPDATE_CENTER_TERMINAL_IDENTITY=1 exec "$terminal" \
-					-n dwm-update-center -c DwmUpdateCenter -t 'dwm update center' -e "$@"
-				;;
-			xterm)
-				DWM_UPDATE_CENTER_TERMINAL_IDENTITY=1 exec "$terminal" \
-					-name dwm-update-center -class DwmUpdateCenter -title 'dwm update center' -e "$@"
-				;;
-			esac
-			continue
 		fi
 
 		if (($# == 0)) && herdr=$(find_herdr); then

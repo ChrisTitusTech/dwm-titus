@@ -926,10 +926,31 @@ def run_bounded(argv, *, timeout=180, env=None, cwd=None):
         process.stderr.close()
 
 
+def fedora_package_count():
+    for db_path in ("/usr/lib/sysimage/rpm/rpmdb.sqlite", "/var/lib/rpm/rpmdb.sqlite"):
+        try:
+            import sqlite3
+            with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True) as con:
+                row = con.execute("SELECT count(*) FROM Packages").fetchone()
+                if row and isinstance(row[0], int) and 0 <= row[0] <= 10000000:
+                    return row[0]
+        except (OSError, ValueError, sqlite3.Error):
+            continue
+    try:
+        import rpm
+        return sum(1 for _ in rpm.TransactionSet().dbMatch())
+    except (ImportError, Exception):
+        return None
+
+
 def scan_fedora():
     require_fedora()
     helper = Path(__file__).resolve().with_name("dwm-system-management")
-    return parse_fedora_snapshot(run_bounded([str(helper), "snapshot"], timeout=180))
+    result = parse_fedora_snapshot(run_bounded([str(helper), "snapshot"], timeout=180))
+    count = fedora_package_count()
+    if count is not None:
+        result = replace(result, managed=count)
+    return result
 
 
 def trusted_desktop_helper():
@@ -1035,12 +1056,22 @@ def flatpak_columns(payload):
     rows = {}
     for line in bounded_lines(payload):
         fields = line.split("\t")
-        if len(fields) != 2 or not re.fullmatch(APPLICATION_ID + r"/[A-Za-z0-9_-]+/[A-Za-z0-9._-]+", fields[0]):
+        if len(fields) == 1:
+            ref, version = fields[0], "unknown"
+        elif len(fields) == 2:
+            ref, version = fields[0], fields[1] or "unknown"
+        else:
             raise ValueError("incompatible Flatpak columns")
-        if fields[0] in rows or len(rows) >= MAX_ITEMS:
+        if ref.startswith("app/"):
+            ref = ref[4:]
+        elif ref.startswith("runtime/"):
+            ref = ref[8:]
+        if not re.fullmatch(APPLICATION_ID + r"/[A-Za-z0-9_-]+/[A-Za-z0-9._-]+", ref):
+            raise ValueError("incompatible Flatpak columns")
+        if ref in rows or len(rows) >= MAX_ITEMS:
             raise ValueError("duplicate or excessive Flatpak refs")
-        escape(fields[1])
-        rows[fields[0]] = fields[1] or "unknown"
+        escape(version)
+        rows[ref] = version
     return rows
 
 
@@ -1066,7 +1097,7 @@ def scan_flatpak():
                     url = "https://flathub.org/apps/" + name if kind == "app" else ""
                     items.append(ItemResult("update", name, inventory[ref], version, ref, scope, url))
         return validate_result(ProviderResult("flatpak", pending=len(items), managed=managed,
-                              update_available=True, items=tuple(items)))
+                              update_available=bool(items), items=tuple(items)))
     except ScanFailure:
         raise
     except ValueError:

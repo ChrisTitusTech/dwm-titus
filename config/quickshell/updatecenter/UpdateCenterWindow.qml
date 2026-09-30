@@ -269,6 +269,15 @@ ClickAwayPopup {
                         to: 21600
                         editable: true
                         value: root.updateCenterModel.draftRefreshSeconds
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.inputFontSize
+                        palette.base: Theme.controlNormalFill
+                        palette.text: Theme.textStrong
+                        palette.button: Theme.controlNormalFill
+                        palette.buttonText: Theme.text
+                        palette.window: Theme.popupBackground
+                        palette.highlight: Theme.accent
+                        palette.highlightedText: Theme.accentText
                         Accessible.name: "Refresh interval in seconds"
                         onValueModified: root.updateCenterModel.draftRefreshSeconds = value
                     }

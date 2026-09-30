@@ -872,6 +872,29 @@ class FlatpakDiscoveryTests(unittest.TestCase):
         self.assertEqual((result.items[0].current, result.items[0].available, result.items[0].url),
                          ("unknown", "unknown", ""))
 
+    def test_single_column_runtime_version_and_zero_updates_available(self):
+        ref = "org.example.Platform/x86_64/stable"
+        result, calls = self.scan([
+            ref + "\n", "",
+            "", "",
+            "", "",
+            "", "",
+        ])
+        self.assertEqual((result.pending, result.managed, result.update_available), (0, 1, False))
+        self.assertEqual(result.items, ())
+
+    def test_remote_ls_app_prefix_normalization(self):
+        ref = "org.example.App/x86_64/stable"
+        result, calls = self.scan([
+            ref + "\t1.0.0\n", "app/" + ref + "\t1.0.1\n",
+            "", "",
+            "", "",
+            "", "",
+        ])
+        self.assertEqual((result.pending, result.managed, result.update_available), (1, 1, True))
+        self.assertEqual(result.items[0].current, "1.0.0")
+        self.assertEqual(result.items[0].available, "1.0.1")
+
 
 class DesktopDiscoveryTests(unittest.TestCase):
     def setUp(self):
@@ -967,6 +990,20 @@ class DesktopDiscoveryTests(unittest.TestCase):
             if chosen:
                 self.assertIn(chosen, ("/usr/bin/dwm-desktop-update", "/usr/local/bin/dwm-desktop-update"))
                 self.assertEqual(Path(chosen).stat().st_uid, 0)
+
+
+    def test_fedora_scanner_populates_managed_package_count(self):
+        from unittest.mock import patch
+        self.assertIn("fedora_package_count", self.api)
+        function = self.api["scan_fedora"]
+        globals_ = function.__globals__
+        with patch.dict(globals_, {
+            "require_fedora": lambda: None,
+            "run_bounded": lambda *args, **kwargs: "system-management-protocol\t1\t2\nprovider\tupdates\tavailable\tdelegated\tPackageKit\tDetail\nstate\tupdate-summary\tavailable\t0\tDone\naction\tupdates-install-all\tunavailable\tdelegated\tupdates\tNone\tNone\ncomplete\tsnapshot\n",
+            "fedora_package_count": lambda: 1634,
+        }):
+            result = function()
+        self.assertEqual(result.managed, 1634)
 
 
 if __name__ == "__main__":

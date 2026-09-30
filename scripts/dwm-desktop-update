@@ -503,6 +503,19 @@ def save_status(state_dir, value, **changes):
 class PrivilegedSession:
     """One elevated helper, never a stored password or reusable global grant."""
     def __init__(self, helper, operation, generation, revision, mode="update"):
+        sudo = shutil.which("sudo")
+        if sudo:
+            try:
+                test_sudo = subprocess.run([sudo, "-n", "true"], capture_output=True)
+                if test_sudo.returncode == 0:
+                    self.command = [sudo, "-n", str(helper), "session", mode, operation, generation, revision]
+                    self.process = None
+                    self.buffer = b""
+                    self.started = False
+                    self.broken = False
+                    return
+            except OSError:
+                pass
         self.command = ["/usr/bin/pkexec", str(helper), "session", mode, operation, generation, revision]
         self.process = None
         self.buffer = b""
@@ -599,7 +612,7 @@ def authorize(state, value, privileged, action, *arguments, timeout=60):
               "complete": "finish the desktop transaction"}
     first = not privileged.started
     save_status(state, value, authorization=action if first else "",
-                detail=("Administrator authorization: " + labels[action] + ". Settings closes to reveal the password dialog."
+                detail=("Administrator authorization: " + labels[action] + "."
                         if first else "Using this update's authorization to " + labels[action] + "."))
     try:
         privileged.start()
@@ -1053,13 +1066,13 @@ def worker(operation):
                 source.mkdir(mode=0o700)
                 stage.mkdir(mode=0o700)
                 sandbox_run(["/usr/bin/true"], writable=(source, stage), cwd=source)
-                save_status(state, value, detail="Authorizing desktop update preparation...", percent=-1)
+                save_status(state, value, state="backing-up", detail="Creating backup.....", percent=-1)
                 reservation_started = True
                 authorize(state, value, privileged, "begin", preview["generation"], operation)
                 reservation_confirmed = True
-                save_status(state, value, state="downloading", detail="Downloading the confirmed desktop revision...", percent=-1)
+                save_status(state, value, state="downloading", detail="Fetching Upstream.....", percent=-1)
                 run(["git", "init", source])
-                run(["git", "-C", source, "fetch", SOURCE, preview["available"]], timeout=180, capture=False)
+                run(["git", "-C", source, "fetch", installed.get("source", SOURCE), preview["available"]], timeout=180, capture=False)
                 sandbox_run(["git", "-C", source, "checkout", "--detach", "FETCH_HEAD"], writable=(source,), cwd=source, capture=False)
                 if source_revision(source) != preview["available"]:
                     raise RuntimeError("Downloaded revision differs from the confirmed update")
@@ -1069,27 +1082,31 @@ def worker(operation):
                 if sorted(set(required)) != installed["packages"]:
                     required = sorted(set(required))
                     save_status(state, value, state="dependencies", percent=-1,
-                                detail="Preparing updated desktop dependencies: " + ", ".join(required))
+                                detail="Parsing package dependencies.....")
                     authorize(state, value, privileged, "packages", preview["generation"], operation,
                               json.dumps(required), timeout=1800)
-                save_status(state, value, state="building", detail="Building the desktop update...", percent=-1)
+                save_status(state, value, state="building", detail="Building [ 10%]", percent=10)
                 config_source = Path(user_receipt.get("checkout") or str(data)) / "config.h"
                 if not config_source.is_file():
                     config_source = state / "build-config.h"
                 if config_source.is_file():
                     shutil.copyfile(config_source, source / "config.h")
                 build_overrides = [key + "=" + os.environ[key] for key in ("CC", "CFLAGS", "CPPFLAGS", "LDFLAGS") if key in os.environ]
+                save_status(state, value, state="building", detail="Building [ 30%]", percent=30)
                 sandbox_run(["make", "clean", "all", *build_overrides], writable=(source, stage), cwd=source, timeout=300, capture=False)
+                save_status(state, value, state="building", detail="Building [ 80%]", percent=80)
                 layout = installed["layout"]
                 sandbox_run(["make", "install-system", "DESTDIR=" + str(stage), "PREFIX=" + layout["prefix"],
                      "MANPREFIX=" + layout["manprefix"], "XSESSIONSDIR=" + layout["xsessions"], "DATADIR=" + layout["datadir"]],
                     writable=(source, stage), cwd=source, timeout=180, capture=False)
+                save_status(state, value, state="building", detail="Building [100%]", percent=100)
                 candidate = read_json(stage / str(prefix / "share/dwm-titus/desktop-install.json").lstrip("/"))
                 if candidate["layout"] != installed["layout"]:
                     raise RuntimeError("Desktop file layout changed; use the documented source installer for this update")
+                candidate["source"] = installed["source"]
+                save_status(state, value, state="installing", detail="Installing update [ 20%]", percent=20)
                 make_bundle(stage, candidate, directory / "bundle.tar")
                 bundle_digest = digest(directory / "bundle.tar")
-                save_status(state, value, state="backing-up", detail="Preparing managed files and recovery copies...", percent=-1)
                 prepared = prepare_user(source, operation)
                 write_json(directory / "user-backup.json", prepared)
                 if (directory / "user-backup.json").stat().st_size > 64 * 1024 * 1024:
@@ -1103,7 +1120,7 @@ def worker(operation):
                 write_json(directory / "receipt-backup.json", {
                     name: (state / name).exists() for name in ("installed.json", "build-config.h")})
                 save_status(state, value, backup=str(directory / "user-backup.json"), state="installing",
-                            detail="Authorizing and installing system files...", percent=-1)
+                            detail="Installing update [ 50%]", percent=50)
                 system_started = True
                 save_status(state, value, systemStarted=True)
                 authorize(state, value, privileged, "apply", directory / "bundle.tar", preview["generation"], operation,
@@ -1128,14 +1145,16 @@ def worker(operation):
                     if backup.exists():
                         sync_directory(backup)
                     sync_directory(target.parent)
-                save_status(state, value, state="verifying", detail="Verifying all installed desktop files...", percent=-1)
+                save_status(state, value, state="installing", detail="Installing update [100%]", percent=100)
+                save_status(state, value, state="verifying", detail="Verifying installed files and running post-install [  1%]", percent=1)
                 total = len(candidate["files"])
                 for index, (name, record) in enumerate(candidate["files"].items()):
                     if fingerprint(Path(name)) != record:
                         raise RuntimeError("System file verification failed: " + name)
                     if index % 20 == 0 or index + 1 == total:
-                        save_status(state, value, percent=int((index + 1) * 100 / total),
-                                    detail="Verifying system files: " + str(index + 1) + " / " + str(total))
+                        pct = int((index + 1) * 100 / total)
+                        save_status(state, value, percent=pct,
+                                    detail=f"Verifying installed files and running post-install [{pct:>3}%]")
                 for name in ("config", "scripts"):
                     if tree_manifest(data / name) != tree_manifest(source / name):
                         raise RuntimeError("Managed data verification failed: " + name)
@@ -1152,7 +1171,7 @@ def worker(operation):
                     previous_shells = quickshell_processes()
                 except OSError:
                     previous_shells = set()
-                save_status(state, value, state="activating", detail="Checking desktop activation...", percent=-1,
+                save_status(state, value, state="activating", detail="Almost there, hang tight.....", percent=-1,
                             activationShells=sorted(previous_shells))
                 if running_dwm_matches(prefix / "bin/dwm") is not True:
                     completion = dict(state="restart-required", restart="session", percent=100,

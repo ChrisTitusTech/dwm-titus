@@ -355,17 +355,22 @@ def apply_archive(archive, expected, operation, uid, bundle_digest, revision):
     print("System files installed and verified", flush=True)
 
 
+def caller_uid():
+    value = os.environ.get("PKEXEC_UID") or os.environ.get("SUDO_UID") or ""
+    return int(value) if value.isdigit() else None
+
+
 def main():
     os.umask(0o022)
-    if (os.geteuid() != 0 or not os.environ.get("PKEXEC_UID", "").isdigit()
+    uid = caller_uid()
+    if (os.geteuid() != 0 or uid is None
             or Path(__file__).absolute() != PREFIX / "libexec/dwm-titus/dwm-desktop-update-root"):
-        fail("Use the installed desktop updater through polkit")
+        fail("Use the installed desktop updater through polkit or sudo")
     trusted(Path(__file__).absolute())
     if not os.access(__file__, os.X_OK):
         fail("Installed helper is not executable")
     if not re.search(r'^ID=["\']?fedora["\']?$', Path("/etc/os-release").read_text(), re.M):
         fail("Desktop updates support Fedora only")
-    uid = int(os.environ["PKEXEC_UID"])
     if uid == 0:
         fail("A desktop user must request this operation")
     args = sys.argv[1:]

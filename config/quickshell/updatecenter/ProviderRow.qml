@@ -75,8 +75,46 @@ Rectangle {
             + "\n" + item.current + " -> " + item.available;
     }
 
+    readonly property bool hasDetails: (root.provider.items && root.provider.items.length > 0) || root.visibleDetail().length > 0
+
+    function statusLabel() {
+        if (root.providerRecoverable) return "Recovery required";
+        if (root.providerActive) return "Active";
+        if (root.scanning) return "Checking";
+        if (!root.online) return "Offline";
+        if (root.provider.freshness === "error") return "Failed";
+        if (root.provider.freshness === "stale") return "Stale";
+        if (root.provider.restart === "session") return "Restart session";
+        if (root.provider.restart === "system") return "Restart system";
+        if (root.provider.updateAvailable || root.provider.pending > 0) return "Available";
+        if (root.provider.status === "restricted") return "Restricted";
+        if (root.provider.status === "partial") return "Partial";
+        return "Up to date";
+    }
+
+    function statusLabelColor() {
+        if (root.scanning || !root.online) return Theme.menuMutedText;
+        if (root.providerRecoverable || root.provider.freshness === "error") return Theme.danger;
+        if (root.provider.updateAvailable || root.provider.pending > 0 || root.provider.freshness === "stale"
+                || root.provider.restart === "session" || root.provider.restart === "system") return Theme.warning;
+        if (root.provider.status === "available" && !root.provider.updateAvailable) return Theme.success;
+        return Theme.menuMutedText;
+    }
+
+    function packageCount() {
+        if (root.provider.updateAvailable || root.provider.pending > 0) {
+            return root.provider.pending || (root.provider.items ? root.provider.items.length : 0) || 1;
+        }
+        return root.provider.managed !== null ? root.provider.managed : 0;
+    }
+
+    function packageSummary() {
+        const count = root.packageCount();
+        return count + (count === 1 ? " Package" : " Packages");
+    }
+
     function toggleExpanded() {
-        if (root.provider.items.length === 0) return false;
+        if (!root.hasDetails) return false;
         root.expanded = !root.expanded;
         return true;
     }
@@ -151,15 +189,23 @@ Rectangle {
                     elide: Text.ElideRight
                 }
 
-                UiText {
+                RowLayout {
                     Layout.fillWidth: true
-                    text: root.statusSummary()
-                        + (root.provider.managed !== null ? "  |  Managed " + root.provider.managed : "")
-                        + "  |  " + root.relativeCheckAge
-                    color: root.provider.freshness === "error" ? Theme.danger
-                        : root.provider.freshness === "stale" ? Theme.warning : Theme.menuMutedText
-                    font.pixelSize: Theme.fontBodySmallSize
-                    elide: Text.ElideRight
+                    spacing: 0
+
+                    UiText {
+                        text: root.statusLabel()
+                        color: root.statusLabelColor()
+                        font.pixelSize: Theme.fontBodySmallSize
+                    }
+
+                    UiText {
+                        Layout.fillWidth: true
+                        text: "  |  " + root.packageSummary()
+                        color: Theme.menuMutedText
+                        font.pixelSize: Theme.fontBodySmallSize
+                        elide: Text.ElideRight
+                    }
                 }
             }
 
@@ -174,14 +220,14 @@ Rectangle {
             ShellButton {
                 label: root.expanded ? "Collapse" : "Details"
                 accessibleDescription: root.provider.name + " update details"
-                enabled: root.provider.items.length > 0
+                enabled: root.hasDetails
                 onActivated: root.toggleExpanded()
             }
         }
 
         UiText {
             Layout.fillWidth: true
-            visible: root.visibleDetail().length > 0
+            visible: root.expanded && root.visibleDetail().length > 0
             text: root.visibleDetail()
             color: root.provider.errorCode.length > 0 ? Theme.danger : Theme.menuMutedText
             font.pixelSize: Theme.fontBodySmallSize
