@@ -59,7 +59,7 @@ REGISTRY = (
 )
 
 OPERATION_PATTERN = re.compile(r"op-[0-9a-f]{32}")
-OPERATION_PHASES = {"reserved", "launched", "running", "preparing", "fedora-executing",
+OPERATION_PHASES = {"reserved", "launched", "running", "preparing", "fedora-executing", "fedora-dnf",
                     "desktop-starting", "flatpak-system", "flatpak-system-complete", "flatpak-user",
                     "flatpak-user-complete", "mise-inventory", "mise-update", "mise-recheck",
                     "recovering", "completed", "failed",
@@ -99,7 +99,7 @@ def validate_operation(value):
     if isinstance(value, dict) and set(value) == OPERATION_FIELDS - {"launcher_pid", "launcher_identity"}:
         value = {**value, "launcher_pid": 0, "launcher_identity": ""}
     providers = {meta.identifier for meta in REGISTRY}
-    phase_provider = {"fedora-executing": "fedora", "desktop-starting": "dwm-titus",
+    phase_provider = {"fedora-executing": "fedora", "fedora-dnf": "fedora", "desktop-starting": "dwm-titus",
                       "flatpak-system": "flatpak", "flatpak-system-complete": "flatpak",
                       "flatpak-user": "flatpak", "flatpak-user-complete": "flatpak",
                       "mise-inventory": "mise", "mise-update": "mise", "mise-recheck": "mise"}
@@ -203,14 +203,19 @@ def reserve_operation(provider, action, now=None):
             if observed is not None and (not existing["terminal_identity"]
                                          or observed == existing["terminal_identity"]):
                 raise BlockingIOError("the interrupted provider terminal is still active")
+        recovery_provider_phase = existing["provider_phase"] if action == "recover" and existing is not None else "reserved"
+        if (action == "recover" and provider == "fedora" and existing is not None
+                and "fedora-dnf" in {existing["provider_phase"], existing["recovery_provider_phase"]}):
+            recovery_provider_phase = "fedora-dnf"
         value = {"schema": 1, "operation": "op-" + secrets.token_hex(16), "provider": provider,
-                 "action": action, "phase": "reserved", "provider_phase": "reserved",
+                 "action": action, "phase": "reserved",
+                 "provider_phase": "fedora-dnf" if recovery_provider_phase == "fedora-dnf" else "reserved",
                  "outcome": "pending", "created": now,
                  "updated": now, "terminal_pid": 0, "terminal_identity": "",
                  "launcher_pid": os.getpid(), "launcher_identity": process_identity(os.getpid()) or "",
                  "recovery_of": existing["operation"] if action == "recover" and existing is not None else "",
                  "recovery_phase": existing["phase"] if action == "recover" and existing is not None else "",
-                 "recovery_provider_phase": existing["provider_phase"] if action == "recover" and existing is not None else "reserved",
+                 "recovery_provider_phase": recovery_provider_phase,
                  "detail": "Operation reserved"}
         write_operation(value)
         return value
@@ -470,7 +475,7 @@ def parse_fedora_snapshot(payload):
         raise ValueError("incomplete Fedora snapshot")
     sizes = {"snapshot-generation": 2, "provider": 6, "state": 5, "action": 7,
              "update": 7, "package-change": 6, "error": 4, "account": 5,
-             "repository": 4, "filesystem": 10, "active-operation": 9,
+             "repository": 4, "filesystem": 10, "active-operation": 8,
              "terminal-handoff": 4}
     rows, plans, seen, summary, provider, update_available = [], {}, set(), None, None, False
     restart = "none"
@@ -979,7 +984,7 @@ def fedora_package_count():
 def scan_fedora():
     require_fedora()
     helper = Path(__file__).resolve().with_name("dwm-system-management")
-    result = parse_fedora_snapshot(run_bounded([str(helper), "snapshot"], timeout=180))
+    result = parse_fedora_snapshot(run_bounded([str(helper), "snapshot-updates"], timeout=180))
     count = fedora_package_count()
     if count is not None:
         result = replace(result, managed=count)

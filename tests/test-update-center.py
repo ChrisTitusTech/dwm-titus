@@ -163,6 +163,31 @@ class SnapshotProtocolTests(unittest.TestCase):
             self.assertEqual(normalized.identifier, "fedora")
             self.assertIs(type(normalized.pending), int)
 
+    def test_active_operation_from_backend_renderer_disables_advisory_update(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        backend = runpy.run_path(str(ROOT / "scripts/dwm-system-management"))
+        operation = SimpleNamespace(operation_id="op-" + "0" * 32,
+            action_id="updates-install-all", kind="update", state="running")
+        for percent, cancelable in ((None, False), (42, True)):
+            with self.subTest(percent=percent, cancelable=cancelable):
+                recovery = SimpleNamespace(failures=(), prior_restart=None,
+                    state=SimpleNamespace(active=operation, handoff=None, restart=None),
+                    evidence=SimpleNamespace(percent=percent, allow_cancel=cancelable))
+                renderer = backend["build_managed_snapshot"]
+                with patch.dict(renderer.__globals__, {
+                        "read_recovery_snapshot": lambda unused: recovery,
+                        "build_snapshot": lambda unused, **kwargs: source(ROW).splitlines()}):
+                    lines = renderer(object())
+                result = self.api["parse_fedora_snapshot"]("\n".join(lines) + "\n")
+                self.assertEqual(result.pending, 1)
+                self.assertEqual(result.items[0].package_id, "z;2;x86_64;repo")
+                self.assertFalse(result.update_available)
+                active = next(line for line in lines if line.startswith("active-operation\t"))
+                malformed = "\n".join(lines).replace(active, active + "\textra") + "\n"
+                with self.assertRaises(ValueError):
+                    self.api["parse_fedora_snapshot"](malformed)
+
     def test_existing_terminal_handoff_disables_advisory_update(self):
         payload = source(ROW).replace("complete\tsnapshot", "terminal-handoff\top-00000000000000000000000000000000\tupdates-install-all\tupdate\ncomplete\tsnapshot")
         result = self.api["parse_fedora_snapshot"](payload)
@@ -1100,9 +1125,15 @@ class DesktopDiscoveryTests(unittest.TestCase):
         self.assertIn("fedora_package_count", self.api)
         function = self.api["scan_fedora"]
         globals_ = function.__globals__
+
+        def snapshot_command(argv, **options):
+            self.assertEqual(argv, [str(ROOT / "scripts/dwm-system-management"), "snapshot-updates"])
+            self.assertLessEqual(options["timeout"], 180)
+            return source().replace("available\t1\tReady", "available\t0\tReady")
+
         with patch.dict(globals_, {
             "require_fedora": lambda: None,
-            "run_bounded": lambda *args, **kwargs: "system-management-protocol\t1\t2\nprovider\tupdates\tavailable\tdelegated\tPackageKit\tDetail\nstate\tupdate-summary\tavailable\t0\tDone\naction\tupdates-install-all\tunavailable\tdelegated\tupdates\tNone\tNone\ncomplete\tsnapshot\n",
+            "run_bounded": snapshot_command,
             "fedora_package_count": lambda: 1634,
         }):
             result = function()
@@ -1121,6 +1152,33 @@ class DesktopDiscoveryTests(unittest.TestCase):
                 self.assertEqual(count_fn(), 3)
             with patch.dict(sys.modules, {"rpm": None}):
                 self.assertIsNone(count_fn())
+
+
+class NativeFedoraOperationTests(unittest.TestCase):
+    def test_native_provenance_survives_repeated_interrupted_recovery(self):
+        from unittest.mock import patch
+        with workspace() as directory, patch.dict(os.environ, {"XDG_STATE_HOME": directory}):
+            api = runpy.run_path(str(HELPER))
+            previous = api["reserve_operation"]("fedora", "update")
+            api["update_operation"](previous["operation"], phase="interrupted",
+                provider_phase="fedora-dnf", outcome="unknown")
+            for phase in ("reserved", "preparing"):
+                recovery = api["reserve_operation"]("fedora", "recover")
+                self.assertEqual(recovery["recovery_of"], previous["operation"])
+                self.assertEqual(recovery["provider_phase"], "fedora-dnf")
+                self.assertEqual(recovery["recovery_provider_phase"], "fedora-dnf")
+                # Even a crash after a generic preparation checkpoint retains
+                # native provenance through the next reservation.
+                api["update_operation"](recovery["operation"], phase="interrupted",
+                    provider_phase=phase, outcome="unknown")
+                previous = recovery
+            final = api["reserve_operation"]("fedora", "recover")
+            self.assertEqual(final["recovery_provider_phase"], "fedora-dnf")
+            for field in ("phase", "provider_phase", "recovery_provider_phase"):
+                with self.subTest(field=field), self.assertRaises(ValueError):
+                    api["validate_operation"]({**final, "provider": "mise",
+                        "provider_phase": "reserved", "recovery_provider_phase": "reserved",
+                        field: "fedora-dnf"})
 
 
 class OperationWatchTests(unittest.TestCase):

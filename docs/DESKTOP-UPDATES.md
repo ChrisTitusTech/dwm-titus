@@ -44,10 +44,22 @@ Expand a provider to inspect its available updates, then choose **Update** for
 that provider. Updates run in a dedicated floating terminal; closing the panel
 leaves the operation running. Read the terminal result and press a key to close
 it. Interrupted work retains recovery guidance instead of claiming success.
-Choosing **Recover** reattaches to desktop work that is still running. For a
-Fedora update whose result cannot be established, recovery rechecks PackageKit
-and releases the retained handoff only after no active work remains. The result
-stays unknown; recovery does not claim the packages were installed. Operation
+Fedora updates run the installed DNF5 directly in that terminal, with its full
+transaction plan, download progress, package/scriptlet output, and confirmation
+prompt. Existing sudo authorization is reused; otherwise sudo prompts in the
+terminal. No automatic Yes option is supplied. Declining confirmation or a normal command
+failure releases the Update Center slot after the terminal closes, without
+claiming the update succeeded. PackageKit provides read-only
+update discovery, and an existing PackageKit operation must finish or be
+recovered before a new DNF transaction starts.
+
+Choosing **Recover** reattaches to desktop work that is still running. For an
+interrupted DNF update, it explicitly retries the normal DNF workflow under
+DNF's transaction lock, with a fresh plan and confirmation. This is not rollback
+or proof that the previous attempt succeeded. Recovery of an older PackageKit
+operation remains separate: it reconciles that exact operation and releases
+its retained handoff only after no active work remains. An unprovable previous
+outcome stays unknown. Operation
 changes and terminal exits are watched without continuous background polling.
 If an optional provider disappears while its operation is retained, its row stays
 visible with guidance to restore the tool, refresh Update Center, then choose

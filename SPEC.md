@@ -467,6 +467,13 @@ requiring a reboot. The application must use a hybrid integration model:
   capabilities must expose a clean unavailable or unsupported state rather
   than failing the entire application.
 
+The panel Update Center delegates confirmed Fedora updates to the installed,
+root-owned DNF5 through sudo in a terminal. It must preserve DNF's native output
+and transaction confirmation, reuse existing authorization where possible, and
+never supply automatic consent. PackageKit remains the read-only discovery API
+and handles recovery of its existing operations; native DNF retries must not
+acknowledge unrelated PackageKit work or claim an interrupted attempt succeeded.
+
 The Settings platform must distinguish:
 
 1. Read-only state available without authorization.

@@ -268,7 +268,7 @@ class RunnerTests(Environment):
         self.assertNotIn("validate_sudo_password", self.api)
         self.assertNotIn("prompt_sudo_password", self.api)
 
-    def run_adapter(self, provider, action, responses=None, recovery_basis=("interrupted", "flatpak-system")):
+    def run_adapter(self, provider, action, responses=None, recovery_basis=("interrupted", "flatpak-system"), legacy=False):
         calls = []
         phases = []
         responses = list(responses or [])
@@ -278,13 +278,14 @@ class RunnerTests(Environment):
             if isinstance(value, Exception):
                 raise value
             return value
-        with patch.dict(self.api["execute_provider"].__globals__, run_command=command, run_protocol_command=command,
+        with patch.dict(self.api["CENTER"], active_operation=lambda: {"operation": self.operation, "recovery_provider_phase": "fedora-executing"}), \
+                patch.dict(self.api["execute_provider"].__globals__, run_command=command, run_protocol_command=command,
                         checkpoint=lambda operation, phase, detail, **k: phases.append(phase),
                         validate_provider_action=lambda provider, action: None,
                         flatpak_recovery_basis=lambda operation: recovery_basis,
                         executable=lambda name: "/usr/bin/" + name,
                         trusted_desktop_helper=lambda: "/usr/bin/dwm-desktop-update"):
-            result = self.api["execute_provider"](self.operation, provider, action)
+            result = self.api["execute_packagekit"](self.operation, action) if legacy else self.api["execute_provider"](self.operation, provider, action)
         return result, calls, phases
 
     def fedora_snapshot(self, generation="b" * 64, restart="none", active=""):
@@ -385,6 +386,7 @@ class RunnerTests(Environment):
 
         expected = [
             "\033[1;34m->\033[0m \033[1mUpdating:\033[0m hunspell \033[32m[ 20%]\033[0m",
+            "\033[32m[ 24%]\033[0m PackageKit running",
             "\033[1;34m->\033[0m \033[1mUpdating:\033[0m perl-LWP-MediaTypes \033[32m[ 28%]\033[0m",
             "\033[1;34m->\033[0m \033[1mCleaning:\033[0m hunspell \033[32m[ 28%]\033[0m",
             "\033[1;34m->\033[0m \033[1mCleaning:\033[0m hunspell-filesystem \033[32m[ 87%]\033[0m",
@@ -428,10 +430,167 @@ class RunnerTests(Environment):
                 f"audit\t{operation}\tupdates-install-all\tupdate\t{state}\t2026-09-05T01:00:00Z\t2026-09-05T01:01:00Z\tAuthoritative result\n"
                 "complete\toperation\n")
 
+    def test_native_dnf_inherits_terminal_and_preserves_backend_before_spawn(self):
+        for action, status, expected in (("update", 0, "succeeded"), ("update", 1, "unknown"),
+                                         ("update", -15, "unknown"), ("recover", 0, "succeeded")):
+            with self.subTest(action=action, status=status):
+                receipt = {"operation": self.operation, "recovery_provider_phase": "fedora-dnf"}
+                snapshot = self.fedora_snapshot().replace("complete\tsnapshot", "provider\trecovery\tavailable\tuser-session\tdwm-system-management\tReady\ncomplete\tsnapshot")
+                calls = []
+                def update(operation, **changes):
+                    receipt.update(changes)
+                def native(argv, **options):
+                    self.assertEqual(receipt["provider_phase"], "fedora-dnf")
+                    self.assertEqual(receipt["phase"], "fedora-executing")
+                    calls.append((argv, options))
+                    return status
+                with patch.dict(self.api["CENTER"], active_operation=lambda: receipt, update_operation=update), \
+                        patch.dict(self.api["execute_fedora"].__globals__,
+                                   run_command=lambda argv, **options: snapshot,
+                                   trusted_native_command=lambda path: path,
+                                   checkpoint=lambda operation, phase, detail: update(operation, phase=phase)), \
+                        patch.object(subprocess, "call", native), contextlib.redirect_stdout(io.StringIO()) as output:
+                    value = self.api["execute_fedora"](self.operation, action)
+                self.assertEqual(calls, [(["/usr/bin/sudo", "--", "/usr/bin/dnf5", "--setopt=exit_on_lock=True", "--setopt=assumeyes=False", "--setopt=assumeno=False", "--refresh", "upgrade"], {"cwd": "/"})])
+                self.assertEqual(value["outcome"], expected)
+                self.assertEqual(value["restart"], "unknown")
+                if status:
+                    self.assertEqual(value["phase"], "interrupted" if status < 0 else "failed")
+                if action == "recover":
+                    self.assertIn("Previous DNF outcome is unknown", output.getvalue())
+
+    def test_native_positive_exit_releases_slot_only_after_terminal_closes(self):
+        center = self.api["CENTER"]
+        operation = center["reserve_operation"]("fedora", "update")
+        snapshot = self.fedora_snapshot().replace("complete\tsnapshot", "provider\trecovery\tavailable\tuser-session\tdwm-system-management\tReady\ncomplete\tsnapshot")
+        with patch.dict(self.api["execute_fedora"].__globals__, run_command=lambda *args, **kwargs: snapshot,
+                        trusted_native_command=lambda path: path), \
+                patch.object(subprocess, "call", return_value=1), contextlib.redirect_stdout(io.StringIO()):
+            value = self.api["execute_fedora"](operation["operation"], "update")
+        self.assertEqual((value["phase"], value["outcome"]), ("failed", "unknown"))
+        center["update_operation"](operation["operation"], phase=value["phase"], outcome=value["outcome"], detail=value["detail"])
+        with self.assertRaises(BlockingIOError):
+            center["reserve_operation"]("mise", "update")
+        with patch.dict(center["terminal_closed"].__globals__, process_identity=lambda pid: None,
+                        rescan_provider=lambda provider: None):
+            closed = center["terminal_closed"](operation["operation"])
+        self.assertEqual((closed["phase"], closed["outcome"], closed["provider_phase"]), ("closed", "unknown", "fedora-dnf"))
+        self.assertEqual(center["reserve_operation"]("mise", "update")["provider"], "mise")
+
+    def test_native_dnf_preserves_real_pty_output_and_confirmation(self):
+        import pty
+        import select
+        import time
+        sudo = Path(self.temp.name) / "sudo"
+        dnf = Path(self.temp.name) / "dnf5"
+        sudo.write_text('#!/bin/sh\nshift\nexec "$@"\n')
+        sudo.chmod(0o700)
+        dnf.write_text("#!" + sys.executable + "\nimport os,sys\n"
+                       "assert all(os.isatty(fd) for fd in (0,1,2))\n"
+                       "print('NATIVE STDOUT', flush=True)\n"
+                       "print('NATIVE STDERR', file=sys.stderr, flush=True)\n"
+                       "print('Progress 10%\\rProgress 20%', flush=True)\n"
+                       "assert input('Confirm transaction [y/N]: ') == 'y'\n"
+                       "print('NATIVE COMPLETE', flush=True)\n")
+        dnf.chmod(0o700)
+        snapshot = self.fedora_snapshot().replace("complete\tsnapshot", "provider\trecovery\tavailable\tuser-session\tdwm-system-management\tReady\ncomplete\tsnapshot")
+        harness = ("import runpy\na=runpy.run_path(" + repr(str(RUNNER)) + ")\n"
+                   "g=a['execute_fedora'].__globals__\n"
+                   "g['run_command']=lambda *args,**kwargs: " + repr(snapshot) + "\n"
+                   "g['checkpoint']=lambda *args: None\n"
+                   "a['CENTER']['update_operation']=lambda *args,**kwargs: None\n"
+                   "g['trusted_native_command']=lambda path: " + repr(str(sudo)) + " if path.endswith('/sudo') else " + repr(str(dnf)) + "\n"
+                   "r=a['execute_fedora'](" + repr(self.operation) + ",'update')\n"
+                   "assert r['outcome']=='succeeded',r\n")
+        master, slave = pty.openpty()
+        process = subprocess.Popen([sys.executable, "-c", harness], stdin=slave, stdout=slave, stderr=slave)
+        os.close(slave)
+        output = bytearray()
+        answered = False
+        deadline = time.monotonic() + 10
+        try:
+            while time.monotonic() < deadline:
+                if select.select([master], [], [], 0.1)[0]:
+                    try:
+                        data = os.read(master, 65536)
+                    except OSError:
+                        break
+                    if not data:
+                        break
+                    output.extend(data)
+                    if not answered and b"Confirm transaction [y/N]: " in output:
+                        os.write(master, b"y\n")
+                        answered = True
+                elif process.poll() is not None:
+                    break
+            self.assertEqual(process.wait(timeout=2), 0, output.decode(errors="replace"))
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait()
+            os.close(master)
+        for marker in (b"NATIVE STDOUT", b"NATIVE STDERR", b"Progress 10%\rProgress 20%", b"NATIVE COMPLETE"):
+            self.assertIn(marker, output)
+        self.assertTrue(answered)
+
+    def test_native_dnf_blocks_existing_packagekit_owner_and_unreadable_recovery(self):
+        for retained in ("active-operation\top-" + "c" * 32 + "\tupdates-install-all\tupdate\trunning\t50\tyes\tBusy\n",
+                         "terminal-handoff\top-" + "c" * 32 + "\tupdates-install-all\tupdate\n", ""):
+            with self.subTest(retained=retained):
+                snapshot = self.fedora_snapshot(active=retained)
+                with patch.dict(self.api["execute_fedora"].__globals__,
+                                run_command=lambda argv, **options: snapshot,
+                                checkpoint=lambda *args: None,
+                                trusted_native_command=lambda path: self.fail("must not launch")):
+                    if retained:
+                        value = self.api["execute_fedora"](self.operation, "update")
+                        self.assertEqual((value["outcome"], value["phase"]), ("unknown", "interrupted"))
+                        self.assertIn("Settings > System > Fedora updates", value["detail"])
+                    else:
+                        with self.assertRaisesRegex(ValueError, "recovery state"):
+                            self.api["execute_fedora"](self.operation, "update")
+
+    def test_native_recovery_directs_unrelated_packagekit_owner_to_settings(self):
+        receipt = {"operation": self.operation, "recovery_provider_phase": "fedora-dnf"}
+        calls = []
+        snapshot = self.fedora_snapshot(active="terminal-handoff\top-" + "c" * 32 + "\tupdates-install-all\tupdate\n")
+        def command(argv, **options):
+            calls.append(argv[1:])
+            return snapshot
+        with patch.dict(self.api["CENTER"], active_operation=lambda: receipt,
+                        update_operation=lambda operation, **changes: receipt.update(changes)), \
+                patch.dict(self.api["execute_fedora"].__globals__, run_command=command,
+                           trusted_native_command=lambda path: self.fail("must not run DNF")), \
+                contextlib.redirect_stdout(io.StringIO()):
+            value = self.api["execute_fedora"](self.operation, "recover")
+        self.assertEqual(calls, [["snapshot-updates"]])
+        self.assertEqual(receipt["provider_phase"], "fedora-dnf")
+        self.assertEqual(value["outcome"], "unknown")
+        self.assertIn("Settings > System > Fedora updates", value["detail"])
+
+    def test_native_command_rejects_writable_or_nonroot_symlink_hops(self):
+        from types import SimpleNamespace
+        import stat
+        for unsafe in ("/usr", "/usr/bin/dnf5", "/opt/private"):
+            for nonroot in (False, True):
+                def metadata(path):
+                    path = str(path)
+                    mode = stat.S_IFLNK | 0o777 if path == "/usr/bin/dnf5" else stat.S_IFREG | 0o755 if path == "/opt/private/dnf5" else stat.S_IFDIR | 0o755
+                    return SimpleNamespace(st_uid=1000 if nonroot and path == unsafe else 0,
+                                           st_mode=mode | (0o022 if not nonroot and path == unsafe else 0))
+                # A symlink's own 0777 mode is harmless; its ownership and target
+                # parents determine whether a user can redirect the command.
+                if unsafe == "/usr/bin/dnf5" and not nonroot:
+                    continue
+                with patch.object(os, "lstat", side_effect=metadata), \
+                        patch.object(os, "readlink", return_value="/opt/private/dnf5"), \
+                        self.assertRaises(PermissionError):
+                    self.api["trusted_native_command"]("/usr/bin/dnf5")
+
     def test_fedora_uses_packagekit_snapshot_update_watch_and_reconciliation(self):
         snapshot = self.fedora_snapshot(restart="system")
-        result, calls, phases = self.run_adapter("fedora", "update", [snapshot, self.operation_stream(), snapshot, ""])
-        self.assertEqual([call[0][1] for call in calls], ["snapshot", "updates-install-all", "snapshot", "ack-operation"])
+        result, calls, phases = self.run_adapter("fedora", "update", [snapshot, self.operation_stream(), snapshot, ""], legacy=True)
+        self.assertEqual([call[0][1] for call in calls], ["snapshot-updates", "updates-install-all", "snapshot-updates", "ack-operation"])
         self.assertEqual(calls[1][0][2], "b" * 64)
         self.assertEqual(calls[3][0][2], "op-" + "c" * 32)
         self.assertEqual((result["outcome"], result["restart"]), ("succeeded", "system"))
@@ -440,7 +599,7 @@ class RunnerTests(Environment):
     def test_fedora_rejects_malformed_authoritative_stream(self):
         with self.assertRaisesRegex(ValueError, "PackageKit operation"):
             self.run_adapter("fedora", "update", [self.fedora_snapshot(),
-                self.operation_stream().replace("complete\toperation", "complete\tsnapshot")])
+                self.operation_stream().replace("complete\toperation", "complete\tsnapshot")], legacy=True)
 
     def test_fedora_update_without_operation_records_reports_failure(self):
         snapshot = self.fedora_snapshot(restart="none")
@@ -449,7 +608,7 @@ class RunnerTests(Environment):
             "error\tupdates\tauthorization\tAuthentication was dismissed\n"
             "complete\toperation\n"
         )
-        result, calls, phases = self.run_adapter("fedora", "update", [snapshot, no_operation_stream, snapshot])
+        result, calls, phases = self.run_adapter("fedora", "update", [snapshot, no_operation_stream, snapshot], legacy=True)
         self.assertEqual(result["outcome"], "failed")
         self.assertEqual(result["phase"], "failed")
         self.assertIn("did not start", result["detail"])
@@ -460,7 +619,7 @@ class RunnerTests(Environment):
         result, calls, _ = self.run_adapter("fedora", "recover", [snapshot,
             self.operation_stream("interrupted"), snapshot, "", self.fedora_snapshot()])
         self.assertEqual([call[0][1] for call in calls],
-                         ["snapshot", "watch-operation", "snapshot", "ack-operation", "snapshot"])
+                         ["snapshot-updates", "watch-operation", "snapshot-updates", "ack-operation", "snapshot-updates"])
         self.assertEqual(calls[3][0][2], "op-" + "c" * 32)
         self.assertEqual((result["outcome"], result["phase"]), ("unknown", "failed"))
         self.assertIn("outcome remains unknown", result["detail"])
@@ -470,7 +629,7 @@ class RunnerTests(Environment):
 
     def test_interrupted_fedora_recovery_does_not_ack_active_or_changed_work(self):
         handoff = "terminal-handoff\top-" + "c" * 32 + "\tupdates-install-all\tupdate\n"
-        active = "active-operation\top-" + "d" * 32 + "\tupdates-install-all\tupdate\trunning\tunknown\tno\tStarted\tWorking\n"
+        active = "active-operation\top-" + "d" * 32 + "\tupdates-install-all\tupdate\trunning\tunknown\tno\tWorking\n"
         for retained in (active, handoff.replace("c" * 32, "d" * 32)):
             with self.subTest(retained=retained):
                 result, calls, _ = self.run_adapter("fedora", "recover", [self.fedora_snapshot(active=handoff),
@@ -709,7 +868,7 @@ class RunnerTests(Environment):
                 with patch.dict(globals_, execute_provider=lambda *args: {
                         "outcome": outcome, "phase": phase, "detail": "Terminal result", "restart": "none"},
                         completion_hold=hold, set_terminal_identity=lambda: True), \
-                        patch.dict(self.api["CENTER"], rescan_provider=lambda provider: None), \
+                        patch.dict(self.api["CENTER"], rescan_provider=lambda provider: self.fail("completion must not block on discovery")), \
                         patch("sys.stdout", new_callable=io.StringIO):
                     self.assertEqual(self.api["main"]([operation["operation"], "fedora", "update"]), code)
                 self.assertEqual(observed, [(phase, outcome)])

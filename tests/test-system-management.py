@@ -13429,6 +13429,21 @@ class RecoverySnapshotTests(unittest.TestCase):
         self.assertEqual(stdout.getvalue().splitlines()[0], "system-management-protocol\t1\t1")
         self.assertEqual(len(rows(stdout.getvalue().splitlines(), "provider")), 6)
 
+    def test_updates_cli_never_constructs_unrelated_settings_readers(self):
+        with tempfile.TemporaryDirectory() as directory, \
+                mock.patch.dict(os.environ, {"XDG_STATE_HOME": directory}), \
+                mock.patch.object(provider, "read_boot_id", return_value=self.boot_id), \
+                mock.patch.object(provider, "PackageKitBackend", return_value=self.backend()), \
+                mock.patch.object(provider, "NativeSnapshotSources", side_effect=AssertionError("Native probe")), \
+                mock.patch.object(provider, "InformationSnapshotSources", side_effect=AssertionError("Information probe")), \
+                contextlib.redirect_stdout(io.StringIO()) as stdout:
+            self.assertEqual(provider.main(["snapshot-updates"]), 0)
+        output = stdout.getvalue().splitlines()
+        self.assertEqual(output[-1], "complete\tsnapshot")
+        self.assertEqual([row[1] for row in rows(output, "provider")], ["updates", "recovery"])
+        self.assertEqual(len(rows(output, "snapshot-generation")), 1)
+        self.assertEqual(self.restart_row(output)[2:4], ["available", "none"])
+
     def test_cli_initializes_only_its_fixed_journal_and_offers_safe_refresh(self):
         with tempfile.TemporaryDirectory() as directory, \
                 mock.patch.dict(os.environ, {"XDG_STATE_HOME": directory}), \

@@ -21,6 +21,10 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Show Fedora updates through the native DNF terminal workflow, preserving full
+  transaction output and confirmation. Limit discovery to update state and
+  correctly parse active PackageKit operations during legacy recovery.
+
 - Install `NetworkManager-wifi` with the Fedora image and full package set, and
   reconcile it on existing source checkouts. Without the Wi-Fi plugin,
   NetworkManager leaves wireless interfaces unmanaged, so scans and connections
