@@ -858,6 +858,24 @@ class DesktopUpdate(unittest.TestCase):
 
 
 class PrivilegedTransport(unittest.TestCase):
+    def test_sudo_probe_failure_falls_back_to_pkexec(self):
+        helper = "/trusted/dwm-desktop-update-root"
+        operation, generation, revision = "a" * 32, "b" * 64, "c" * 40
+        failures = (
+            subprocess.TimeoutExpired(cmd="sudo", timeout=10),
+            OSError("sudo unavailable"),
+        )
+        for failure in failures:
+            with self.subTest(failure=type(failure).__name__), \
+                    patch.object(update.shutil, "which", return_value="/usr/bin/sudo"), \
+                    patch.object(update.subprocess, "run", side_effect=failure) as probe:
+                session = REAL_SESSION(helper, operation, generation, revision)
+            probe.assert_called_once_with(["/usr/bin/sudo", "-n", "true"],
+                                          capture_output=True, timeout=10)
+            self.assertEqual(session.command,
+                             ["/usr/bin/pkexec", helper, "session", "update",
+                              operation, generation, revision])
+
     def session(self, body):
         client = REAL_SESSION("unused", "a" * 32, "b" * 64, "c" * 40)
         client.command = [sys.executable, "-u", "-c", body]

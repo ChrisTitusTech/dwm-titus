@@ -927,15 +927,19 @@ def run_bounded(argv, *, timeout=180, env=None, cwd=None):
 
 
 def fedora_package_count():
-    for db_path in ("/usr/lib/sysimage/rpm/rpmdb.sqlite", "/var/lib/rpm/rpmdb.sqlite"):
-        try:
-            import sqlite3
-            with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True) as con:
-                row = con.execute("SELECT count(*) FROM Packages").fetchone()
-                if row and isinstance(row[0], int) and 0 <= row[0] <= 10000000:
-                    return row[0]
-        except (OSError, ValueError, sqlite3.Error):
-            continue
+    try:
+        import sqlite3
+    except ImportError:
+        sqlite3 = None
+    if sqlite3 is not None:
+        for db_path in ("/usr/lib/sysimage/rpm/rpmdb.sqlite", "/var/lib/rpm/rpmdb.sqlite"):
+            try:
+                with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True) as con:
+                    row = con.execute("SELECT count(*) FROM Packages").fetchone()
+                    if row and isinstance(row[0], int) and 0 <= row[0] <= 10000000:
+                        return row[0]
+            except (OSError, ValueError, sqlite3.Error):
+                continue
     try:
         import rpm
         return sum(1 for _ in rpm.TransactionSet().dbMatch())

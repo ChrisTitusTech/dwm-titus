@@ -2,7 +2,6 @@
 """Run one validated Update Center provider operation in an interactive terminal."""
 import codecs
 import ctypes
-import getpass
 import io
 import json
 import os
@@ -442,48 +441,8 @@ class DesktopStatusFormatter:
             self.destination.flush()
 
 
-def validate_sudo_password(password):
-    try:
-        proc = subprocess.run(["sudo", "-k", "-S", "-v", "-p", ""],
-                              input=(password + "\n").encode(),
-                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        return proc.returncode == 0
-    except OSError:
-        return False
-
-
-def prompt_sudo_password(*, input_stream=None, output=None, validator=None):
+def execute_desktop(operation, action, *, output=None):
     destination = sys.stdout if output is None else output
-    destination.write("Enter Sudo Password:  ")
-    destination.flush()
-    if input_stream is not None:
-        password = input_stream.readline().rstrip("\r\n")
-    else:
-        try:
-            password = getpass.getpass(prompt="", stream=destination)
-        except (OSError, Exception):
-            password = sys.stdin.readline().rstrip("\r\n")
-    check = validator if validator is not None else validate_sudo_password
-    if check(password):
-        return True
-    destination.write("\033[1;31mIncorrect Password - Press any key to quit. . .\033[0m")
-    destination.flush()
-    stream = sys.stdin if input_stream is None else input_stream
-    if input_stream is not None:
-        stream.read(1)
-    else:
-        wait_for_key(stream)
-    destination.write("\n")
-    destination.flush()
-    return False
-
-
-def execute_desktop(operation, action, *, input_stream=None, output=None, sudo_validator=None):
-    destination = sys.stdout if output is None else output
-    if not prompt_sudo_password(input_stream=input_stream, output=destination, validator=sudo_validator):
-        return result("failed", "failed", "Incorrect Password", hold=False)
-    destination.write("\n")
-    destination.flush()
     helper = trusted_desktop_helper()
     status = desktop_value(run_command([helper, "status"], stream=False))
     if action == "recover":

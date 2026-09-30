@@ -263,6 +263,11 @@ class RunnerTests(Environment):
         self.api = runpy.run_path(str(RUNNER))
         self.operation = "op-" + "a" * 32
 
+    def test_desktop_authorization_is_owned_only_by_worker(self):
+        self.assertNotIn("getpass", self.api)
+        self.assertNotIn("validate_sudo_password", self.api)
+        self.assertNotIn("prompt_sudo_password", self.api)
+
     def run_adapter(self, provider, action, responses=None, recovery_basis=("interrupted", "flatpak-system")):
         calls = []
         phases = []
@@ -278,8 +283,7 @@ class RunnerTests(Environment):
                         validate_provider_action=lambda provider, action: None,
                         flatpak_recovery_basis=lambda operation: recovery_basis,
                         executable=lambda name: "/usr/bin/" + name,
-                        trusted_desktop_helper=lambda: "/usr/bin/dwm-desktop-update",
-                        prompt_sudo_password=lambda **k: True):
+                        trusted_desktop_helper=lambda: "/usr/bin/dwm-desktop-update"):
             result = self.api["execute_provider"](self.operation, provider, action)
         return result, calls, phases
 
@@ -698,32 +702,6 @@ class RunnerTests(Environment):
         self.assertEqual((hint.res_name, hint.res_class), (b"dwm-update-center", b"DwmUpdateCenter"))
         self.assertNotIn("bad", output.getvalue())
 
-    def test_prompt_sudo_password_valid(self):
-        output = io.StringIO()
-        input_stream = io.StringIO("correct_pass\n")
-        calls = []
-        def mock_validator(pw):
-            calls.append(pw)
-            return True
-        ok = self.api["prompt_sudo_password"](input_stream=input_stream, output=output, validator=mock_validator)
-        self.assertTrue(ok)
-        self.assertEqual(calls, ["correct_pass"])
-        self.assertIn("Enter Sudo Password:  ", output.getvalue())
-        self.assertNotIn("Incorrect Password", output.getvalue())
-
-    def test_prompt_sudo_password_invalid(self):
-        output = io.StringIO()
-        input_stream = io.StringIO("wrong_pass\nx\n")
-        calls = []
-        def mock_validator(pw):
-            calls.append(pw)
-            return False
-        ok = self.api["prompt_sudo_password"](input_stream=input_stream, output=output, validator=mock_validator)
-        self.assertFalse(ok)
-        self.assertEqual(calls, ["wrong_pass"])
-        self.assertIn("Enter Sudo Password:  ", output.getvalue())
-        self.assertIn("\033[1;31mIncorrect Password - Press any key to quit. . .\033[0m", output.getvalue())
-
     def test_completion_hold_custom_status_banners(self):
         cases = [
             (
@@ -842,4 +820,3 @@ class DesktopUpdateAuthorizeWordingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

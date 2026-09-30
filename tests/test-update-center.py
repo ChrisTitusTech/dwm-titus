@@ -1005,6 +1005,20 @@ class DesktopDiscoveryTests(unittest.TestCase):
             result = function()
         self.assertEqual(result.managed, 1634)
 
+    def test_fedora_package_count_falls_back_when_sqlite3_fails(self):
+        import sys
+        from unittest.mock import patch
+        count_fn = self.api["fedora_package_count"]
+        with patch.dict(sys.modules, {"sqlite3": None}):
+            class MockRpm:
+                class TransactionSet:
+                    def dbMatch(self):
+                        return [1, 2, 3]
+            with patch.dict(sys.modules, {"rpm": MockRpm}):
+                self.assertEqual(count_fn(), 3)
+            with patch.dict(sys.modules, {"rpm": None}):
+                self.assertIsNone(count_fn())
+
 
 if __name__ == "__main__":
     unittest.main()

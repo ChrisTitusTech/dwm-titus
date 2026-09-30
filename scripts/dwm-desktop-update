@@ -506,7 +506,7 @@ class PrivilegedSession:
         sudo = shutil.which("sudo")
         if sudo:
             try:
-                test_sudo = subprocess.run([sudo, "-n", "true"], capture_output=True)
+                test_sudo = subprocess.run([sudo, "-n", "true"], capture_output=True, timeout=10)
                 if test_sudo.returncode == 0:
                     self.command = [sudo, "-n", str(helper), "session", mode, operation, generation, revision]
                     self.process = None
@@ -514,7 +514,7 @@ class PrivilegedSession:
                     self.started = False
                     self.broken = False
                     return
-            except OSError:
+            except (OSError, subprocess.TimeoutExpired):
                 pass
         self.command = ["/usr/bin/pkexec", str(helper), "session", mode, operation, generation, revision]
         self.process = None
