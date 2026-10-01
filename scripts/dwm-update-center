@@ -1,0 +1,1427 @@
+#!/usr/bin/python3
+"""Bounded Update Center discovery and validated terminal orchestration."""
+from dataclasses import asdict, dataclass, replace
+import contextlib
+from concurrent.futures import ThreadPoolExecutor
+import fcntl
+import json
+import os
+import re
+import secrets
+import selectors
+import shutil
+import signal
+import stat
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+HEADER = "update-center-protocol\t1\t0"
+MAX_BYTES = 8 * 1024 * 1024
+MAX_RECORD_BYTES = 8192
+MAX_ITEMS = 4096
+MAX_RECORDS = 16384
+STATUSES = {"available", "partial", "restricted", "unavailable", "unsupported"}
+ERROR_CODES = {"", "malformed", "timeout", "missing-provider", "internal", "scan-failed", "busy",
+               "network", "repository", "conflict", "signature", "package", "unsupported",
+               "permission-denied", "canceled", "interrupted"}
+
+
+class ScanFailure(ValueError):
+    def __init__(self, code, detail):
+        self.code = code if code in ERROR_CODES - {""} else "scan-failed"
+        self.detail = detail.encode("utf-8")[:512].decode("utf-8", errors="ignore")
+        super().__init__(self.detail)
+
+
+@dataclass(frozen=True)
+class ProviderMetadata:
+    identifier: str
+    name: str
+    core: bool
+    scanner: str
+    can_update: bool = True
+    can_recover: bool = False
+
+    @property
+    def discover(self):
+        return globals()[self.scanner]
+
+
+REGISTRY = (
+    ProviderMetadata("fedora", "Fedora", True, "scan_fedora", can_recover=True),
+    ProviderMetadata("dwm-titus", "DWM-Titus", True, "scan_desktop", can_recover=True),
+    # Optional-provider recovery means supported recheck/retry, never rollback.
+    ProviderMetadata("flatpak", "Flatpak", False, "scan_flatpak", can_recover=True),
+    ProviderMetadata("mise", "Mise", False, "scan_mise", can_recover=True),
+)
+
+OPERATION_PATTERN = re.compile(r"op-[0-9a-f]{32}")
+OPERATION_PHASES = {"reserved", "launched", "running", "preparing", "fedora-executing", "fedora-dnf",
+                    "desktop-starting", "flatpak-system", "flatpak-system-complete", "flatpak-user",
+                    "flatpak-user-complete", "mise-inventory", "mise-update", "mise-recheck",
+                    "recovering", "completed", "failed",
+                    "interrupted", "system-failed", "system-complete/user-failed", "closed"}
+OPERATION_FIELDS = {"schema", "operation", "provider", "action", "phase", "outcome",
+                    "provider_phase", "created", "updated", "terminal_pid", "terminal_identity",
+                    "launcher_pid", "launcher_identity",
+                    "recovery_of", "recovery_phase", "recovery_provider_phase", "detail"}
+
+
+def operation_path():
+    return coordination_path() / "operation.json"
+
+
+def cache_root():
+    root = os.environ.get("XDG_CACHE_HOME")
+    if root and os.path.isabs(root):
+        return root
+    return str(Path.home() / ".cache")
+
+
+@contextlib.contextmanager
+def operation_lock():
+    with cache_directory(coordination_path(), create=True) as fd:
+        lock_fd = os.open(".operation-lock", os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC,
+                          0o600, dir_fd=fd)
+        try:
+            if not safe_file(os.fstat(lock_fd)):
+                raise ValueError("unsafe operation lock")
+            fcntl.flock(lock_fd, fcntl.LOCK_EX)
+            yield
+        finally:
+            os.close(lock_fd)
+
+
+def validate_operation(value):
+    if isinstance(value, dict) and set(value) == OPERATION_FIELDS - {"launcher_pid", "launcher_identity"}:
+        value = {**value, "launcher_pid": 0, "launcher_identity": ""}
+    providers = {meta.identifier for meta in REGISTRY}
+    phase_provider = {"fedora-executing": "fedora", "fedora-dnf": "fedora", "desktop-starting": "dwm-titus",
+                      "flatpak-system": "flatpak", "flatpak-system-complete": "flatpak",
+                      "flatpak-user": "flatpak", "flatpak-user-complete": "flatpak",
+                      "mise-inventory": "mise", "mise-update": "mise", "mise-recheck": "mise"}
+    if (not isinstance(value, dict) or set(value) != OPERATION_FIELDS or value.get("schema") != 1
+            or not isinstance(value.get("operation"), str) or not OPERATION_PATTERN.fullmatch(value["operation"])
+            or value.get("provider") not in providers or value.get("action") not in {"update", "recover"}
+            or value.get("phase") not in OPERATION_PHASES or value.get("provider_phase") not in OPERATION_PHASES
+            or value.get("outcome") not in {"pending", "succeeded", "failed", "unknown"}
+            or type(value.get("created")) is not int or type(value.get("updated")) is not int
+            or type(value.get("terminal_pid")) is not int or value["terminal_pid"] < 0
+            or not isinstance(value.get("terminal_identity"), str) or len(value["terminal_identity"]) > 128
+            or type(value.get("launcher_pid")) is not int or value["launcher_pid"] < 0
+            or not isinstance(value.get("launcher_identity"), str) or len(value["launcher_identity"]) > 128
+            or not isinstance(value.get("recovery_of"), str)
+            or value["recovery_of"] and not OPERATION_PATTERN.fullmatch(value["recovery_of"])
+            or value.get("recovery_phase") not in {"", "interrupted", "system-failed", "system-complete/user-failed"}
+            or value.get("recovery_provider_phase") not in OPERATION_PHASES
+            or (value["action"] == "update" and (value["recovery_of"] or value["recovery_phase"]
+                                                   or value["recovery_provider_phase"] != "reserved"))
+            or (value["action"] == "recover" and (not value["recovery_of"] or not value["recovery_phase"]))
+            or (value["phase"] == "completed" and value["outcome"] != "succeeded")
+            or (value["phase"] == "failed" and value["outcome"] not in {"failed", "unknown"})
+            or (value["phase"] in {"system-failed", "system-complete/user-failed"}
+                and value["outcome"] != "failed")
+            or (value["phase"] == "interrupted" and value["outcome"] != "unknown")
+            or (value["phase"] == "closed" and value["outcome"] not in {"succeeded", "failed", "unknown"})
+            or (value["phase"] not in {"completed", "failed", "interrupted", "system-failed",
+                                       "system-complete/user-failed", "closed"} and value["outcome"] != "pending")
+            or (value["phase"] in phase_provider and phase_provider[value["phase"]] != value["provider"])
+            or (value["provider_phase"] in phase_provider
+                and phase_provider[value["provider_phase"]] != value["provider"])
+            or (value["recovery_provider_phase"] in phase_provider
+                and phase_provider[value["recovery_provider_phase"]] != value["provider"])
+            or (value["phase"] in {"system-failed", "system-complete/user-failed"}
+                and value["provider"] != "flatpak")
+            or (value["recovery_phase"] in {"system-failed", "system-complete/user-failed"}
+                and value["provider"] != "flatpak")
+            or not isinstance(value.get("detail"), str) or len(value["detail"].encode()) > 8192):
+        raise ValueError("invalid operation state")
+    return value
+
+
+def read_operation():
+    path = operation_path()
+    try:
+        with cache_directory(path.parent) as fd:
+            if fd is None:
+                return None
+            _, data = cache_data(fd, path.name)
+        return validate_operation(machine_json(data.decode("utf-8"))) if data is not None else None
+    except (OSError, ValueError, UnicodeError):
+        return None
+
+
+def write_operation(value):
+    value = validate_operation(value)
+    path = operation_path()
+    data = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+    with cache_directory(path.parent, create=True) as fd:
+        baseline, _ = cache_data(fd, path.name)
+        temporary = ".operation-" + secrets.token_hex(16)
+        target = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+                         0o600, dir_fd=fd)
+        try:
+            with os.fdopen(target, "wb") as stream:
+                stream.write(data)
+                stream.flush()
+                os.fsync(stream.fileno())
+            current, _ = cache_data(fd, path.name)
+            if current != baseline:
+                raise ValueError("operation state changed")
+            os.replace(temporary, path.name, src_dir_fd=fd, dst_dir_fd=fd)
+            os.fsync(fd)
+        finally:
+            try:
+                os.unlink(temporary, dir_fd=fd)
+            except FileNotFoundError:
+                pass
+
+
+def reserve_operation(provider, action, now=None):
+    metadata = next((entry for entry in REGISTRY if entry.identifier == provider), None)
+    if metadata is None or action not in {"update", "recover"} or (action == "update" and not metadata.can_update) \
+            or (action == "recover" and not metadata.can_recover):
+        raise ValueError("invalid provider operation")
+    now = int(time.time()) if now is None else now
+    with operation_lock():
+        existing = read_operation()
+        if existing is None and os.path.lexists(operation_path()):
+            raise ValueError("existing operation state is unsafe or malformed")
+        recoverable = {"interrupted", "system-failed", "system-complete/user-failed"}
+        if action == "recover" and (existing is None or existing["provider"] != provider
+                                    or existing["phase"] not in recoverable):
+            raise ValueError("provider has no matching recoverable operation state")
+        if action == "update" and existing is not None and existing["phase"] != "closed":
+            raise BlockingIOError("another provider terminal owns the active slot")
+        if existing is not None and existing["phase"] not in {"closed"}:
+            if action != "recover":
+                raise BlockingIOError("another provider operation is active")
+            observed = process_identity(existing["terminal_pid"]) if existing["terminal_pid"] else None
+            if observed is not None and (not existing["terminal_identity"]
+                                         or observed == existing["terminal_identity"]):
+                raise BlockingIOError("the interrupted provider terminal is still active")
+        recovery_provider_phase = existing["provider_phase"] if action == "recover" and existing is not None else "reserved"
+        if action == "recover" and recovery_provider_phase in {"reserved", "recovering"}:
+            # Older recovery attempts replaced their scope checkpoint with a
+            # generic phase. Keep the inherited evidence until work advances.
+            recovery_provider_phase = existing["recovery_provider_phase"]
+        if (action == "recover" and provider == "fedora" and existing is not None
+                and "fedora-dnf" in {existing["provider_phase"], existing["recovery_provider_phase"]}):
+            recovery_provider_phase = "fedora-dnf"
+        value = {"schema": 1, "operation": "op-" + secrets.token_hex(16), "provider": provider,
+                 "action": action, "phase": "reserved",
+                 "provider_phase": recovery_provider_phase,
+                 "outcome": "pending", "created": now,
+                 "updated": now, "terminal_pid": 0, "terminal_identity": "",
+                 "launcher_pid": os.getpid(), "launcher_identity": process_identity(os.getpid()) or "",
+                 "recovery_of": existing["operation"] if action == "recover" and existing is not None else "",
+                 "recovery_phase": existing["phase"] if action == "recover" and existing is not None else "",
+                 "recovery_provider_phase": recovery_provider_phase,
+                 "detail": "Operation reserved"}
+        write_operation(value)
+        return value
+
+
+def process_identity(pid):
+    if type(pid) is not int or pid <= 0:
+        return None
+    try:
+        stat_fields = (Path("/proc") / str(pid) / "stat").read_text().rsplit(") ", 1)[1].split()
+        if stat_fields[0] == "Z":
+            return None
+        return str(pid) + ":" + stat_fields[19]
+    except (OSError, IndexError, ValueError):
+        return None
+
+
+def update_operation(operation, **changes):
+    with operation_lock():
+        value = read_operation()
+        if value is None or value["operation"] != operation:
+            raise ValueError("operation identity mismatch")
+        value = {**value, **changes, "updated": int(changes.get("updated", time.time()))}
+        write_operation(value)
+        return value
+
+
+def record_terminal(operation, pid, identity, now=None):
+    with operation_lock():
+        value = read_operation()
+        if value is None or value["operation"] != operation:
+            raise ValueError("operation identity mismatch")
+        changes = {"terminal_pid": pid, "terminal_identity": identity or "",
+                   "updated": int(time.time()) if now is None else now}
+        if value["phase"] == "reserved":
+            changes.update(phase="launched", detail="Terminal launched")
+        value = {**value, **changes}
+        write_operation(value)
+        return value
+
+
+def active_operation():
+    value = read_operation()
+    return value if value is not None and value["phase"] != "closed" else None
+
+
+subprocess_popen = subprocess.Popen
+
+
+def validate_provider_action(provider, action):
+    metadata = next((entry for entry in REGISTRY if entry.identifier == provider), None)
+    if metadata is None or action not in {"update", "recover"}:
+        raise ValueError("invalid provider operation")
+    if action == "update" and not metadata.can_update or action == "recover" and not metadata.can_recover:
+        raise ValueError("provider capability is unavailable")
+    result = metadata.discover()
+    if result is None:
+        raise ValueError("provider is unavailable or incompatible")
+    result = validate_result(result)
+    if result.identifier != provider or result.status == "unavailable" or result.error_code == "missing-provider":
+        raise ValueError("provider is unavailable or incompatible")
+    if action == "update" and not result.update_available:
+        raise ValueError("provider update is not currently eligible")
+    if action == "recover":
+        operation = read_operation()
+        recoverable = {"interrupted", "system-failed", "system-complete/user-failed"}
+        direct = operation is not None and operation["provider"] == provider and operation["phase"] in recoverable
+        reserved = (operation is not None and operation["provider"] == provider and operation["action"] == "recover"
+                    and operation["phase"] in OPERATION_PHASES and operation["recovery_phase"] in recoverable
+                    and OPERATION_PATTERN.fullmatch(operation["recovery_of"]) is not None)
+        if not direct and not reserved:
+            raise ValueError("provider has no authoritative recovery state")
+    return result
+
+
+def launch_operation(provider, action="update", *, terminal=None, runner=None, now=None):
+    validate_provider_action(provider, action)
+    value = reserve_operation(provider, action, now=now)
+    terminal = terminal or str(Path(__file__).resolve().with_name("dwm-terminal"))
+    runner = runner or str(Path(__file__).resolve().with_name("dwm-update-center-terminal"))
+    argv = [terminal, "--update-center", runner, value["operation"], provider, action]
+    child = None
+    try:
+        child = subprocess_popen(argv, start_new_session=True, close_fds=True)
+        identity = process_identity(child.pid)
+        if identity is None:
+            raise OSError("terminal identity unavailable")
+        return record_terminal(value["operation"], child.pid, identity, now=now)
+    except Exception as error:
+        with operation_lock():
+            current = read_operation()
+            if current is not None and current["operation"] == value["operation"] \
+                    and current["phase"] in {"completed", "failed"}:
+                if child is not None and current["terminal_pid"] == 0:
+                    current = {**current, "terminal_pid": child.pid,
+                               "updated": now or int(time.time())}
+                    write_operation(current)
+                return current
+            if current is None or current["operation"] != value["operation"]:
+                raise
+            write_operation({**current, "phase": "interrupted", "outcome": "unknown",
+                "terminal_pid": child.pid if child is not None else current["terminal_pid"],
+                "detail": "Terminal launch outcome is ambiguous: " + str(error),
+                "updated": now or int(time.time())})
+        raise
+
+
+def rescan_provider(provider):
+    scanners = discover_scanners()
+    if provider in scanners:
+        snapshot(Path(cache_root()) / "dwm-titus/update-center.json", scanners, force=True, provider=provider)
+
+
+def terminal_closed(operation, now=None):
+    release = False
+    changed = False
+    with operation_lock():
+        value = read_operation()
+        if value is None or value["operation"] != operation:
+            raise ValueError("operation identity mismatch")
+        observed = process_identity(value["terminal_pid"])
+        recoverable = {"interrupted", "system-failed", "system-complete/user-failed"}
+        if value["phase"] == "closed":
+            pass
+        elif value["phase"] in {"completed", "failed"} and observed is None:
+            release = True
+        elif value["phase"] in {"completed", "failed"} and not value["terminal_identity"] and observed is not None:
+            pass  # Spawn is known live; blank identity can never prove closure.
+        elif value["phase"] not in recoverable and observed != value["terminal_identity"]:
+            value = {**value, "phase": "interrupted", "outcome": "unknown",
+                     "detail": "Terminal identity is missing or changed; recovery is required", "updated": now or int(time.time())}
+            write_operation(value)
+            changed = True
+    if not release and not changed:
+        return value
+    try:
+        rescan_provider(value["provider"])
+    except (OSError, ValueError):
+        # A discovery failure cannot keep a finished, closed terminal's slot.
+        # The UI requests its own refresh after observing the closed receipt.
+        if not release:
+            return value
+    if release:
+        with operation_lock():
+            current = read_operation()
+            if current is not None and current["operation"] == operation and current["phase"] == "closed":
+                return current
+            if current is None or current["operation"] != operation or current["phase"] not in {"completed", "failed"}:
+                raise ValueError("operation changed during terminal reconciliation")
+            value = {**current, "phase": "closed", "updated": now or int(time.time())}
+            write_operation(value)
+    return value
+
+
+@dataclass(frozen=True)
+class ItemResult:
+    action: str
+    name: str
+    current: str
+    available: str
+    package_id: str
+    scope: str = "system"
+    url: str = ""
+
+
+@dataclass(frozen=True)
+class ProviderResult:
+    identifier: str
+    status: str = "available"
+    pending: int = 0
+    managed: int | None = None
+    freshness: str = "fresh"
+    last_success: int = 0
+    update_available: bool = False
+    error_code: str = ""
+    detail: str = ""
+    restart: str = "none"
+    items: tuple[ItemResult, ...] = ()
+
+
+def escape(value):
+    if not isinstance(value, str) or "\0" in value or len(value.encode("utf-8")) > MAX_RECORD_BYTES:
+        raise ValueError("invalid protocol field")
+    if any((ord(char) < 32 and char not in "\t\r\n") or 127 <= ord(char) <= 159 for char in value):
+        raise ValueError("invalid protocol control character")
+    return value.replace("\\", "\\\\").replace("\t", "\\t").replace("\n", "\\n").replace("\r", "\\r")
+
+
+def require_fedora(path=Path("/etc/os-release")):
+    try:
+        with open(path, "rb") as stream:
+            data = stream.read(65537)
+        if len(data) > 65536:
+            raise ValueError()
+        values = {}
+        for line in data.decode("utf-8").splitlines():
+            if not line or line.startswith("#"):
+                continue
+            match = re.fullmatch(r'([A-Z_]+)=(?:"([^"\\]*)"|\x27([^\x27\\]*)\x27|([A-Za-z0-9._ /-]*))', line)
+            if not match or match[1] in values:
+                raise ValueError()
+            values[match[1]] = next(value for value in match.groups()[1:] if value is not None)
+        if values.get("ID") != "fedora":
+            raise ValueError()
+    except (OSError, UnicodeError, ValueError) as error:
+        raise ValueError("Fedora identity is required") from error
+
+
+def bounded_lines(payload):
+    if not isinstance(payload, str) or len(payload.encode("utf-8")) > MAX_BYTES or "\0" in payload:
+        raise ValueError("snapshot byte limit exceeded")
+    if any((ord(char) < 32 and char not in "\t\n") or 127 <= ord(char) <= 159 for char in payload):
+        raise ValueError("invalid raw snapshot control character")
+    lines = payload.split("\n")
+    if lines[-1] == "":
+        lines.pop()
+    if len(lines) > MAX_RECORDS or any(len(line.encode("utf-8")) > MAX_RECORD_BYTES for line in lines):
+        raise ValueError("snapshot record limit exceeded")
+    return lines
+
+
+def parse_fedora_snapshot(payload):
+    """Strictly consume the existing 1.0-1.2 machine protocol, never CLI text."""
+    def normalize_restart(status, value):
+        if status not in STATUSES:
+            raise ValueError("invalid Fedora restart state")
+        if value in {"none", "unknown"}:
+            return "none"
+        if value in {"system", "security-system"}:
+            return "system"
+        if value in {"session", "security-session", "application"}:
+            return "session"
+        raise ValueError("invalid Fedora restart state")
+
+    lines = bounded_lines(payload)
+    if not lines or lines[0] not in {f"system-management-protocol\t1\t{minor}" for minor in range(3)}:
+        raise ValueError("invalid Fedora protocol")
+    if lines[-1] != "complete\tsnapshot":
+        raise ValueError("incomplete Fedora snapshot")
+    sizes = {"snapshot-generation": 2, "provider": 6, "state": 5, "action": 7,
+             "update": 7, "package-change": 6, "error": 4, "account": 5,
+             "repository": 4, "filesystem": 10, "active-operation": 8,
+             "terminal-handoff": 4}
+    rows, plans, seen, summary, provider, update_available = [], {}, set(), None, None, False
+    restart = "none"
+    discovery_failure, failures, provider_detail, active = False, [], "", False
+    for line in lines[1:-1]:
+        fields = line.split("\t")
+        kind = fields[0]
+        if kind not in sizes or len(fields) != sizes[kind]:
+            raise ValueError("unknown Fedora record or fields")
+        # Existing provider sanitizes tabs/newlines, but does not use escaping.
+        if any("\r" in field for field in fields):
+            raise ValueError("invalid Fedora field")
+        for field in fields:
+            escape(field)
+        if kind == "provider" and fields[1] == "updates":
+            if provider is not None or fields[2] not in STATUSES:
+                raise ValueError("invalid Fedora provider")
+            provider = fields[2]
+            provider_detail = fields[5]
+        elif kind == "state" and fields[1] == "update-summary":
+            if summary is not None or fields[2] not in STATUSES:
+                raise ValueError("invalid Fedora count")
+            if fields[2] != "available":
+                if fields[3] != "unknown":
+                    raise ValueError("invalid Fedora count")
+                discovery_failure, summary = True, -1
+            else:
+                if not re.fullmatch(r"0|[1-9][0-9]{0,4}", fields[3]) or int(fields[3]) > MAX_ITEMS:
+                    raise ValueError("invalid Fedora count")
+                summary = int(fields[3])
+        elif kind == "state" and fields[1] == "update-restart":
+            if "restart-state" in seen:
+                raise ValueError("invalid Fedora restart state")
+            seen.add("restart-state")
+            restart = normalize_restart(fields[2], fields[3])
+        elif kind == "action" and fields[1] == "updates-install-all":
+            if "install-action" in seen or fields[2] not in STATUSES:
+                raise ValueError("invalid Fedora action")
+            seen.add("install-action")
+            update_available = fields[2] == "available"
+        elif kind == "update":
+            identity = fields[1]
+            if identity in seen or len(identity.split(";")) != 4 or any(not part for part in identity.split(";")):
+                raise ValueError("invalid Fedora package identity")
+            if fields[3] not in {"installable", "blocked"} or not fields[4] or not fields[5]:
+                raise ValueError("invalid Fedora item")
+            seen.add(identity)
+            rows.append(ItemResult("update", fields[4], "unknown", fields[5], identity))
+        elif kind == "package-change":
+            if fields[1] in plans or fields[2] not in {"install", "update", "remove", "reinstall", "downgrade", "obsolete"}:
+                raise ValueError("invalid Fedora plan")
+            plans[fields[1]] = fields[2]
+        elif kind == "error" and fields[1] == "updates":
+            failures.append(ScanFailure(fields[2], fields[3]))
+        elif kind in {"active-operation", "terminal-handoff"}:
+            active = True
+    if discovery_failure:
+        raise failures[0] if failures else ScanFailure("scan-failed", "Fedora discovery unavailable")
+    if provider is None or summary is None or "install-action" not in seen or summary != len(rows):
+        raise ValueError("inconsistent Fedora snapshot")
+    items = tuple(replace(row, action=plans.get(row.package_id, row.action))
+                  for row in sorted(rows, key=lambda item: item.package_id.encode("utf-8")))
+    return ProviderResult("fedora", provider, summary, update_available=update_available and not active,
+                          detail=provider_detail, restart=restart, items=items)
+
+
+def render_snapshot(results):
+    lines = [HEADER]
+    indexed = {result.identifier: result for result in results}
+    if len(indexed) != len(results) or set(indexed) - {meta.identifier for meta in REGISTRY}:
+        raise ValueError("invalid provider registry")
+    for meta in REGISTRY:
+        if meta.identifier not in indexed:
+            continue
+        result = indexed[meta.identifier]
+        validate_result(result)
+        fields = ("provider", meta.identifier, meta.name, result.status, str(result.pending),
+                  "unknown" if result.managed is None else str(result.managed), result.freshness,
+                  str(result.last_success), "yes" if result.update_available else "no", result.error_code, result.detail)
+        lines.append("\t".join(escape(field) for field in fields))
+        if result.restart != "none":
+            lines.append("\t".join(("guidance", meta.identifier, "restart", result.restart)))
+        for item in sorted(result.items, key=lambda item: (item.scope.encode(), item.package_id.encode())):
+            lines.append("\t".join(escape(field) for field in ("item", meta.identifier, item.action,
+                         item.name, item.current, item.available, item.package_id, item.scope, item.url)))
+    lines.append("complete\tsnapshot")
+    payload = "\n".join(lines) + "\n"
+    bounded_lines(payload)
+    return payload
+
+
+def validate_result(result):
+    if (not isinstance(result, ProviderResult) or not isinstance(result.identifier, str)
+            or not isinstance(result.status, str) or not isinstance(result.freshness, str)
+            or not isinstance(result.error_code, str) or not isinstance(result.items, tuple)
+            or result.identifier not in {p.identifier for p in REGISTRY}
+            or result.status not in STATUSES or type(result.pending) is not int
+            or not 0 <= result.pending <= MAX_ITEMS or result.pending != len(result.items)
+            or (result.managed is not None and (type(result.managed) is not int or not 0 <= result.managed <= 10000000))
+            or result.freshness not in {"fresh", "cached", "stale", "error"}
+            or type(result.last_success) is not int or not 0 <= result.last_success <= (1 << 53)
+            or type(result.update_available) is not bool
+            or result.restart not in {"none", "session", "system"}
+            or result.error_code not in ERROR_CODES):
+        raise ValueError("invalid normalized provider")
+    identities = set()
+    for item in result.items:
+        if not isinstance(item, ItemResult):
+            raise ValueError("invalid normalized item")
+        for value in asdict(item).values():
+            escape(value)
+        if (not item.name or not item.package_id or item.action not in {"install", "update", "remove", "reinstall", "downgrade", "obsolete"}
+                or (item.scope, item.package_id) in identities
+                or (item.url and not item.url.startswith("https://"))):
+            raise ValueError("invalid normalized item")
+        identities.add((item.scope, item.package_id))
+    escape(result.error_code)
+    escape(result.detail)
+    return result
+
+
+DIRECTORY_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+FILE_FLAGS = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC
+
+
+def metadata(info):
+    return (info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid,
+            info.st_nlink, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+
+
+def safe_file(info):
+    return (stat.S_ISREG(info.st_mode) and info.st_uid == os.getuid()
+            and info.st_nlink == 1 and not info.st_mode & 0o022 and info.st_size <= MAX_BYTES)
+
+
+@contextlib.contextmanager
+def cache_directory(path, create=False):
+    """Pin parents with openat; reject symlinks and writable foreign ancestors."""
+    path = os.fspath(path)
+    if not os.path.isabs(path) or ".." in path.split("/"):
+        raise ValueError("unsafe cache directory")
+    parts = [part for part in path.split("/") if part and part != "."]
+    if not parts:
+        raise ValueError("unsafe cache directory")
+    fd = os.open("/", DIRECTORY_FLAGS)
+    try:
+        for index, part in enumerate(parts):
+            try:
+                child = os.open(part, DIRECTORY_FLAGS, dir_fd=fd)
+            except FileNotFoundError:
+                if not create:
+                    yield None
+                    return
+                try:
+                    os.mkdir(part, 0o700, dir_fd=fd)
+                except FileExistsError:
+                    pass  # Another startup helper may have created this component.
+                child = os.open(part, DIRECTORY_FLAGS, dir_fd=fd)
+            info = os.fstat(child)
+            safe = (info.st_uid in {0, os.getuid()} and
+                    (not info.st_mode & 0o022 or info.st_uid == 0 and info.st_mode & stat.S_ISVTX))
+            if index == len(parts) - 1:
+                safe = info.st_uid == os.getuid() and not info.st_mode & 0o022
+            if not safe:
+                os.close(child)
+                raise ValueError("unsafe cache directory")
+            os.close(fd)
+            fd = child
+        yield fd
+    finally:
+        os.close(fd)
+
+
+def cache_data(fd, name):
+    """Metadata and contents captured through the same nonblocking descriptor."""
+    try:
+        file_fd = os.open(name, FILE_FLAGS, dir_fd=fd)
+    except FileNotFoundError:
+        return None, None
+    try:
+        info = os.fstat(file_fd)
+        if not safe_file(info):
+            raise ValueError("unsafe cache file")
+        chunks, size = [], 0
+        while size <= MAX_BYTES:
+            chunk = os.read(file_fd, min(65536, MAX_BYTES + 1 - size))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            size += len(chunk)
+        after = os.fstat(file_fd)
+        linked = os.stat(name, dir_fd=fd, follow_symlinks=False)
+        if size > MAX_BYTES or metadata(info) != metadata(after) or metadata(after) != metadata(linked):
+            raise ValueError("cache changed during read")
+        return metadata(info), b"".join(chunks)
+    finally:
+        os.close(file_fd)
+
+
+def decode_cache(data):
+    def unique(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("duplicate cache field")
+            result[key] = value
+        return result
+    value = json.loads(data, object_pairs_hook=unique)
+    if not isinstance(value, dict) or set(value) != {"schema", "providers"} or type(value["schema"]) is not int or value["schema"] != 1:
+        raise ValueError("unsupported cache schema")
+    if not isinstance(value["providers"], list) or not 1 <= len(value["providers"]) <= len(REGISTRY):
+        raise ValueError("invalid cache providers")
+    results, seen = [], set()
+    for entry in value["providers"]:
+        provider_fields = set(ProviderResult.__dataclass_fields__)
+        if not isinstance(entry, dict):
+            raise ValueError("invalid cache fields")
+        if set(entry) == provider_fields - {"restart"}:
+            entry = {**entry, "restart": "none"}
+        elif set(entry) != provider_fields:
+            raise ValueError("invalid cache fields")
+        if not isinstance(entry["items"], list) or len(entry["items"]) > MAX_ITEMS:
+            raise ValueError("invalid cache items")
+        items = []
+        for item in entry["items"]:
+            if not isinstance(item, dict) or set(item) != set(ItemResult.__dataclass_fields__):
+                raise ValueError("invalid cache item fields")
+            items.append(ItemResult(**item))
+        result = validate_result(ProviderResult(**{**entry, "items": tuple(items)}))
+        if result.identifier in seen:
+            raise ValueError("duplicate cache provider")
+        seen.add(result.identifier)
+        results.append(result)
+    render_snapshot(results)
+    return results
+
+
+def read_cache(path):
+    try:
+        with cache_directory(Path(path).parent) as fd:
+            if fd is None:
+                return None
+            _, data = cache_data(fd, Path(path).name)
+        return decode_cache(data) if data is not None else None
+    except (OSError, ValueError, TypeError, UnicodeError, RecursionError):
+        return None
+
+
+def write_cache(path, results):
+    """Preserve unsafe targets; atomic durable replacement of a complete snapshot."""
+    for result in results:
+        validate_result(result)
+    render_snapshot(results)
+    data = json.dumps({"schema": 1, "providers": [asdict(result) for result in results]},
+                      sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
+    if len(data) > MAX_BYTES:
+        raise ValueError("cache byte limit exceeded")
+    with cache_directory(Path(path).parent, create=True) as fd:
+        baseline, _ = cache_data(fd, Path(path).name)
+        temporary = ".update-center-" + secrets.token_hex(16)
+        file_fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+                          0o600, dir_fd=fd)
+        try:
+            with os.fdopen(file_fd, "wb") as stream:
+                stream.write(data)
+                stream.flush()
+                os.fsync(stream.fileno())
+            current, _ = cache_data(fd, Path(path).name)
+            if baseline != current:
+                raise ValueError("cache changed during replacement")
+            os.replace(temporary, Path(path).name, src_dir_fd=fd, dst_dir_fd=fd)
+            os.fsync(fd)
+        finally:
+            try:
+                os.unlink(temporary, dir_fd=fd)
+            except FileNotFoundError:
+                pass
+
+
+def exceptional_result(result):
+    return (result.freshness in {"stale", "error"} or bool(result.error_code)
+            or result.status in {"restricted", "partial"})
+
+
+def unavailable_optional_result(result, code):
+    suffix = "; optional provider unavailable (" + code + ")"
+    detail = result.detail
+    if not detail.endswith(suffix):
+        # Leave room for the provider envelope and worst-case field escaping.
+        budget = (MAX_RECORD_BYTES - 512 - len(suffix)) // 2
+        detail = detail.encode("utf-8")[:budget].decode("utf-8", errors="ignore") + suffix
+    return replace(result, status="unavailable", update_available=False,
+                   freshness="stale" if result.last_success else "error",
+                   error_code=result.error_code or code, detail=detail)
+
+
+def active_cache_results(results, active):
+    """Missing optional commands cannot erase cached error/recovery evidence."""
+    optional = {meta.identifier for meta in REGISTRY if not meta.core}
+    operation = active_operation()
+    owner = operation["provider"] if operation is not None else None
+    retained = []
+    def missing_owner(result):
+        return replace(unavailable_optional_result(result, "missing-provider"), error_code="missing-provider",
+            detail="Restore the missing " + result.identifier + " executable, then refresh Update Center. "
+                   "If recovery is required, close its terminal and choose Recover.")
+    for result in results:
+        if result.identifier in active:
+            retained.append(result)
+        elif result.identifier in optional and result.identifier == owner:
+            retained.append(missing_owner(result))
+        elif result.identifier in optional and exceptional_result(result):
+            retained.append(unavailable_optional_result(result, "missing-provider"))
+    if owner in optional and owner not in active and not any(result.identifier == owner for result in retained):
+        retained.append(missing_owner(ProviderResult(owner, "unavailable")))
+    retained.sort(key=lambda result: next(index for index, meta in enumerate(REGISTRY) if meta.identifier == result.identifier))
+    return retained
+
+
+def snapshot(path, scanners, *, force=False, provider=None, now=None):
+    now = int(time.time()) if now is None else now
+    active = set(scanners)
+    if not active or active - {meta.identifier for meta in REGISTRY}:
+        raise ValueError("invalid active provider registry")
+    if provider is not None and provider not in scanners:
+        raise ValueError("provider is not available")
+    old = read_cache(path)
+    retained = active_cache_results(old or [], active)
+    old = retained if old is not None or retained else None
+    previous = {result.identifier: result for result in old or []}
+    missing_core = {meta.identifier for meta in REGISTRY if meta.core and meta.identifier in active} - previous.keys()
+    if old is not None and not missing_core and not force and provider is None:
+        return [replace(result, freshness="cached") if result.freshness == "fresh" else result for result in old]
+    selected = dict(scanners) if provider is None else {provider: scanners[provider]}
+    if old is not None and provider is None and not force:
+        selected = {identifier: scanners[identifier] for identifier in missing_core}
+    selected.update({identifier: scanners[identifier] for identifier in missing_core})
+    def collect(identifier, scan):
+        try:
+            result = scan()
+            if result is None and identifier not in {meta.identifier for meta in REGISTRY if meta.core}:
+                if identifier not in previous:
+                    return None
+                if exceptional_result(previous[identifier]):
+                    return unavailable_optional_result(previous[identifier], "unsupported")
+                raise ScanFailure("unsupported", "Optional provider unavailable or incompatible")
+            result = validate_result(result)
+            if result.identifier != identifier:
+                raise ValueError("provider identity mismatch")
+            if result.error_code and result.error_code not in {"busy", "interrupted"}:
+                raise ScanFailure(result.error_code, result.detail)
+            result = replace(result, freshness="fresh", last_success=now)
+        except (OSError, ValueError, TimeoutError) as error:
+            code = error.code if isinstance(error, ScanFailure) else "busy" if isinstance(error, BlockingIOError) else "timeout" if isinstance(error, TimeoutError) else "permission-denied" if isinstance(error, PermissionError) else "malformed" if isinstance(error, ValueError) else "scan-failed"
+            prior = previous.get(identifier)
+            detail = error.detail if isinstance(error, ScanFailure) else "Provider scan failed"
+            result = replace(prior, freshness="stale", error_code=code, detail=detail + "; last-good data retained", update_available=False) if prior and prior.last_success else ProviderResult(identifier, "unavailable", freshness="error", error_code=code, detail=detail)
+        return result
+    # Keep provider locks until committing: an older scan cannot overwrite a
+    # subsequent scan after releasing its discovery lock.
+    with contextlib.ExitStack() as locks:
+        pending = {}
+        for identifier, scan in selected.items():
+            try:
+                locks.enter_context(scan_lock(identifier))
+                pending[identifier] = scan
+            except (OSError, ValueError) as error:
+                def failed(error=error):
+                    raise error
+                pending[identifier] = failed
+        with ThreadPoolExecutor(max_workers=len(REGISTRY)) as pool:
+            futures = {identifier: pool.submit(collect, identifier, scan) for identifier, scan in pending.items()}
+            updates = {identifier: result for identifier, future in futures.items()
+                       if (result := future.result()) is not None}
+        results = {**previous, **updates}
+        try:
+            with cache_commit_lock(Path(path).parent):
+                latest = {result.identifier: result for result in active_cache_results(read_cache(path) or [], active)}
+                cache_updates = {key: result for key, result in updates.items() if result.error_code != "busy"}
+                latest.update(cache_updates)
+                ordered_cache = [latest[meta.identifier] for meta in REGISTRY if meta.identifier in latest]
+                if ordered_cache and cache_updates:
+                    write_cache(path, ordered_cache)
+                results = {**latest, **updates}
+        except (OSError, ValueError):
+            pass  # Readable live state remains useful even when persistence is unsafe.
+        ordered = [results[meta.identifier] for meta in REGISTRY if meta.identifier in results]
+    return ordered
+
+
+@contextlib.contextmanager
+def scan_lock(identifier):
+    if identifier not in {meta.identifier for meta in REGISTRY}:
+        raise ValueError("unknown provider")
+    with cache_directory(coordination_path(), create=True) as fd:
+        lock_fd = os.open(".scan-" + identifier, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
+                          0o600, dir_fd=fd)
+        try:
+            if not safe_file(os.fstat(lock_fd)):
+                raise ValueError("unsafe provider lock")
+            fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            yield
+        finally:
+            os.close(lock_fd)
+
+
+def coordination_path():
+    """One state domain per user; runtime/cache availability cannot split locks."""
+    state = os.environ.get("XDG_STATE_HOME") or str(Path.home() / ".local/state")
+    return Path(state) / "dwm-titus/update-center"
+
+
+@contextlib.contextmanager
+def cache_commit_lock(path):
+    with cache_directory(path, create=True) as fd:
+        lock_fd = os.open(".cache-write", os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
+                          0o600, dir_fd=fd)
+        try:
+            if not safe_file(os.fstat(lock_fd)):
+                raise ValueError("unsafe cache commit lock")
+            deadline = time.monotonic() + 2
+            while True:
+                try:
+                    fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError("cache commit lock timed out")
+                    time.sleep(0.01)
+            yield
+        finally:
+            os.close(lock_fd)
+
+
+def run_bounded(argv, *, timeout=180, env=None, cwd=None):
+    """Drain both pipes concurrently; kill the whole child group on timeout/fault."""
+    if not argv or type(timeout) not in {int, float} or not 0 < timeout <= 300:
+        raise ValueError("invalid scan command")
+    process = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                               env=dict(os.environ if env is None else env), cwd=cwd, start_new_session=True)
+    output, count, deadline = [], 0, time.monotonic() + timeout
+    try:
+        with selectors.DefaultSelector() as selector:
+            for stream in (process.stdout, process.stderr):
+                os.set_blocking(stream.fileno(), False)
+                selector.register(stream, selectors.EVENT_READ)
+            while selector.get_map():
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError("provider scan timed out")
+                for key, _ in selector.select(remaining):
+                    chunk = os.read(key.fileobj.fileno(), 65536)
+                    if not chunk:
+                        selector.unregister(key.fileobj)
+                        continue
+                    count += len(chunk)
+                    if count > MAX_BYTES:
+                        raise ValueError("provider output exceeded byte limit")
+                    if key.fileobj is process.stdout:
+                        output.append(chunk)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("provider scan timed out")
+            try:
+                status = process.wait(timeout=remaining)
+            except subprocess.TimeoutExpired as error:
+                raise TimeoutError("provider scan timed out") from error
+        if status:
+            raise OSError("provider scan failed")
+        try:
+            return b"".join(output).decode("utf-8", errors="strict")
+        except UnicodeError as error:
+            raise ValueError("invalid provider encoding") from error
+    finally:
+        # A descendant may keep pipes open or outlive its parent; reap the group.
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        process.wait()
+        process.stdout.close()
+        process.stderr.close()
+
+
+def fedora_package_count():
+    try:
+        import sqlite3
+    except ImportError:
+        sqlite3 = None
+    if sqlite3 is not None:
+        for db_path in ("/usr/lib/sysimage/rpm/rpmdb.sqlite", "/var/lib/rpm/rpmdb.sqlite"):
+            try:
+                with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True) as con:
+                    row = con.execute("SELECT count(*) FROM Packages").fetchone()
+                    if row and isinstance(row[0], int) and 0 <= row[0] <= 10000000:
+                        return row[0]
+            except (OSError, ValueError, sqlite3.Error):
+                continue
+    try:
+        import rpm
+        return sum(1 for _ in rpm.TransactionSet().dbMatch())
+    except (ImportError, Exception):
+        return None
+
+
+def scan_fedora():
+    require_fedora()
+    helper = Path(__file__).resolve().with_name("dwm-system-management")
+    result = parse_fedora_snapshot(run_bounded([str(helper), "snapshot-updates"], timeout=180))
+    count = fedora_package_count()
+    if count is not None:
+        result = replace(result, managed=count)
+    return result
+
+
+def trusted_desktop_helper():
+    """Only installed root-owned helpers in protected system directories."""
+    for name in ("/usr/local/bin/dwm-desktop-update", "/usr/bin/dwm-desktop-update"):
+        path = Path(name)
+        try:
+            for entry in (path, *path.parents):
+                info = entry.lstat()
+                if info.st_uid != 0 or info.st_mode & 0o022 or stat.S_ISLNK(info.st_mode):
+                    raise ValueError("untrusted installed helper")
+            if path.is_file() and os.access(path, os.X_OK):
+                return name
+        except (OSError, ValueError):
+            continue
+    return None
+
+
+DESKTOP_ACTIVE = {"starting", "downloading", "dependencies", "building", "backing-up",
+                  "installing", "verifying", "activating", "recovering"}
+
+
+def machine_json(payload):
+    if not isinstance(payload, str) or len(payload.encode("utf-8")) > MAX_BYTES:
+        raise ValueError("machine JSON byte limit exceeded")
+    depth, quoted, escaped = 0, False, False
+    for char in payload:
+        if quoted:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                quoted = False
+        elif char == '"':
+            quoted = True
+        elif char in "[{":
+            depth += 1
+            if depth > 32:
+                raise ValueError("machine JSON nesting limit exceeded")
+        elif char in "]}":
+            depth -= 1
+    def unique(pairs):
+        result = {}
+        for name, value in pairs:
+            if name in result:
+                raise ValueError("duplicate machine JSON field")
+            result[name] = value
+        return result
+    try:
+        return json.loads(payload, object_pairs_hook=unique)
+    except RecursionError as error:
+        raise ValueError("machine JSON nesting limit exceeded") from error
+
+
+def desktop_status(payload):
+    value = machine_json(payload)
+    if (not isinstance(value, dict) or type(value.get("schema")) is not int or value["schema"] != 1
+            or type(value.get("canUpdate")) is not bool or not isinstance(value.get("detail"), str)
+            or not isinstance(value.get("restart"), str) or not isinstance(value.get("state"), str)
+            or type(value.get("statusInvalid", False)) is not bool
+            or value.get("restart") not in {"none", "session", "system"}
+            or value.get("state") not in DESKTOP_ACTIVE | {"unknown", "checking", "available", "current",
+                "drift", "blocked", "failed", "interrupted", "complete", "restart-required", "canceled"}):
+        raise ValueError("invalid desktop status")
+    for field in ("installed", "available"):
+        if not isinstance(value.get(field), str) or not re.fullmatch(r"unknown|[0-9a-f]{40}", value[field]):
+            raise ValueError("invalid desktop revision")
+    escape(value["detail"])
+    return value
+
+
+def scan_desktop():
+    helper = trusted_desktop_helper()
+    if helper is None:
+        return ProviderResult("dwm-titus", "unavailable", error_code="missing-provider",
+                              detail="Trusted installed desktop updater unavailable")
+    value = desktop_status(run_bounded([helper, "status"], timeout=10))
+    if value["state"] not in DESKTOP_ACTIVE | {"interrupted"} and not value.get("statusInvalid"):
+        value = desktop_status(run_bounded([helper, "check"], timeout=75))
+    state = value["state"]
+    items = ()
+    if value["installed"] != "unknown" and value["available"] != "unknown" and value["installed"] != value["available"]:
+        items = (ItemResult("update", "DWM-Titus", value["installed"], value["available"],
+                            value["available"], url="https://github.com/ChrisTitusTech/dwm-titus"),)
+    busy = state in DESKTOP_ACTIVE | {"checking", "interrupted"}
+    code = "interrupted" if state == "interrupted" else "busy" if busy else "scan-failed" if state == "failed" else ""
+    detail = value["detail"] + ("; restart: " + value["restart"] if value["restart"] != "none" else "")
+    return validate_result(ProviderResult("dwm-titus", "restricted" if busy or state in {"blocked", "failed"} else "available",
+                          len(items), 1, update_available=value["canUpdate"] and not busy,
+                          error_code=code, detail=detail, restart=value["restart"], items=items))
+
+
+def optional_executable(name):
+    path = shutil.which(name)
+    return str(Path(path).resolve()) if path else None
+
+
+APPLICATION_ID = r"[A-Za-z_][A-Za-z0-9_-]*(?:\.[A-Za-z_][A-Za-z0-9_-]*){2,}"
+
+
+def flatpak_columns(payload):
+    rows = {}
+    for line in bounded_lines(payload):
+        fields = line.split("\t")
+        if len(fields) == 1:
+            ref, version = fields[0], "unknown"
+        elif len(fields) == 2:
+            ref, version = fields[0], fields[1] or "unknown"
+        else:
+            raise ValueError("incompatible Flatpak columns")
+        if ref.startswith("app/"):
+            ref = ref[4:]
+        elif ref.startswith("runtime/"):
+            ref = ref[8:]
+        if not re.fullmatch(APPLICATION_ID + r"/[A-Za-z0-9_-]+/[A-Za-z0-9._-]+", ref):
+            raise ValueError("incompatible Flatpak columns")
+        if ref in rows or len(rows) >= MAX_ITEMS:
+            raise ValueError("duplicate or excessive Flatpak refs")
+        escape(version)
+        rows[ref] = version
+    return rows
+
+
+def scan_flatpak():
+    executable = optional_executable("flatpak")
+    if executable is None:
+        return None
+    environment = dict(os.environ)
+    environment["XDG_CACHE_HOME"] = cache_root()
+    items, managed = [], 0
+    try:
+        for scope in ("system", "user"):
+            for kind in ("app", "runtime"):
+                inventory = flatpak_columns(run_bounded([executable, "list", "--" + scope,
+                                            "--" + kind, "--columns=ref:full,version"], timeout=20, env=environment, cwd="/"))
+                updates = flatpak_columns(run_bounded([executable, "remote-ls", "--" + scope,
+                                          "--updates", "--" + kind, "--columns=ref:full,version"], timeout=60, env=environment, cwd="/"))
+                managed += len(inventory)
+                for ref, version in sorted(updates.items()):
+                    if ref not in inventory:
+                        raise ValueError("Flatpak update absent from installed inventory")
+                    name, _, _ = ref.split("/")
+                    url = "https://flathub.org/apps/" + name if kind == "app" else ""
+                    items.append(ItemResult("update", name, inventory[ref], version, ref, scope, url))
+        return validate_result(ProviderResult("flatpak", pending=len(items), managed=managed,
+                              update_available=bool(items), items=tuple(items)))
+    except ScanFailure:
+        raise
+    except ValueError:
+        return None
+
+
+def mise_inventory(payload):
+    value = machine_json(payload)
+    if not isinstance(value, dict) or len(value) > MAX_ITEMS:
+        raise ValueError("incompatible Mise inventory")
+    inventory = set()
+    for name, entries in value.items():
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:+/-]{0,255}", name) or ".." in name or not isinstance(entries, list):
+            raise ValueError("invalid Mise tool")
+        for entry in entries:
+            if (not isinstance(entry, dict) or entry.get("installed") is not True
+                    or not isinstance(entry.get("version"), str)
+                    or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.+-]{0,255}", entry["version"])):
+                raise ValueError("invalid Mise installed version")
+            identity = (name, entry["version"])
+            if identity in inventory or len(inventory) >= MAX_ITEMS:
+                raise ValueError("duplicate or excessive Mise inventory")
+            inventory.add(identity)
+    return sorted(inventory)
+
+
+def scan_mise():
+    executable = optional_executable("mise")
+    if executable is None:
+        return None
+    environment = dict(os.environ)
+    deadline = time.monotonic() + 120
+    def query(arguments):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("Mise scan timed out")
+        return run_bounded([executable, *arguments], timeout=remaining, env=environment, cwd="/")
+    try:
+        inventory = mise_inventory(query(["ls", "--current", "--installed", "--json"]))
+        items = []
+        for name in sorted({name for name, _ in inventory}):
+            # Let mise preserve configured version ranges rather than pinning
+            # the request to the already installed concrete version.
+            value = machine_json(query(["outdated", "--json", "--", name]))
+            if not isinstance(value, dict) or set(value) - {name}:
+                raise ValueError("incompatible Mise outdated tools")
+            if not value:
+                continue
+            entry = value[name]
+            if (not isinstance(entry, dict) or (name, entry.get("current")) not in inventory
+                    or not isinstance(entry.get("latest"), str)
+                    or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.+-]{0,255}", entry["latest"])):
+                raise ValueError("incompatible Mise outdated version")
+            version = entry["current"]
+            if entry["latest"] != version:
+                items.append(ItemResult("update", name, version, entry["latest"], name + "@" + version, "user"))
+        return validate_result(ProviderResult("mise", pending=len(items), managed=len(inventory),
+                              update_available=bool(items), items=tuple(items)))
+    except ScanFailure:
+        raise
+    except ValueError:
+        return None
+
+
+def discover_scanners():
+    for meta in REGISTRY:
+        if meta.can_update and not meta.can_recover:
+            raise ValueError("mutable provider requires recovery eligibility")
+    return {meta.identifier: meta.discover for meta in REGISTRY
+            if meta.core or optional_executable(meta.identifier) is not None}
+
+
+def connectivity_state(state):
+    """Interpret NetworkManager's global NMState, including wired connections."""
+    if type(state) is not int:
+        return "unknown"
+    if state in {50, 60, 70}:
+        return "online"
+    if state in {10, 20, 30, 40}:
+        return "offline"
+    return "unknown"
+
+
+def action_snapshot(value):
+    row = "active\tnone" if value is None else "operation\t" + "\t".join(
+        escape(str(value[field])) for field in ("operation", "provider", "action", "phase", "outcome"))
+    return "update-center-action-protocol\t1\t0\n" + row + "\ncomplete\taction\n"
+
+
+def watch_operation():
+    """Watch atomic journal replacement and kernel terminal-exit notifications."""
+    from gi.repository import Gio, GLib
+    with cache_directory(coordination_path(), create=True):
+        pass
+    loop = GLib.MainLoop()
+    monitor = Gio.File.new_for_path(str(coordination_path())).monitor_directory(
+        Gio.FileMonitorFlags.WATCH_MOVES, None)
+    pending = 0
+    pid_source, pid_fd, watched = 0, None, None
+    legacy_timer, legacy_operation = 0, None
+    last = None
+
+    def clear_pid():
+        nonlocal pid_source, pid_fd, watched
+        if pid_source:
+            GLib.source_remove(pid_source)
+        if pid_fd is not None:
+            os.close(pid_fd)
+        pid_source, pid_fd, watched = 0, None, None
+
+    def queue(*_args):
+        nonlocal pending
+        if not pending:
+            pending = GLib.idle_add(observe)
+
+    def exited(*_args):
+        nonlocal pid_source
+        pid_source = 0
+        queue()
+        return False
+
+    def observe():
+        nonlocal pending, pid_source, pid_fd, watched, last, legacy_timer, legacy_operation
+        pending = 0
+        value = None
+        try:
+            value = active_operation()
+            recoverable = {"closed", "interrupted", "system-failed", "system-complete/user-failed"}
+            launch_pending = value is not None and value["terminal_pid"] == 0 and value["phase"] not in recoverable
+            if launch_pending and value["launcher_pid"] > 0 and process_identity(value["launcher_pid"]) != value["launcher_identity"]:
+                with operation_lock():
+                    current = read_operation()
+                    if current is None or current["operation"] != value["operation"]:
+                        queue()
+                        return False
+                    value = current
+                    if value["terminal_pid"] == 0 and value["phase"] not in recoverable:
+                        value = {**value, "phase": "interrupted", "outcome": "unknown", "updated": int(time.time()),
+                                 "detail": "Terminal launcher exited before recording its child; recovery is required"}
+                        write_operation(value)
+                launch_pending = False
+            if launch_pending and value["launcher_pid"] == 0:
+                # Older receipts have no observable launch owner. Give an in-flight
+                # legacy launch one bounded grace period, never recurring polling.
+                if legacy_operation != value["operation"]:
+                    if legacy_timer:
+                        GLib.source_remove(legacy_timer)
+                    legacy_operation = value["operation"]
+                    def expire():
+                        nonlocal legacy_timer
+                        legacy_timer = 0
+                        try:
+                            with operation_lock():
+                                current = active_operation()
+                                if (current is not None and current["operation"] == legacy_operation
+                                        and current["terminal_pid"] == 0 and current["launcher_pid"] == 0
+                                        and current["phase"] not in recoverable):
+                                    write_operation({**current, "phase": "interrupted", "outcome": "unknown",
+                                        "updated": int(time.time()),
+                                        "detail": "Legacy terminal launch could not be verified; recovery is required"})
+                        except (OSError, ValueError) as error:
+                            print("Legacy update operation watch failed: " + str(error), file=sys.stderr)
+                            loop.quit()
+                        queue()
+                        return False
+                    legacy_timer = GLib.timeout_add_seconds(30, expire)
+            elif legacy_timer:
+                GLib.source_remove(legacy_timer)
+                legacy_timer, legacy_operation = 0, None
+            if value is not None and value["terminal_pid"] > 0:
+                value = terminal_closed(value["operation"])
+            identity = None if value is None or value["phase"] in recoverable else (
+                (value["launcher_pid"], value["launcher_identity"]) if value["terminal_pid"] == 0
+                else (value["terminal_pid"], value["terminal_identity"]))
+            if identity != watched:
+                clear_pid()
+                if identity is not None and identity[0] > 0:
+                    try:
+                        pid_fd = os.pidfd_open(identity[0])
+                    except ProcessLookupError:
+                        queue()
+                    else:
+                        # The fd must describe the recorded process, not a reused PID.
+                        observed = process_identity(identity[0])
+                        if observed is None or identity[1] and observed != identity[1]:
+                            clear_pid()
+                            queue()
+                        else:
+                            watched = identity
+                            pid_source = GLib.io_add_watch(pid_fd, GLib.IO_IN | GLib.IO_HUP, exited)
+            payload = action_snapshot(value)
+            if payload != last:
+                sys.stdout.write(payload)
+                sys.stdout.flush()
+                last = payload
+        except (OSError, ValueError) as error:
+            current = read_operation()
+            if value is not None and current is not None and current["operation"] != value["operation"]:
+                queue()
+                return False
+            print("Update operation watch failed: " + str(error), file=sys.stderr)
+            loop.quit()
+        return False
+
+    def changed(_monitor, path, other, _event):
+        if any(item is not None and item.get_basename() == "operation.json" for item in (path, other)):
+            queue()
+
+    monitor.connect("changed", changed)
+    queue()
+    try:
+        loop.run()
+    finally:
+        monitor.cancel()
+        clear_pid()
+        if legacy_timer:
+            GLib.source_remove(legacy_timer)
+
+
+def watch_connectivity():
+    """Stream global state changes without polling or activating NetworkManager."""
+    last = None
+    def emit(value):
+        nonlocal last
+        if value != last:
+            print("connectivity\t1\t" + value, flush=True)
+            last = value
+    try:
+        from gi.repository import Gio, GLib
+        proxy = Gio.DBusProxy.new_for_bus_sync(
+            Gio.BusType.SYSTEM, Gio.DBusProxyFlags.DO_NOT_AUTO_START, None,
+            "org.freedesktop.NetworkManager", "/org/freedesktop/NetworkManager",
+            "org.freedesktop.NetworkManager", None)
+        def changed(*_args):
+            value = proxy.get_cached_property("State") if proxy.get_name_owner() else None
+            emit(connectivity_state(value.unpack() if value is not None else None))
+        proxy.connect("g-properties-changed", changed)
+        proxy.connect("notify::g-name-owner", changed)
+        loop = GLib.MainLoop()
+        def closed(*_args):
+            emit("unknown")
+            loop.quit()
+        proxy.get_connection().connect("closed", closed)
+        changed()
+        loop.run()
+    except (ImportError, OSError):
+        emit("unknown")
+    except Exception as error:
+        # An unavailable system bus must not veto otherwise functional providers.
+        emit("unknown")
+        print("NetworkManager connectivity unavailable: " + str(error), file=sys.stderr)
+
+
+def main(argv=None):
+    args = sys.argv[1:] if argv is None else argv
+    providers = {meta.identifier for meta in REGISTRY}
+    snapshot_command = args in (["snapshot"], ["snapshot", "--force"]) or (
+        len(args) == 2 and args[0] == "rescan" and args[1] in providers)
+    operation_command = args == ["active"] or (len(args) == 2 and args[0] in {"launch", "recover"}
+        and args[1] in providers) or (len(args) == 2 and args[0] == "terminal-closed"
+        and OPERATION_PATTERN.fullmatch(args[1]) is not None)
+    if not snapshot_command and not operation_command and args not in (["watch-connectivity"], ["watch-operation"]):
+        print("usage: snapshot [--force] | rescan PROVIDER | launch PROVIDER | active | "
+              "terminal-closed OPERATION_ID | recover PROVIDER | watch-connectivity | watch-operation", file=sys.stderr)
+        return 2
+    try:
+        require_fedora()
+        if args == ["watch-connectivity"]:
+            watch_connectivity()
+            return 0
+        if args == ["watch-operation"]:
+            watch_operation()
+            return 0
+        if operation_command:
+            if args == ["active"]:
+                value = active_operation()
+                if value is None:
+                    sys.stdout.write("update-center-action-protocol\t1\t0\nactive\tnone\ncomplete\taction\n")
+                else:
+                    sys.stdout.write("update-center-action-protocol\t1\t0\noperation\t" + "\t".join(
+                        escape(str(value[field])) for field in ("operation", "provider", "action", "phase", "outcome"))
+                        + "\ncomplete\taction\n")
+                return 0
+            value = terminal_closed(args[1]) if args[0] == "terminal-closed" else launch_operation(
+                args[1], "recover" if args[0] == "recover" else "update")
+            sys.stdout.write("update-center-action-protocol\t1\t0\noperation\t" + "\t".join(
+                escape(str(value[field])) for field in ("operation", "provider", "action", "phase", "outcome"))
+                + "\ncomplete\taction\n")
+            return 0
+        path = Path(cache_root()) / "dwm-titus/update-center.json"
+        # The guarded persistence layer rejects invalid/unsafe paths. Optional
+        # cache configuration must not suppress independently coordinated scans.
+        scanners = discover_scanners()
+        provider = args[1] if args[0] == "rescan" else None
+        results = snapshot(path, scanners, force=args != ["snapshot"], provider=provider)
+        sys.stdout.write(render_snapshot(results))
+        return 0
+    except (ValueError, OSError) as error:
+        print(str(error), file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

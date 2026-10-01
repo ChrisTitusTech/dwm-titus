@@ -1,0 +1,16 @@
+FROM registry.fedoraproject.org/fedora:44
+
+COPY scripts/dwm-packages.sh /tmp/dwm-packages.sh
+# Capabilities stay in the product package map. Extra utilities serve existing
+# automated gates: lint, Git staging, ISO fixtures, GTK/Pillow, and Kickstarts.
+RUN bash -euo pipefail -c 'source /tmp/dwm-packages.sh; \
+    packages=$(for profile in ci-smoke desktop system-management qml-validation; do \
+        dwm_packages fedora "$profile"; done); \
+    mapfile -t packages < <(printf "%s\n" "$packages" | sort -u); \
+    dnf install -y --setopt=install_weak_deps=False "${packages[@]}" \
+        bash git-core tar findutils diffutils ShellCheck shfmt \
+        rsync pykickstart python3-pillow gtk3 gtk4 xorg-x11-xauth; \
+    dnf clean all; rm /tmp/dwm-packages.sh'
+
+# No systemd, host session, or hardware is required by the runner.
+ENV QT_QUICK_BACKEND=software

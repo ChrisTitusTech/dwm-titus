@@ -6,7 +6,42 @@ versions from `config.mk`.
 
 ## [Unreleased]
 
+### Added
+
+- Keep Update Center floating and apply its saved Float update terminal toggle
+  to the next update or recovery terminal, which defaults to tiled.
+
+- Add the panel Update Center for Fedora, desktop, Flatpak, and mise updates,
+  with provider counts, refresh preferences, terminal progress, and recovery.
+  Existing window rules gain backed-up floating/tiled no-swallow rules for its
+  terminals during source and desktop updates.
+
+### Changed
+
+- Reuse existing non-interactive sudo authorization for confirmed desktop
+  updates and recovery, falling back to polkit when unavailable. Passwords and
+  authorization policy are not stored or changed by the updater.
+
 ### Fixed
+
+- Restore the original panel-anchored Update Center popup, including content-based
+  sizing and click-away dismissal. Keep the floating/tiled preference scoped to
+  update and recovery terminals.
+
+- Restore access to desktop update progress from the Update Center, and skip
+  optional window-rule migration for symlinked or special personal files.
+- Keep Update Center controls reachable on short screens and with large text,
+  and reload preferences when reopening their editor after a save conflict.
+  Unsafe preference files show defaults and preservation guidance without
+  permitting writes. Save commits typed interval text and remains retryable
+  after repeated identical errors.
+- Preserve Flatpak scope completion across interrupted recovery attempts and
+  stop bounded helper descendants on timeout. Keep long non-ASCII error
+  details within the operation journal's byte limit.
+
+- Show Fedora updates through the native DNF terminal workflow, preserving full
+  transaction output and confirmation. Limit discovery to update state and
+  correctly parse active PackageKit operations during legacy recovery.
 
 - Install `NetworkManager-wifi` with the Fedora image and full package set, and
   reconcile it on existing source checkouts. Without the Wi-Fi plugin,

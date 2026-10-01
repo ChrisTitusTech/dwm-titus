@@ -468,6 +468,12 @@ fi
 [ -z "$systemctl_import_pid" ] || wait "$systemctl_import_pid"
 [ -z "$dbus_import_pid" ] || wait "$dbus_import_pid"
 
+# An older updater cannot stage this rule migration. Complete that first upgrade
+# at login, preserving a recovery copy and the live configuration directory.
+if command -v dwm-migrate-update-center-window-rule >/dev/null 2>&1; then
+	dwm-migrate-update-center-window-rule || true
+fi
+
 # Start Quickshell before XDG autostart applications, then wait for the tray IPC
 # endpoint before activating the rest of the graphical session.
 case ${XDG_CONFIG_HOME:-} in

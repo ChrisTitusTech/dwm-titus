@@ -1,0 +1,793 @@
+#!/usr/bin/python3
+"""Run one validated Update Center provider operation in an interactive terminal."""
+import codecs
+import contextlib
+import ctypes
+import os
+import re
+import runpy
+import selectors
+import shutil
+import signal
+import stat
+import subprocess
+import sys
+import textwrap
+import time
+from pathlib import Path
+
+CENTER_PATH = Path(__file__).resolve().with_name("dwm-update-center")
+CENTER = runpy.run_path(str(CENTER_PATH))
+PROVIDERS = tuple(entry.identifier for entry in CENTER["REGISTRY"])
+OPERATION_PATTERN = re.compile(r"op-[0-9a-f]{32}")
+TERMINAL_TITLE = "dwm update center"
+TERMINAL_INSTANCE = b"dwm-update-center"
+TERMINAL_CLASS = b"DwmUpdateCenter"
+DEFAULT_TIMEOUT = 1800
+validate_provider_action = CENTER["validate_provider_action"]
+
+
+class XClassHint(ctypes.Structure):
+    _fields_ = [("res_name", ctypes.c_char_p), ("res_class", ctypes.c_char_p)]
+
+
+def set_terminal_identity(environment=None, output=None):
+    """Apply the fixed Task 7 identity to this terminal; never include opaque tokens."""
+    environment = os.environ if environment is None else environment
+    destination = sys.stdout if output is None else output
+    title = TERMINAL_TITLE + (" tiled" if environment.get("DWM_UPDATE_CENTER_WINDOW_MODE") == "tiled" else "")
+    destination.write("\033]0;" + title + "\007")
+    destination.flush()
+    if environment.get("DWM_UPDATE_CENTER_TERMINAL_IDENTITY") == "1":
+        return True
+    display_name, raw_window = environment.get("DISPLAY"), environment.get("WINDOWID")
+    if not display_name or not raw_window or not re.fullmatch(r"(?:0x[0-9A-Fa-f]+|[1-9][0-9]*)", raw_window):
+        return False
+    try:
+        window = int(raw_window, 0)
+        library = ctypes.CDLL("libX11.so.6")
+        library.XOpenDisplay.argtypes = [ctypes.c_char_p]
+        library.XOpenDisplay.restype = ctypes.c_void_p
+        library.XStoreName.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_char_p]
+        library.XSetClassHint.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.POINTER(XClassHint)]
+        library.XSync.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        library.XCloseDisplay.argtypes = [ctypes.c_void_p]
+        display = library.XOpenDisplay(display_name.encode("utf-8"))
+        if not display:
+            return False
+        try:
+            hint = XClassHint(TERMINAL_INSTANCE, TERMINAL_CLASS)
+            return bool(library.XStoreName(display, window, title.encode("utf-8"))
+                        and library.XSetClassHint(display, window, ctypes.byref(hint))
+                        and library.XSync(display, 0) == 0)
+        finally:
+            library.XCloseDisplay(display)
+    except (OSError, ValueError, OverflowError):
+        return False
+
+
+PROVIDER_TITLES = {
+    "fedora": ("Update system packages", "Recover system packages"),
+    "flatpak": ("Update Flatpak packages", "Recover Flatpak packages"),
+    "dwm-titus": ("Update DWM-Titus", "Recover DWM-Titus"),
+    "mise": ("Update mise tools", "Recover mise tools"),
+}
+
+
+def print_provider_header(provider, action, *, output=None):
+    destination = sys.stdout if output is None else output
+    pair = PROVIDER_TITLES.get(provider)
+    if pair:
+        title = pair[1] if action == "recover" else pair[0]
+    else:
+        title = f"{action.capitalize()} {provider}"
+    destination.write(f"\033[32m\n{title}\033[0m\n")
+    destination.flush()
+
+
+def print_step(detail, *, output=None):
+    destination = sys.stdout if output is None else output
+    text = detail.rstrip(".")
+    if not (text.endswith("completed") or text.endswith("complete")):
+        text = text + "..."
+    destination.write(f"\033[1;34m::\033[0m {text}\n")
+    destination.flush()
+
+
+def checkpoint(operation, phase, detail, *, output=None):
+    print_step(detail, output=output)
+    changes = {"phase": phase, "detail": detail}
+    if phase != "recovering":
+        changes["provider_phase"] = phase
+    return CENTER["update_operation"](operation, **changes)
+
+
+def executable(name):
+    path = shutil.which(name)
+    if path is None:
+        raise FileNotFoundError(name + " is unavailable")
+    return str(Path(path).resolve())
+
+
+def trusted_desktop_helper():
+    helper = CENTER["trusted_desktop_helper"]()
+    if helper is None:
+        raise PermissionError("Trusted installed desktop updater unavailable")
+    return helper
+
+
+class ProgressTracker:
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.pending_pkg = None
+        self.current_percent = None
+
+    @staticmethod
+    def format_package(phase, name, pct=None):
+        pct_str = f" \033[32m[{pct:>3}%]\033[0m" if pct is not None else ""
+        return f"\033[1;34m->\033[0m \033[1m{phase}:\033[0m {name}{pct_str}"
+
+    def flush_pending(self, pct=None):
+        if self.pending_pkg is None:
+            return None
+        name, phase, item_pct = self.pending_pkg
+        self.pending_pkg = None
+        effective_pct = pct if pct is not None else item_pct if item_pct is not None else self.current_percent
+        return self.format_package(phase, name, effective_pct)
+
+    def handle_package_progress(self, name, phase, percent_str):
+        if not name:
+            return self.flush_pending()
+        flushed = self.flush_pending()
+        item_pct = int(percent_str) if percent_str.isdigit() and 0 <= int(percent_str) <= 100 else None
+        self.pending_pkg = (name, phase.capitalize(), item_pct)
+        return flushed
+
+    def handle_operation(self, state, progress_str, detail):
+        if progress_str.isdigit() and 0 <= int(progress_str) <= 100:
+            self.current_percent = int(progress_str)
+        is_telemetry = detail.startswith("Observed signals:") or detail == "unknown"
+        if is_telemetry:
+            if self.pending_pkg is not None:
+                return self.flush_pending(self.current_percent)
+            if self.current_percent is not None:
+                return f"\033[32m[{self.current_percent:>3}%]\033[0m PackageKit {state}"
+            return f"PackageKit {state}"
+        lines = []
+        flushed = self.flush_pending()
+        if flushed:
+            lines.append(flushed)
+        if progress_str.isdigit() and 0 <= int(progress_str) <= 100:
+            lines.append(f"\033[32m[{int(progress_str):>3}%]\033[0m {detail}")
+        else:
+            status_color = "\033[32m" if state == "succeeded" else "\033[31m" if state == "failed" else "\033[33m"
+            status = "OK" if state == "succeeded" else "FAIL" if state == "failed" else state.upper()
+            lines.append(f"{status_color}[{status}]\033[0m {detail}")
+        return "\n".join(lines)
+
+    def handle_audit(self, state, detail):
+        lines = []
+        flushed = self.flush_pending()
+        if flushed:
+            lines.append(flushed)
+        status_color = "\033[32m" if state == "succeeded" else "\033[31m" if state == "failed" else "\033[33m"
+        status = "OK" if state == "succeeded" else "FAIL" if state == "failed" else state.upper()
+        lines.append(f"{status_color}[{status}]\033[0m {detail}")
+        self.reset()
+        return "\n".join(lines)
+
+
+DEFAULT_PROGRESS_TRACKER = ProgressTracker()
+
+
+def format_progress_record(line, tracker=None):
+    if tracker is None:
+        tracker = DEFAULT_PROGRESS_TRACKER
+    fields = line.rstrip("\n").split("\t")
+    record_type = fields[0]
+    if record_type == "system-management-protocol":
+        tracker.reset()
+        return None
+    if record_type == "complete":
+        return tracker.flush_pending()
+    if record_type == "operation" and len(fields) >= 8:
+        state, progress, detail = fields[4], fields[5], fields[7]
+        return tracker.handle_operation(state, progress, detail)
+    if record_type == "package-progress" and len(fields) >= 5:
+        name, phase, percent = fields[2], fields[3], fields[4]
+        return tracker.handle_package_progress(name, phase, percent)
+    if record_type == "package" and len(fields) >= 3:
+        flushed = tracker.flush_pending()
+        action = fields[1].capitalize()
+        pkg_name = fields[2].split(";")[0] if ";" in fields[2] else fields[2]
+        summary = f" - {fields[3]}" if len(fields) >= 4 and fields[3] else ""
+        pkg_line = f"\033[1;34m->\033[0m \033[1m{action}:\033[0m {pkg_name}{summary}"
+        return f"{flushed}\n{pkg_line}" if flushed else pkg_line
+    if record_type == "audit" and len(fields) >= 8:
+        state, detail = fields[4], fields[7]
+        return tracker.handle_audit(state, detail)
+    if record_type == "error" and len(fields) >= 4:
+        flushed = tracker.flush_pending()
+        err_line = f"\033[1;31m[ERROR]\033[0m {fields[3]}"
+        return f"{flushed}\n{err_line}" if flushed else err_line
+    return "  |  ".join(fields)
+
+
+def print_terminal_line(line, *, output=None, width=None, tracker=None):
+    """Render machine fields readably without changing the retained payload."""
+    destination = sys.stdout if output is None else output
+    formatted = format_progress_record(line, tracker=tracker)
+    if not formatted:
+        return
+    columns = shutil.get_terminal_size((102, 24)).columns - 2 if width is None else width
+    for entry in formatted.splitlines():
+        wrapped = textwrap.wrap(entry, width=max(40, columns), subsequent_indent="  ",
+                                break_long_words=False, break_on_hyphens=False)
+        destination.write("\n".join(wrapped or [""]) + "\n")
+    destination.flush()
+
+
+@contextlib.contextmanager
+def termination_cleanup():
+    """Unwind Python cleanup on terminal hangup and explicit termination."""
+    previous = {}
+
+    def terminate(signum, _frame):
+        raise SystemExit(128 + signum)
+
+    try:
+        for signum in (signal.SIGHUP, signal.SIGTERM):
+            previous[signum] = signal.signal(signum, terminate)
+        yield
+    finally:
+        for signum, handler in previous.items():
+            signal.signal(signum, handler)
+
+
+@contextlib.contextmanager
+def bounded_process(argv, *, cwd=None, env=None):
+    """Own helper descendants even if the terminal hangs up during a command."""
+    with termination_cleanup():
+        process = None
+        try:
+            process = subprocess.Popen(argv, cwd=cwd, env=env, stdin=None, stdout=subprocess.PIPE,
+                                       stderr=None, bufsize=0, start_new_session=True)
+            yield process
+        finally:
+            # A second hangup must not interrupt cleanup of the owned group.
+            for signum in (signal.SIGHUP, signal.SIGTERM):
+                signal.signal(signum, signal.SIG_IGN)
+            if process is not None:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                process.wait()
+                process.stdout.close()
+
+
+def stream_process(argv, *, cwd=None, env=None, timeout=DEFAULT_TIMEOUT, stream=True):
+    """Execute argv, streaming decoded lines bounded by size and deadline."""
+    if not isinstance(argv, list) or not argv or any(not isinstance(value, str) for value in argv):
+        raise ValueError("invalid provider argv")
+    if not isinstance(timeout, (int, float)) or timeout <= 0:
+        raise ValueError("invalid timeout")
+    with bounded_process(argv, cwd=cwd, env=env) as process:
+        output, size = [], 0
+        buffer = ""
+        tracker = ProgressTracker()
+        decoder = codecs.getincrementaldecoder("utf-8")(errors="strict")
+        deadline = time.monotonic() + timeout
+        with selectors.DefaultSelector() as selector:
+            os.set_blocking(process.stdout.fileno(), False)
+            selector.register(process.stdout, selectors.EVENT_READ)
+            while selector.get_map():
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError("command timed out")
+                events = selector.select(remaining)
+                if not events:
+                    raise TimeoutError("command timed out")
+                for key, _ in events:
+                    try:
+                        chunk = os.read(key.fileobj.fileno(), 65536)
+                    except (BlockingIOError, InterruptedError):
+                        continue
+                    if not chunk:
+                        selector.unregister(key.fileobj)
+                        continue
+                    size += len(chunk)
+                    if size > CENTER["MAX_BYTES"]:
+                        raise ValueError("provider output exceeded byte limit")
+                    buffer += decoder.decode(chunk)
+                    while "\n" in buffer:
+                        line, buffer = buffer.split("\n", 1)
+                        line_with_nl = line + "\n"
+                        output.append(line_with_nl)
+                        if stream:
+                            print_terminal_line(line_with_nl, tracker=tracker)
+            buffer += decoder.decode(b"", final=True)
+            if buffer:
+                output.append(buffer)
+                if stream:
+                    print_terminal_line(buffer, tracker=tracker)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("command timed out")
+            try:
+                status = process.wait(timeout=remaining)
+            except subprocess.TimeoutExpired as error:
+                raise TimeoutError("command timed out") from error
+            return status, "".join(output)
+
+
+def run_command(argv, *, cwd=None, env=None, timeout=DEFAULT_TIMEOUT, stream=True):
+    """Stream bounded output while retaining the machine response for reconciliation."""
+    status, payload = stream_process(argv, cwd=cwd, env=env, timeout=timeout, stream=stream)
+    if status:
+        raise subprocess.CalledProcessError(status, argv, payload)
+    return payload
+
+
+def run_protocol_command(argv, *, timeout=DEFAULT_TIMEOUT):
+    """Stream stdout exactly; a nonzero status may still carry a valid terminal bundle."""
+    status, payload = stream_process(argv, timeout=timeout)
+    if status not in {0, 1} or not payload:
+        raise subprocess.CalledProcessError(status, argv, payload)
+    return payload
+
+
+def result(outcome, phase, detail, restart="none", hold=True):
+    detail = detail.encode("utf-8")[:8192].decode("utf-8", errors="ignore")
+    return {"outcome": outcome, "phase": phase, "detail": detail, "restart": restart, "hold": hold}
+
+
+def records(payload, kind):
+    return [line.split("\t") for line in payload.splitlines() if line.startswith(kind + "\t")]
+
+
+def parse_operation_stream(payload, action):
+    lines = CENTER["bounded_lines"](payload)
+    if not lines or lines[0] not in {"system-management-protocol\t1\t0",
+                                     "system-management-protocol\t1\t1",
+                                     "system-management-protocol\t1\t2"} or lines[-1] != "complete\toperation":
+        raise ValueError("invalid PackageKit operation protocol")
+    operation_rows, audits = [], []
+    for line in lines[1:-1]:
+        fields = line.split("\t")
+        if fields[0] == "operation" and len(fields) == 8:
+            operation_rows.append(fields)
+        elif fields[0] == "package-progress" and len(fields) == 5:
+            pass
+        elif fields[0] == "error" and len(fields) == 4:
+            pass
+        elif fields[0] == "audit" and len(fields) == 8:
+            audits.append(fields)
+        else:
+            raise ValueError("unknown PackageKit operation record")
+        for field in fields:
+            CENTER["escape"](field)
+    terminal_states = {"succeeded", "failed", "permission-denied", "canceled", "interrupted"}
+    kind = "update" if action == "updates-install-all" else "refresh" if action == "updates-refresh" else ""
+    allowed = {
+        "pending": {"pending", "authorizing", "running", "canceled", "failed", "interrupted"},
+        "authorizing": {"authorizing", "running", "permission-denied", "canceled", "failed", "interrupted"},
+        "running": {"running", "cancel-requested", *terminal_states},
+        "cancel-requested": {"cancel-requested", *terminal_states},
+    }
+    if (not operation_rows or len(audits) != 1 or operation_rows[0][4] != "pending"
+            or not kind or any(row[2:4] != [action, kind] or not OPERATION_PATTERN.fullmatch(row[1])
+                   for row in operation_rows)
+            or any(row[1] != operation_rows[0][1] for row in operation_rows)
+            or any(row[5] != "unknown" and (not row[5].isdigit() or not 0 <= int(row[5]) <= 100)
+                   or row[6] not in {"yes", "no"} for row in operation_rows)
+            or any(following[4] not in allowed.get(current[4], set())
+                   for current, following in zip(operation_rows, operation_rows[1:]))
+            or operation_rows[-1][4] not in terminal_states
+            or audits[0][1:5] != [operation_rows[0][1], action, kind, operation_rows[-1][4]]):
+        raise ValueError("inconsistent PackageKit operation stream")
+    return {"operation": operation_rows[0][1], "state": operation_rows[-1][4],
+            "detail": audits[0][7]}
+
+
+def fedora_restart(payload):
+    CENTER["parse_fedora_snapshot"](payload)
+    rows = [row for row in records(payload, "state") if len(row) == 5 and row[1] == "update-restart"]
+    if len(rows) != 1:
+        raise ValueError("PackageKit restart state unavailable")
+    return rows[0][3] if rows[0][2] == "available" else "unknown"
+
+
+def recover_packagekit(operation):
+    """Reconcile retained PackageKit work without starting a new transaction."""
+    helper = str(CENTER_PATH.with_name("dwm-system-management"))
+    checkpoint(operation, "preparing", "Preparing authoritative PackageKit state")
+    initial = run_command([helper, "snapshot-updates"], stream=False, timeout=60)
+    # Snapshot performs journal reconciliation; attach to its exact retained
+    # owner when work is still observable instead of starting a mutation.
+    operations = records(initial, "active-operation") or records(initial, "terminal-handoff")
+    checkpoint(operation, "recovering", "Reconciling retained PackageKit operation")
+    terminal = run_protocol_command([helper, "watch-operation", operations[0][1]]) if operations else initial
+    protocol_action = operations[0][2] if operations else "updates-install-all"
+    terminal_state = parse_operation_stream(terminal, protocol_action) if records(terminal, "operation") else None
+    reconciled = run_command([helper, "snapshot-updates"], stream=False)
+    unresolved = records(reconciled, "active-operation") or records(reconciled, "terminal-handoff")
+    state = terminal_state["state"] if terminal_state else "interrupted" if unresolved else "succeeded"
+    restart = fedora_restart(reconciled)
+    if state == "interrupted" and terminal_state is not None:
+        expected = [terminal_state["operation"], protocol_action,
+                    "update" if protocol_action == "updates-install-all" else "refresh"]
+        handoffs = records(reconciled, "terminal-handoff")
+        if not records(reconciled, "active-operation") and len(handoffs) == 1 and handoffs[0][1:] == expected:
+            # Acknowledge the retained result only after authoritative reconciliation.
+            # Its audit remains in PackageKit's journal; this is not success evidence.
+            run_command([helper, "ack-operation", terminal_state["operation"]], stream=False)
+            acknowledged = run_command([helper, "snapshot-updates"], stream=False)
+            restart = fedora_restart(acknowledged)
+            if not records(acknowledged, "active-operation") and not records(acknowledged, "terminal-handoff"):
+                return result("unknown", "failed", "PackageKit state refreshed and interrupted result acknowledged; "
+                              "the previous update outcome remains unknown. " + terminal_state["detail"], restart)
+    if terminal_state is None and not records(reconciled, "active-operation") \
+            and not records(reconciled, "terminal-handoff"):
+        return result("unknown", "failed", "PackageKit state refreshed; the previous update outcome remains unknown.", restart)
+    if terminal_state is not None and state != "interrupted":
+        run_command([helper, "ack-operation", terminal_state["operation"]], stream=False)
+    if state != "succeeded":
+        return result("unknown" if state == "interrupted" else "failed",
+                      "interrupted" if state == "interrupted" else "failed",
+                      terminal_state["detail"] if terminal_state else "PackageKit reconciliation requires review", restart)
+    return result("succeeded", "completed", terminal_state["detail"] if terminal_state else "PackageKit state reconciled", restart)
+
+
+def trusted_native_command(path):
+    """Validate every directory and symlink hop of a fixed system executable."""
+    if path not in {"/usr/bin/dnf5", "/usr/bin/sudo"}:
+        raise PermissionError("Native command is not allowlisted")
+    root = os.lstat("/")
+    if root.st_uid != 0 or root.st_mode & 0o022 or not stat.S_ISDIR(root.st_mode):
+        raise PermissionError("Native command root directory is untrusted")
+    pending = list(Path(path).parts[1:])
+    current = Path("/")
+    links = 0
+    while pending:
+        component = pending.pop(0)
+        if component in {"", "."}:
+            continue
+        if component == "..":
+            current = current.parent
+            continue
+        current /= component
+        metadata = os.lstat(current)
+        if metadata.st_uid != 0:
+            raise PermissionError("Native command path must be root-owned: " + str(current))
+        if stat.S_ISLNK(metadata.st_mode):
+            links += 1
+            if links > 40:
+                raise PermissionError("Native command symlink chain is too long")
+            target = Path(os.readlink(current))
+            if target.is_absolute():
+                current = Path("/")
+                pending = list(target.parts[1:]) + pending
+            else:
+                current = current.parent
+                pending = list(target.parts) + pending
+            continue
+        if metadata.st_mode & 0o022:
+            raise PermissionError("Native command path must not be writable: " + str(current))
+        if pending and not stat.S_ISDIR(metadata.st_mode):
+            raise PermissionError("Native command parent is not a directory")
+    if not stat.S_ISREG(os.stat(current).st_mode) or not os.access(current, os.X_OK):
+        raise PermissionError("Native command is not executable")
+    return str(current)
+
+
+def execute_fedora(operation, action):
+    if action == "recover":
+        receipt = CENTER["active_operation"]()
+        if receipt is None or receipt["operation"] != operation:
+            raise ValueError("Fedora recovery does not own the active reservation")
+        if receipt["recovery_provider_phase"] != "fedora-dnf":
+            return recover_packagekit(operation)
+        # Recover is an explicit retry, with DNF's native lock and fresh
+        # interactive plan/confirmation. It never claims rollback or that the
+        # previous transaction succeeded.
+        print_step("Previous DNF outcome is unknown; retrying with a fresh native transaction plan")
+        CENTER["update_operation"](operation, phase="preparing", provider_phase="fedora-dnf",
+                                   detail="Checking PackageKit before explicit native DNF retry")
+    else:
+        checkpoint(operation, "preparing", "Checking for unfinished PackageKit work before DNF")
+    helper = str(CENTER_PATH.with_name("dwm-system-management"))
+    initial = run_command([helper, "snapshot-updates"], stream=False, timeout=60)
+    CENTER["parse_fedora_snapshot"](initial)
+    if records(initial, "active-operation") or records(initial, "terminal-handoff"):
+        return result("unknown", "interrupted",
+                      "An existing PackageKit operation requires recovery before native DNF can start. "
+                      "Open Settings > System > Fedora updates to finish or acknowledge that operation, then retry here.", "unknown")
+    recovery = [row for row in records(initial, "provider") if row[1] == "recovery"]
+    if len(recovery) != 1 or recovery[0][2] != "available":
+        raise ValueError("Authoritative PackageKit recovery state is unavailable")
+    dnf = trusted_native_command("/usr/bin/dnf5")
+    sudo = trusted_native_command("/usr/bin/sudo")
+    print_step("Starting native DNF; review its transaction and confirmation below")
+    CENTER["update_operation"](operation, phase="fedora-executing", provider_phase="fedora-dnf",
+                               detail="Native DNF owns the terminal")
+    # Inherit all three terminal descriptors: preserve native progress, scripts,
+    # interactive authorization and transaction confirmation without output caps
+    # or a timeout that could kill a frontend while privileged work continues.
+    status = subprocess.call([sudo, "--", dnf, "--setopt=exit_on_lock=True", "--setopt=assumeyes=False",
+                              "--setopt=assumeno=False", "--refresh", "upgrade"], cwd="/")
+    if status < 0:
+        return result("unknown", "interrupted", "Native DNF was interrupted; review its transaction before retrying.", "unknown")
+    if status:
+        return result("unknown", "failed", "Native DNF exited with status " + str(status) +
+                      "; review its output. Closing this terminal releases the reservation; "
+                      "no successful transaction is claimed.", "unknown")
+    return result("succeeded", "completed", "Native DNF completed successfully; review its output for restart guidance.", "unknown")
+
+
+def desktop_value(payload):
+    value = CENTER["machine_json"](payload)
+    if not isinstance(value, dict) or not isinstance(value.get("state"), str):
+        raise ValueError("invalid desktop updater state")
+    return value
+
+
+class DesktopStatusFormatter:
+    def __init__(self, *, output=None):
+        self.destination = sys.stdout if output is None else output
+        self.last_base = None
+        self.dot_count = 0
+
+    def update(self, detail, percent=-1):
+        if percent is not None and int(percent) >= 0:
+            pct = int(percent)
+            base = re.sub(r"\s*\[.*\]$", "", detail).strip()
+            if base != self.last_base:
+                if self.last_base is not None:
+                    self.destination.write("\n")
+                self.last_base = base
+            self.destination.write(f"\r\033[K{base} \033[32m[{pct:>3}%]\033[0m")
+            self.destination.flush()
+            return
+
+        base = detail.rstrip(". ")
+        if base != self.last_base:
+            if self.last_base is not None:
+                self.destination.write("\n")
+            self.dot_count = 1
+            self.last_base = base
+        else:
+            self.dot_count = (self.dot_count % 5) + 1
+        dots = " " + " ".join(["."] * (self.dot_count - 1)) if self.dot_count > 1 else ""
+        self.destination.write(f"\r\033[K{base}.{dots}")
+        self.destination.flush()
+
+    def close(self):
+        if self.last_base is not None:
+            self.destination.write("\n")
+            self.destination.flush()
+
+
+def execute_desktop(operation, action, *, output=None):
+    destination = sys.stdout if output is None else output
+    helper = trusted_desktop_helper()
+    status = desktop_value(run_command([helper, "status"], stream=False))
+    if action == "recover":
+        if status["state"] == "interrupted":
+            desktop_operation = status.get("operation")
+            if not isinstance(desktop_operation, str) or not re.fullmatch(r"[0-9a-f]{32}", desktop_operation):
+                raise ValueError("desktop recovery identity unavailable")
+            checkpoint(operation, "recovering", "Recovering the trusted desktop update", output=destination)
+            terminal = desktop_value(run_command([helper, "recover", desktop_operation], stream=False))
+        elif status["state"] in {"available", "drift", "current", "complete", "restart-required"}:
+            return result("succeeded", "completed",
+                          "Desktop update is already recovered: " + status.get("detail", "Ready"),
+                          status.get("restart", "none"))
+        else:
+            # Closing a terminal does not stop the independent desktop worker.
+            checkpoint(operation, "recovering", "Reattaching to the trusted desktop update", output=destination)
+            terminal = status
+    else:
+        checked = desktop_value(run_command([helper, "check"], stream=False))
+        revision = checked.get("available")
+        if not isinstance(revision, str) or not re.fullmatch(r"[0-9a-f]{40}", revision):
+            raise ValueError("verified desktop revision unavailable")
+        checkpoint(operation, "desktop-starting", "Starting the trusted desktop update", output=destination)
+        terminal = desktop_value(run_command([helper, "start", revision], stream=False))
+    reconciled = desktop_value(run_command([helper, "status"], stream=False)) if action == "update" else terminal
+    deadline = time.monotonic() + 1800
+    formatter = DesktopStatusFormatter(output=destination)
+    try:
+        while reconciled["state"] in CENTER["DESKTOP_ACTIVE"] | {"checking"}:
+            if time.monotonic() >= deadline:
+                return result("unknown", "interrupted", "Desktop updater remains active; reconnect with recovery")
+            formatter.update(reconciled.get("detail", "Desktop update running"), percent=reconciled.get("percent", -1))
+            time.sleep(1)
+            reconciled = desktop_value(run_command([helper, "status"], stream=False))
+    finally:
+        formatter.close()
+    state = reconciled["state"]
+    restart = reconciled.get("restart", "none")
+    if state in {"current", "complete", "restart-required"} or (action == "recover" and "Previous desktop files restored" in reconciled.get("detail", "")):
+        return result("succeeded", "completed", reconciled.get("detail", "Desktop update complete"), restart)
+    if state == "interrupted":
+        return result("unknown", "interrupted", reconciled.get("detail", "Desktop recovery required"), restart)
+    return result("failed", "failed", reconciled.get("detail", "Desktop update failed"), restart)
+
+
+def scan_flatpak_scope(program, scope):
+    run_command([program, "list", "--" + scope, "--columns=ref:full,version"], stream=False)
+    run_command([program, "remote-ls", "--" + scope, "--updates", "--columns=ref:full,version"], stream=False)
+
+
+def flatpak_recovery_basis(operation):
+    value = CENTER["read_operation"]()
+    if (value is None or value["operation"] != operation or value["provider"] != "flatpak"
+            or value["action"] != "recover" or not value["recovery_of"]):
+        raise ValueError("Flatpak recovery provenance is unavailable")
+    return value["recovery_phase"], value["recovery_provider_phase"]
+
+
+def execute_flatpak(operation, action):
+    program = executable("flatpak")
+    if action == "recover":
+        recovery_phase, provider_phase = flatpak_recovery_basis(operation)
+        checkpoint(operation, "recovering", "Rechecking Flatpak system and user scopes")
+        scan_flatpak_scope(program, "system")
+        scan_flatpak_scope(program, "user")
+        system_complete = recovery_phase == "system-complete/user-failed" or provider_phase in {
+            "flatpak-system-complete", "flatpak-user", "flatpak-user-complete"}
+        user_complete = provider_phase == "flatpak-user-complete"
+        if not system_complete:
+            checkpoint(operation, "flatpak-system", "Idempotently retrying the system Flatpak scope")
+            run_command([program, "update", "--system", "--noninteractive"])
+            checkpoint(operation, "flatpak-system-complete", "System Flatpak scope is complete")
+        if not user_complete:
+            checkpoint(operation, "flatpak-user", "Idempotently retrying the user Flatpak scope")
+            run_command([program, "update", "--user", "--noninteractive"])
+            checkpoint(operation, "flatpak-user-complete", "User Flatpak scope is complete")
+        checkpoint(operation, "recovering", "Rechecking Flatpak scopes after recovery")
+        scan_flatpak_scope(program, "system")
+        scan_flatpak_scope(program, "user")
+        return result("succeeded", "completed",
+                      "Flatpak scopes were rechecked and safely retried; known completed system work was preserved")
+    try:
+        checkpoint(operation, "flatpak-system", "Updating system Flatpaks")
+        run_command([program, "update", "--system", "--noninteractive"])
+    except subprocess.CalledProcessError as error:
+        return result("failed", "system-failed", "System Flatpak update failed; user scope was not started: " + str(error))
+    try:
+        checkpoint(operation, "flatpak-system-complete", "System Flatpak update completed")
+        checkpoint(operation, "flatpak-user", "Updating user Flatpaks")
+        run_command([program, "update", "--user", "--noninteractive"])
+    except subprocess.CalledProcessError as error:
+        return result("failed", "system-complete/user-failed",
+                      "System scope remains complete; user Flatpak update failed: " + str(error))
+    checkpoint(operation, "flatpak-user-complete", "User Flatpak update completed")
+    return result("succeeded", "completed", "System and user Flatpak scopes completed")
+
+
+def managed_mise(program):
+    payload = run_command([program, "ls", "--current", "--installed", "--json"], cwd="/", env=dict(os.environ), stream=False)
+    return CENTER["mise_inventory"](payload)
+
+
+def execute_mise(operation, action):
+    program = executable("mise")
+    checkpoint(operation, "mise-inventory", "Reading Mise managed inventory")
+    inventory = managed_mise(program)
+    if action == "recover":
+        checkpoint(operation, "recovering", "Retrying from the current Mise managed inventory")
+    if inventory:
+        checkpoint(operation, "mise-update", "Updating Mise managed tools")
+        run_command([program, "upgrade", "--", *sorted({name for name, _ in inventory})],
+                    cwd="/", env=dict(os.environ))
+    checkpoint(operation, "mise-recheck", "Rechecking Mise managed inventory")
+    managed_mise(program)
+    return result("succeeded", "completed", "Mise managed inventory was rechecked after update")
+
+
+def execute_provider(operation, provider, action):
+    if not OPERATION_PATTERN.fullmatch(operation) or provider not in PROVIDERS or action not in {"update", "recover"}:
+        raise ValueError("invalid terminal operation")
+    # Fedora has its own visible, bounded authoritative preflight below.
+    # Repeating discovery here hides a full scan before the first progress line.
+    if provider != "fedora":
+        validate_provider_action(provider, action)
+    return {"fedora": execute_fedora, "dwm-titus": execute_desktop,
+            "flatpak": execute_flatpak, "mise": execute_mise}[provider](operation, action)
+
+
+def format_completion_banner(value):
+    detail = value.get("detail", "Operation finished")
+    if value.get("outcome") == "unknown":
+        return f"\n\033[1;33m==> OUTCOME UNKNOWN:\033[0m {detail}\n"
+    if detail == "Desktop update installed, verified, and active.":
+        return "\n\033[1;32mUpdate Installed Successfully!\033[0m\n"
+    if "Restart required, or Log out and back in" in detail or detail == "Installed and verified. Log out and back in to activate the updated desktop.":
+        return "\n\033[1;32mUpdate Installed Successfully! \033[1;33mRestart required, or Log out and back in for update to take effect.\033[0m\n"
+    if "Quickshell did not respond" in detail or "Quickshell restart timed out" in detail:
+        return "\n\033[1;33mUpdate Files Installed, but Quickshell restart timed out, \033[1;31mPlease Log out and back in.\033[0m\n"
+    if "Previous desktop files restored" in detail or "Recovery completed" in detail:
+        return "\n\033[1;32mRecovery completed, \033[1;31mPlease Log out and back in for recovery to take effect.\033[0m\n"
+    if value.get("outcome") == "succeeded":
+        return f"\n\033[1;32m==>\033[0m {detail}\n"
+    return f"\n\033[1;31m==> ERROR:\033[0m {detail}\n"
+
+
+def wait_for_key(stream):
+    if getattr(stream, "isatty", lambda: False)():
+        try:
+            import termios
+            import tty
+            fd = stream.fileno()
+            old = termios.tcgetattr(fd)
+            try:
+                tty.setcbreak(fd)
+                stream.read(1)
+            finally:
+                termios.tcsetattr(fd, termios.TCSADRAIN, old)
+        except (OSError, ValueError, ImportError):
+            stream.read(1)
+    else:
+        try:
+            stream.read(1)
+        except OSError:
+            pass
+
+
+def completion_hold(value, *, input_stream=None, output=None):
+    if value.get("hold") is False:
+        return
+    stream = sys.stdin if input_stream is None else input_stream
+    destination = sys.stdout if output is None else output
+    destination.write(format_completion_banner(value))
+    destination.write("\n\033[32m● \033[0mDone! Press any key to close...")
+    destination.flush()
+    if input_stream is not None:
+        stream.read(1)
+    else:
+        wait_for_key(stream)
+    destination.write("\n")
+    destination.flush()
+
+
+def run_terminal(argv=None):
+    args = sys.argv[1:] if argv is None else argv
+    if len(args) != 3:
+        print("usage: dwm-update-center-terminal OPERATION_ID PROVIDER update|recover", file=sys.stderr)
+        return 2
+    operation, provider, action = args
+    try:
+        if not set_terminal_identity():
+            raise OSError("controlled terminal X11 identity is unavailable")
+        active = CENTER["active_operation"]()
+        if active is None or (active["operation"], active["provider"], active["action"]) != tuple(args):
+            raise ValueError("terminal operation does not own the active reservation")
+        CENTER["update_operation"](operation, phase="running", detail="Provider operation running")
+        print_provider_header(provider, action)
+        try:
+            value = execute_provider(operation, provider, action)
+        except Exception as error:
+            value = result("unknown", "interrupted", "Provider outcome requires recovery: " + str(error))
+        CENTER["update_operation"](operation, phase=value["phase"], outcome=value["outcome"], detail=value["detail"])
+        # The operation watcher refreshes after terminal exit. Show the result
+        # and keypress prompt immediately, without another silent discovery.
+        completion_hold(value)
+        return 0 if value["outcome"] == "succeeded" else 1
+    except (OSError, ValueError) as error:
+        print(str(error), file=sys.stderr)
+        return 1
+
+
+def main(argv=None):
+    # Preflight discovery has its own bounded subprocess cleanup. Keep it on
+    # the same unwind path as mutation helpers when the terminal disappears.
+    with termination_cleanup():
+        return run_terminal(argv)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

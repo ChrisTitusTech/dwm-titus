@@ -179,6 +179,25 @@ class Security(unittest.TestCase):
         return subprocess.run([str(helper or self.helper), *args], capture_output=True, text=True,
                               env={**os.environ, "PKEXEC_UID": str(uid), "PYTHONPATH": str(self.prefix)})
 
+    def test_sudo_identity_binds_transaction_owner_and_rejects_root_or_missing_uid(self):
+        environment = {key: value for key, value in os.environ.items()
+                       if key not in {"PKEXEC_UID", "SUDO_UID"}}
+        generation = hashlib.sha256(self.manifest_path.read_bytes()).hexdigest()
+        begun = subprocess.run([str(self.helper), "begin", generation, self.operation],
+                               capture_output=True, text=True, env={**environment, "SUDO_UID": "1000"})
+        self.assertEqual(begun.returncode, 0, begun.stderr)
+        journal = Path("/var/lib/dwm-titus/desktop-updates") / self.operation / "journal.json"
+        self.assertEqual(json.loads(journal.read_text())["uid"], 1000)
+        for uid in (None, "0", "bad", "1001"):
+            env = environment if uid is None else {**environment, "SUDO_UID": uid}
+            denied = subprocess.run([str(self.helper), "rollback", self.operation],
+                                    capture_output=True, text=True, env=env)
+            self.assertNotEqual(denied.returncode, 0, (uid, denied.stderr))
+            self.assertEqual(json.loads(journal.read_text())["state"], "preparing")
+        restored = subprocess.run([str(self.helper), "rollback", self.operation],
+                                  capture_output=True, text=True, env={**environment, "SUDO_UID": "1000"})
+        self.assertEqual(restored.returncode, 0, restored.stderr)
+
     def apply(self, uid=1000):
         generation = hashlib.sha256(self.manifest_path.read_bytes()).hexdigest()
         return self.command("apply", str(self.bundle), generation, self.operation,

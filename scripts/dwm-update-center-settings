@@ -1,0 +1,282 @@
+#!/usr/bin/env python3
+"""Guarded, user-owned Update Center preferences. No privileged operations."""
+
+import contextlib
+import fcntl
+import hashlib
+import os
+import re
+import secrets
+import stat
+import sys
+import time
+
+HEADER = "update-center-settings-protocol\t1\t0"
+ACTION_HEADER = "update-center-settings-action-protocol\t1\t0"
+NAME = "update-center.conf"
+DEFAULTS = ("3600", "enabled", "tiled")
+USAGE = "usage: status | set REFRESH_SECONDS ALWAYS_SHOW BASELINE [WINDOW_MODE] | reset BASELINE"
+DIRECTORY_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+FILE_FLAGS = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC
+
+
+class Rejected(Exception):
+    pass
+
+
+def refresh_valid(value):
+    return re.fullmatch(r"[1-9][0-9]{2,4}", value) and 300 <= int(value) <= 21600
+
+
+def owned(info, directory=False):
+    return (info.st_uid == os.getuid() and not info.st_mode & 0o022
+            and (stat.S_ISDIR(info.st_mode) if directory else
+                 stat.S_ISREG(info.st_mode) and info.st_nlink == 1 and info.st_size <= 4096))
+
+
+def metadata(info):
+    # Reading may update atime; mutation detection must ignore that side effect.
+    return (info.st_dev, info.st_ino, info.st_mode, info.st_uid,
+            info.st_gid, info.st_nlink, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+
+
+@contextlib.contextmanager
+def directory(path, create=False):
+    """Walk without following symlinks; pin each parent before opening its child."""
+    if not os.path.isabs(path):
+        raise Rejected("unsafe directory")
+    parts = path.split("/")
+    parts = [part for part in parts if part and part != "."]
+    if not parts or ".." in parts:
+        raise Rejected("unsafe directory")
+    fd = os.open("/", DIRECTORY_FLAGS)
+    try:
+        for index, part in enumerate(parts):
+            try:
+                child = os.open(part, DIRECTORY_FLAGS, dir_fd=fd)
+            except FileNotFoundError:
+                if not create:
+                    yield None
+                    return
+                os.mkdir(part, 0o700, dir_fd=fd)
+                child = os.open(part, DIRECTORY_FLAGS, dir_fd=fd)
+            info = os.fstat(child)
+            # Root-owned sticky ancestors (e.g. /tmp) are safe traversal roots.
+            ancestor_safe = (info.st_uid in (0, os.getuid()) and
+                             (not info.st_mode & 0o022 or
+                              info.st_uid == 0 and info.st_mode & stat.S_ISVTX))
+            safe = owned(info, directory=True) if index == len(parts) - 1 else ancestor_safe
+            if not safe:
+                os.close(child)
+                raise Rejected("unsafe directory")
+            os.close(fd)
+            fd = child
+        yield fd
+    finally:
+        os.close(fd)
+
+
+def snapshot(fd):
+    if fd is None:
+        return "absent", None
+    try:
+        file_fd = os.open(NAME, FILE_FLAGS, dir_fd=fd)
+    except FileNotFoundError:
+        return "absent", None
+    except OSError as error:
+        raise Rejected("unsafe persistent state; preserving file") from error
+    try:
+        info = os.fstat(file_fd)
+        if not owned(info):
+            raise Rejected("unsafe persistent state; preserving file")
+        data = os.read(file_fd, 4097)
+        after = os.fstat(file_fd)
+        linked = os.stat(NAME, dir_fd=fd, follow_symlinks=False)
+        if metadata(info) != metadata(after) or metadata(after) != metadata(linked) or len(data) > 4096:
+            raise Rejected("unsafe persistent state; preserving file")
+        token = hashlib.sha256(repr(metadata(info)).encode() + b"\0" + data).hexdigest()
+        return token, data
+    finally:
+        os.close(file_fd)
+
+
+def parse(data):
+    if data is None:
+        return DEFAULTS
+    try:
+        lines = data.decode("ascii").splitlines()
+        if not lines or lines[0] != HEADER:
+            raise ValueError
+        values = {}
+        for line in lines[1:]:
+            key, value = line.split("\t")
+            if key not in ("refreshSeconds", "alwaysShow", "windowMode") or key in values:
+                raise ValueError
+            values[key] = value
+        if (not {"refreshSeconds", "alwaysShow"}.issubset(values) or
+                not refresh_valid(values["refreshSeconds"]) or
+                values["alwaysShow"] not in ("enabled", "disabled") or
+                values.get("windowMode", "tiled") not in ("tiled", "floating")):
+            raise ValueError
+        return values["refreshSeconds"], values["alwaysShow"], values.get("windowMode", "tiled")
+    except (UnicodeError, ValueError):
+        raise Rejected("malformed persistent state; preserving file") from None
+
+
+def paths():
+    config = os.environ.get("XDG_CONFIG_HOME", "")
+    if not os.path.isabs(config):
+        config = os.path.join(os.environ["HOME"], ".config")
+    runtime = os.environ.get("XDG_RUNTIME_DIR", f"/tmp/dwm-titus-{os.getuid()}")
+    return config, runtime
+
+
+@contextlib.contextmanager
+def config_directory(config, create=False):
+    try:
+        with directory(config, create) as home_fd:
+            if home_fd is None:
+                yield None
+                return
+            # Validate config itself as well as the final managed directory.
+            with directory(os.path.join(config, "dwm-titus"), create) as fd:
+                yield fd
+    except (OSError, Rejected) as error:
+        if isinstance(error, Rejected) and str(error) != "unsafe directory":
+            raise
+        raise Rejected("unsafe configuration directory") from error
+
+
+def emit_status(config):
+    token, values, kind, detail = "unavailable", DEFAULTS, "unavailable", "Unsafe preferences were preserved; using defaults"
+    try:
+        with config_directory(config) as fd:
+            token, data = snapshot(fd)
+            try:
+                values = parse(data)
+                kind = "defaults" if data is None else "available"
+                detail = "Using default preferences" if data is None else "Persistent preferences are active"
+            except Rejected:
+                kind, detail = "partial", "Malformed preferences were preserved; using defaults"
+    except Rejected:
+        pass
+    print(HEADER)
+    print(f"state\t{kind}\t{detail}")
+    print(f"preference\trefreshSeconds\t{values[0]}")
+    print(f"preference\talwaysShow\t{values[1]}")
+    print(f"preference\twindowMode\t{values[2]}")
+    print(f"baseline\t{token}")
+    print("complete\tstatus")
+
+
+@contextlib.contextmanager
+def lock(runtime):
+    try:
+        with directory(runtime, create=True) as fd:
+            lock_fd = os.open("dwm-update-center-settings.lock",
+                              os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
+                              0o600, dir_fd=fd)
+            try:
+                if not owned(os.fstat(lock_fd)):
+                    raise Rejected("unsafe lock file")
+                deadline = time.monotonic() + 5
+                while True:
+                    try:
+                        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        break
+                    except BlockingIOError:
+                        if time.monotonic() >= deadline:
+                            raise Rejected("another preferences operation is still running") from None
+                        time.sleep(0.05)
+                yield
+            finally:
+                os.close(lock_fd)
+    except OSError as error:
+        raise Rejected("unsafe runtime directory") from error
+    except Rejected as error:
+        if str(error) == "unsafe directory":
+            raise Rejected("unsafe runtime directory") from error
+        raise
+
+
+def mutate(config, runtime, command, baseline, values):
+    with lock(runtime), config_directory(config, create=True) as fd:
+        token, data = snapshot(fd)
+        previous = parse(data)
+        if len(values) == 2:
+            values = (*values, previous[2])
+        if token != baseline:
+            raise Rejected("preferences changed; refresh status before saving")
+        staged = f".update-center.{secrets.token_hex(12)}"
+        stage_fd = os.open(staged, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+                           0o600, dir_fd=fd)
+        committed = False
+        try:
+            content = f"{HEADER}\nrefreshSeconds\t{values[0]}\nalwaysShow\t{values[1]}\nwindowMode\t{values[2]}\n".encode("ascii")
+            with os.fdopen(stage_fd, "wb") as stream:
+                stream.write(content)
+                stream.flush()
+                os.fsync(stream.fileno())
+            try:
+                current, _ = snapshot(fd)
+            except Rejected:
+                current = "unsafe"
+            if current != token:
+                raise Rejected("preferences changed during the transaction; staged preferences retained")
+            if command == "reset":
+                if data is not None:
+                    os.unlink(NAME, dir_fd=fd)
+                committed = True
+                os.unlink(staged, dir_fd=fd)
+            else:
+                os.replace(staged, NAME, src_dir_fd=fd, dst_dir_fd=fd)
+                committed = True
+            os.fsync(fd)
+            new_token, _ = snapshot(fd)
+        except KeyboardInterrupt:
+            if committed:
+                raise Rejected("operation interrupted after preferences committed; refresh status") from None
+            raise Rejected("operation interrupted; staged preferences retained") from None
+        except OSError:
+            if committed:
+                raise Rejected("I/O failure after preferences committed; durability uncertain; refresh status") from None
+            raise Rejected("I/O failure before preferences committed; staged preferences retained") from None
+    print(ACTION_HEADER)
+    print("result\tsuccess\tPreferences saved" if command == "set" else "result\tsuccess\tDefault preferences restored")
+    print(f"baseline\t{new_token}")
+    print(f"complete\t{command}")
+
+
+def main():
+    args = sys.argv[1:]
+    if args == ["status"]:
+        config, _ = paths()
+        emit_status(config)
+        return
+    if len(args) in (4, 5) and args[0] == "set":
+        if not refresh_valid(args[1]):
+            raise Rejected("refreshSeconds must be an integer from 300 to 21600")
+        if args[2] not in ("enabled", "disabled"):
+            raise Rejected("alwaysShow must be enabled or disabled")
+        values, baseline = (args[1], args[2]), args[3]
+        if len(args) == 5:
+            if args[4] not in ("tiled", "floating"):
+                raise Rejected("windowMode must be tiled or floating")
+            values = (*values, args[4])
+    elif len(args) == 2 and args[0] == "reset":
+        values, baseline = DEFAULTS, args[1]
+    else:
+        raise Rejected(USAGE)
+    if baseline != "absent" and not re.fullmatch(r"[0-9a-f]{64}", baseline):
+        raise Rejected("invalid baseline token")
+    config, runtime = paths()
+    mutate(config, runtime, args[0], baseline, values)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (Rejected, OSError, KeyError) as error:
+        detail = str(error) if isinstance(error, Rejected) else "preferences operation failed"
+        print(f"dwm-update-center-settings: {detail}", file=sys.stderr)
+        sys.exit(1)

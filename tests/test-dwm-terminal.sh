@@ -20,6 +20,7 @@ EOF
 cat >"$work/bin/alacritty" <<'SCRIPT'
 #!/bin/sh
 printf '%s\n' "$0" >"$DWM_TERMINAL_TEST_OUT"
+printf 'identity=%s\n' "${DWM_UPDATE_CENTER_TERMINAL_IDENTITY:-}" >>"$DWM_TERMINAL_TEST_OUT"
 printf '%s\n' "$@" >>"$DWM_TERMINAL_TEST_OUT"
 SCRIPT
 chmod +x "$work/bin/alacritty"
@@ -38,6 +39,57 @@ DWM_TERMINAL_TEST_OUT="$work/out" \
 grep -Fqx "$work/bin/alacritty" "$work/out"
 grep -Fqx -- "--class" "$work/out"
 grep -Fqx "dwm-test" "$work/out"
+
+DWM_TERMINAL_TEST_OUT="$work/update-center-out" \
+	PATH="$work/bin" \
+	"$BASH_BIN" "$HELPER" --update-center /usr/bin/dwm-update-center-terminal op-00000000000000000000000000000000 fedora update
+grep -Fqx -- '-o' "$work/update-center-out"
+grep -Fqx 'font.size=9' "$work/update-center-out"
+grep -Fqx -- '--class' "$work/update-center-out"
+grep -Fqx 'DwmUpdateCenter,dwm-update-center' "$work/update-center-out"
+grep -Fqx -- '--title' "$work/update-center-out"
+grep -Fqx 'dwm update center tiled' "$work/update-center-out"
+grep -Fqx -- '-e' "$work/update-center-out"
+grep -Fqx '/usr/bin/dwm-update-center-terminal' "$work/update-center-out"
+
+# The saved mode controls terminal mapping, including the mode inherited by
+# the runner when it writes its OSC title.
+/usr/bin/python3 "$ROOT_DIR/scripts/dwm-update-center-settings" set 3600 enabled absent floating >/dev/null
+DWM_TERMINAL_TEST_OUT="$work/update-center-floating-out" \
+	PATH="$work/bin" \
+	"$BASH_BIN" "$HELPER" --update-center /usr/bin/dwm-update-center-terminal op-00000000000000000000000000000000 fedora update
+grep -Fqx 'dwm update center' "$work/update-center-floating-out"
+
+# Test fallback: custom unsupported terminal in hotkeys.toml falls back to alacritty for update-center
+cat >"$work/bin/custom-term" <<'SCRIPT'
+#!/bin/sh
+printf '%s\n' "$0" >"$DWM_TERMINAL_TEST_OUT"
+printf '%s\n' "$@" >>"$DWM_TERMINAL_TEST_OUT"
+SCRIPT
+chmod +x "$work/bin/custom-term"
+
+sed -i 's/terminal = "alacritty"/terminal = "custom-term"/' \
+	"$XDG_CONFIG_HOME/dwm-titus/hotkeys.toml"
+DWM_TERMINAL_TEST_OUT="$work/custom-general-out" \
+	PATH="$work/bin" \
+	"$BASH_BIN" "$HELPER" echo test
+grep -Fqx "$work/bin/custom-term" "$work/custom-general-out"
+
+DWM_TERMINAL_TEST_OUT="$work/custom-fallback-out" \
+	PATH="$work/bin" \
+	"$BASH_BIN" "$HELPER" --update-center /usr/bin/dwm-update-center-terminal op-00000000000000000000000000000000 fedora update
+grep -Fqx "$work/bin/alacritty" "$work/custom-fallback-out"
+grep -Fqx 'font.size=9' "$work/custom-fallback-out"
+
+# Test explicit override via DWM_UPDATE_CENTER_TERMINAL
+DWM_TERMINAL_TEST_OUT="$work/explicit-override-out" \
+	DWM_UPDATE_CENTER_TERMINAL=custom-term \
+	PATH="$work/bin" \
+	"$BASH_BIN" "$HELPER" --update-center /usr/bin/dwm-update-center-terminal op-00000000000000000000000000000000 fedora update
+grep -Fqx "$work/bin/custom-term" "$work/explicit-override-out"
+
+sed -i 's/terminal = "custom-term"/terminal = "alacritty"/' \
+	"$XDG_CONFIG_HOME/dwm-titus/hotkeys.toml"
 
 sed -i 's/terminal = "alacritty"/terminal = "kitty"/' \
 	"$XDG_CONFIG_HOME/dwm-titus/hotkeys.toml"

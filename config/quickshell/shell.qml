@@ -19,6 +19,7 @@ import qs.power
 import qs.settings
 import qs.state
 import qs.systemmanagement
+import qs.updatecenter
 
 pragma ComponentBehavior: Bound
 
@@ -26,6 +27,7 @@ ShellRoot {
     id: root
 
     property var selectedPanelWindow: null
+    property real updateCenterAnchorX: 0
     readonly property var defaultPanelWindow: panelVariants.instances.length > 0
         ? panelVariants.instances[0] : null
     readonly property var activePanelWindow: selectedPanelWindow && selectedPanelWindow.screen
@@ -48,7 +50,19 @@ ShellRoot {
         if (popupId !== "controls") controlsModel.close();
         if (popupId !== "network") networkModel.close();
         if (popupId !== "power") powerMenuModel.close("panel");
+        if (popupId !== "updatecenter") updateCenterModel.close();
         root.selectedPanelWindow = panel;
+    }
+
+    function requestPanelPopup(panel, popupId) {
+        const samePanel = root.activePanelWindow === panel;
+        const updateCenterWasVisible = updateCenterModel.visible;
+        root.selectPanelPopup(panel, popupId);
+        if (popupId === "updatecenter") {
+            root.updateCenterAnchorX = panel.updateCenterAnchorX();
+            if (updateCenterWasVisible && samePanel) updateCenterModel.close();
+            else updateCenterModel.open();
+        }
     }
 
     function openCommandMenu(screen) {
@@ -120,13 +134,17 @@ ShellRoot {
         id: launcherModel
 
         onVisibleChanged: {
-            if (visible) commandMenuModel.close();
+            if (visible) {
+                commandMenuModel.close();
+                updateCenterModel.close();
+            }
         }
     }
 
     CommandMenuModel {
         id: commandMenuModel
         launcherModel: launcherModel
+        onVisibleChanged: if (visible) updateCenterModel.close()
         currentEntryIds: {
             const ids = [];
 
@@ -161,6 +179,7 @@ ShellRoot {
     PowerMenuModel {
         id: powerMenuModel
         powerModel: powerModel
+        onVisibleChanged: if (visible) updateCenterModel.close()
     }
 
     PowerModel {
@@ -189,20 +208,25 @@ ShellRoot {
 
     NetworkModel {
         id: networkModel
+        onVisibleChanged: if (visible) updateCenterModel.close()
     }
 
     ControlsModel {
         id: controlsModel
+        onVisibleChanged: if (visible) updateCenterModel.close()
     }
 
     BluetoothModel {
         id: bluetoothModel
+        onVisibleChanged: if (visible) updateCenterModel.close()
     }
 
     ControlCenterModel {
         id: controlCenterModel
         powerModel: powerModel
         panelSettingsModel: panelSettingsModel
+        onVisibleChanged: if (visible) updateCenterModel.close()
+        onUtilityVisibleChanged: if (utilityVisible) updateCenterModel.close()
     }
 
     SystemHealthModel {
@@ -225,6 +249,11 @@ ShellRoot {
         settingsVisible: settingsModel.visible && settingsModel.selectedSectionId === "system"
         systemBusy: systemManagementModel.operation.busy || systemManagementModel.activeOperation !== null
             || systemManagementModel.updateConfirmation !== null
+    }
+
+    UpdateCenterModel {
+        id: updateCenterModel
+        desktopUpdateModel: desktopUpdateModel
     }
 
     SettingsModel {
@@ -256,6 +285,7 @@ ShellRoot {
 
     NotificationModel {
         id: notificationModel
+        onHistoryVisibleChanged: if (historyVisible) updateCenterModel.close()
     }
 
     IpcHandler {
@@ -1153,9 +1183,9 @@ ShellRoot {
             panelSettingsModel: panelSettingsModel
             powerModel: powerModel
             powerMenuModel: powerMenuModel
-            desktopUpdateModel: desktopUpdateModel
+            updateCenterModel: updateCenterModel
             primaryPanel: modelData === Quickshell.screens[0]
-            onPopupRequested: (panel, popupId) => root.selectPanelPopup(panel, popupId)
+            onPopupRequested: (panel, popupId) => root.requestPanelPopup(panel, popupId)
         }
     }
 
@@ -1176,6 +1206,13 @@ ShellRoot {
     ControlsWindow {
         controlsModel: controlsModel
         panelWindow: root.activePanelWindow
+    }
+
+    UpdateCenterWindow {
+        updateCenterModel: updateCenterModel
+        panelWindow: root.activePanelWindow
+        anchorX: root.updateCenterAnchorX
+        onExclusiveOpenRequested: root.selectPanelPopup(root.activePanelWindow, "updatecenter")
     }
 
     BluetoothWindow {

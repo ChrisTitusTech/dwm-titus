@@ -10,6 +10,11 @@ PanelWindow {
     id: root
 
     signal popupRequested(var panelWindow, string popupId)
+    function updateCenterAnchorX() {
+        const point = updateCenterIndicator.mapToGlobal(updateCenterIndicator.width / 2, 0);
+        const screenX = root.screen && root.screen.x !== undefined ? root.screen.x : 0;
+        return point.x - screenX;
+    }
 
     function batteryIcon(percent, status) {
         if (status.toLowerCase() === "charging") {
@@ -28,9 +33,9 @@ PanelWindow {
         return "󰂎";
     }
 
-    property var desktopUpdateModel: null
     required property var state
     required property var clock
+    required property var updateCenterModel
     required property var networkModel
     required property var controlsModel
     required property var bluetoothModel
@@ -160,6 +165,21 @@ PanelWindow {
                 }
             }
 
+            ShellButton {
+                id: updateCenterIndicator
+                objectName: "updateCenterIndicator"
+                visible: root.updateCenterModel.shouldShow()
+                leadingIcon: "../assets/update-center/dwm-update-center.png"
+                leadingIconSize: Theme.scaledSize(14)
+                label: root.updateCenterModel.totalUpdates > 0
+                    ? root.updateCenterModel.totalUpdates.toString() : ""
+                labelSpacing: 4
+                accessibleDescription: root.updateCenterModel.totalUpdates > 0
+                    ? root.updateCenterModel.totalUpdates.toString() + " updates available"
+                    : "Updates are current"
+                onActivated: root.popupRequested(root, "updatecenter")
+            }
+
             Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
@@ -187,18 +207,6 @@ PanelWindow {
                                 color: Theme.text
                             }
                         }
-                    }
-
-                    ShellButton {
-                        objectName: "desktopUpdateIndicator"
-                        visible: root.desktopUpdateModel !== null && (root.desktopUpdateModel.active
-                            || ["failed", "interrupted", "restart-required"].indexOf(root.desktopUpdateModel.status.state) >= 0
-                            || (root.desktopUpdateModel.status.state === "current" && !!root.desktopUpdateModel.status.operation))
-                        label: !root.desktopUpdateModel ? "" : root.desktopUpdateModel.active ? "Updating..."
-                            : root.desktopUpdateModel.status.state === "current" ? "Updated"
-                            : root.desktopUpdateModel.status.state === "restart-required" ? "Logout required" : "Update needs attention"
-                        enabled: root.desktopUpdateModel !== null && !root.desktopUpdateModel.progressPending
-                        onActivated: root.desktopUpdateModel.showProgress()
                     }
 
                     RunningAppsArea { desktopState: root.state }

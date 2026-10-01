@@ -8,6 +8,7 @@ controls=$repo/config/quickshell/controls
 network=$repo/config/quickshell/network
 controlcenter=$repo/config/quickshell/controlcenter
 power=$repo/config/quickshell/power
+shell=$repo/config/quickshell/shell.qml
 
 for component in PanelHero PanelSeparator PanelSlider PanelToggleSwitch; do
 	test -f "$core/$component.qml"
@@ -22,6 +23,41 @@ grep -Fq 'signal popupRequested(var panelWindow, string popupId)' "$panel/DwmPan
 grep -Fq 'model: root.state.workspaceIndexes(root.screen)' "$panel/DwmPanel.qml"
 grep -Fq 'sourceComponent: TrayArea {}' "$panel/DwmPanel.qml"
 grep -Fq 'RunningAppsArea { desktopState: root.state }' "$panel/DwmPanel.qml"
+grep -Fq 'implicitWidth: buttonContent.implicitWidth + (Theme.controlPaddingX * 2)' "$core/ShellButton.qml"
+grep -Fq 'property url leadingIcon: ""' "$core/ShellButton.qml"
+grep -Fq '&& root.label.length > 0 ? root.labelSpacing : 0' \
+	"$core/ShellButton.qml"
+
+python3 - "$panel/DwmPanel.qml" "$shell" <<'PY'
+import sys
+from pathlib import Path
+
+panel = Path(sys.argv[1]).read_text()
+shell = Path(sys.argv[2]).read_text()
+clock = panel.index('id: clockLabel')
+button = panel.index('objectName: "updateCenterIndicator"')
+right = panel.index('Item {\n                Layout.fillWidth: true', button)
+assert clock < button < right, "Update Center is not immediately after the center clock"
+assert 'required property var updateCenterModel' in panel
+assert 'leadingIcon: "../assets/update-center/dwm-update-center.png"' in panel
+assert 'label: root.updateCenterModel.totalUpdates > 0' in panel
+assert 'root.updateCenterModel.totalUpdates.toString()' in panel
+assert 'labelSpacing: 4' in panel
+assert 'visible: root.updateCenterModel.shouldShow()' in panel
+assert 'root.popupRequested(root, "updatecenter")' in panel
+assert 'function updateCenterAnchorX()' in panel
+assert 'objectName: "desktopUpdateIndicator"' not in panel
+
+assert 'import qs.updatecenter' in shell
+assert shell.count('UpdateCenterModel {') == 1, "Update Center scanner/model must be shared"
+assert shell.count('UpdateCenterWindow {') == 1, "Update Center popup must be shared"
+assert 'updateCenterModel: updateCenterModel' in shell
+assert 'function requestPanelPopup(panel, popupId)' in shell
+assert 'updateCenterModel.close();' in shell
+assert 'updateCenterModel.open();' in shell
+assert 'property real updateCenterAnchorX: 0' in shell
+assert 'root.updateCenterAnchorX = panel.updateCenterAnchorX();' in shell
+PY
 
 grep -Fq 'outlined: true' "$panel/DwmPanel.qml"
 grep -Fq 'outlined ? Theme.controlNormalFill : Theme.transparent' "$core/PanelPill.qml"

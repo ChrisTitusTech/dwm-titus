@@ -38,7 +38,11 @@ INSTALL_COMMANDS = \
 	scripts/dwm-keybinds \
 	scripts/dwm-lock \
 	scripts/dwm-lock-watch \
+	scripts/dwm-migrate-update-center-window-rule \
 	scripts/dwm-panel-settings \
+	scripts/dwm-update-center \
+	scripts/dwm-update-center-terminal \
+	scripts/dwm-update-center-settings \
 	scripts/dwm-quickshell-launcher \
 	scripts/dwm-quickshell-controls \
 	scripts/dwm-quickshell-controlcenter \
@@ -295,6 +299,10 @@ install-user-files:
 	test -f ${CFG_DIR}/dwm-titus/hotkeys.toml || install -Dm644 config/hotkeys.toml ${CFG_DIR}/dwm-titus/hotkeys.toml
 	test -f ${CFG_DIR}/dwm-titus/themes.toml  || install -Dm644 config/themes.toml  ${CFG_DIR}/dwm-titus/themes.toml
 	test -f ${CFG_DIR}/dwm-titus/window-rules.toml || install -Dm644 config/window-rules.toml ${CFG_DIR}/dwm-titus/window-rules.toml
+	@echo "==> Migrating Update Center window rule..."
+	HOME="${USER_HOME}" XDG_CONFIG_HOME="${XDG_CONFIG_HOME}" \
+		scripts/dwm-migrate-update-center-window-rule || \
+		echo "  Preserving existing window rules after migration warning."
 	@echo "==> Migrating legacy graphical-session startup..."
 	HOME="${USER_HOME}" XDG_CONFIG_HOME="${XDG_CONFIG_HOME}" scripts/migrate-graphical-session.sh
 	@echo "==> Installing Meslo font aliases..."
@@ -394,10 +402,10 @@ release: dwm
 	echo "==> Created ${RELEASE_ARCHIVE}"
 
 check-shell:
-	shellcheck install.sh scripts/dwm-accessibility-settings scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-display-setup scripts/dwm-lock scripts/dwm-lock-watch scripts/dwm-keybinds scripts/dwm-panel-settings scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-pointer scripts/dwm-quickshell-state scripts/dwm-quickshell-version-check scripts/dwm-settings scripts/dwm-settings-appearance scripts/dwm-settings-font scripts/dwm-settings-personalization scripts/dwm-settings-wallpaper scripts/dwm-settings-theme scripts/dwm-settings-provider scripts/dwm-session-launch scripts/dwm-status scripts/dwm-system-health scripts/dwm-terminal scripts/dwm-xdg-autostart scripts/dwm-xsettings scripts/install-herdr scripts/quickshell-qmllint scripts/run-tests scripts/webapp-launch scripts/*.sh tests/*.sh
+	shellcheck install.sh scripts/dwm-accessibility-settings scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-display-setup scripts/dwm-lock scripts/dwm-lock-watch scripts/dwm-keybinds scripts/dwm-panel-settings scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-pointer scripts/dwm-quickshell-state scripts/dwm-quickshell-version-check scripts/dwm-settings scripts/dwm-settings-appearance scripts/dwm-settings-font scripts/dwm-settings-personalization scripts/dwm-settings-wallpaper scripts/dwm-settings-theme scripts/dwm-settings-provider scripts/dwm-session-launch scripts/dwm-status scripts/dwm-system-health scripts/dwm-terminal scripts/dwm-xdg-autostart scripts/dwm-xsettings scripts/install-herdr scripts/quickshell-qmllint scripts/run-tests scripts/run-tests-podman scripts/webapp-launch scripts/*.sh tests/*.sh
 
 check-format:
-	shfmt -d install.sh scripts/dwm-accessibility-settings scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-display-setup scripts/dwm-lock scripts/dwm-lock-watch scripts/dwm-keybinds scripts/dwm-panel-settings scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-pointer scripts/dwm-quickshell-state scripts/dwm-quickshell-version-check scripts/dwm-settings scripts/dwm-settings-appearance scripts/dwm-settings-font scripts/dwm-settings-personalization scripts/dwm-settings-wallpaper scripts/dwm-settings-theme scripts/dwm-settings-provider scripts/dwm-session-launch scripts/dwm-status scripts/dwm-system-health scripts/dwm-terminal scripts/dwm-xdg-autostart scripts/dwm-xsettings scripts/install-herdr scripts/quickshell-qmllint scripts/run-tests scripts/webapp-launch scripts/*.sh tests/*.sh
+	shfmt -d install.sh scripts/dwm-accessibility-settings scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-display-setup scripts/dwm-lock scripts/dwm-lock-watch scripts/dwm-keybinds scripts/dwm-panel-settings scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-pointer scripts/dwm-quickshell-state scripts/dwm-quickshell-version-check scripts/dwm-settings scripts/dwm-settings-appearance scripts/dwm-settings-font scripts/dwm-settings-personalization scripts/dwm-settings-wallpaper scripts/dwm-settings-theme scripts/dwm-settings-provider scripts/dwm-session-launch scripts/dwm-status scripts/dwm-system-health scripts/dwm-terminal scripts/dwm-xdg-autostart scripts/dwm-xsettings scripts/install-herdr scripts/quickshell-qmllint scripts/run-tests scripts/run-tests-podman scripts/webapp-launch scripts/*.sh tests/*.sh
 
 check-session-guards:
 	tests/test-autostart.sh
@@ -511,6 +519,9 @@ check-quickshell-panel-menus: dwm
 check-quickshell-panel-settings:
 	tests/test-quickshell-panel-settings.sh
 
+check-update-center-settings:
+	tests/test-update-center-settings.sh
+
 check-accessibility:
 	tests/test-dwm-accessibility-settings.sh
 	tests/test-quickshell-accessibility.sh
@@ -538,6 +549,25 @@ check-quickshell-qml:
 
 check-system-health:
 	tests/test-system-health.sh
+
+check-update-center:
+	/usr/bin/python3 tests/test-update-center.py
+
+check-update-center-terminal:
+	/usr/bin/python3 tests/test-update-center-terminal.py
+
+check-update-center-window-rule:
+	tests/test-update-center-window-rule.sh
+	/usr/bin/python3 tests/test-update-center-window-rule-migration.py
+
+check-quickshell-update-center-model:
+	tests/test-quickshell-update-center-model.sh
+
+check-quickshell-update-center:
+	tests/test-quickshell-update-center.sh
+
+check-quickshell-update-center-xvfb: all
+	xvfb-run -a -s "-screen 0 640x480x24" /usr/bin/python3 tests/test-quickshell-update-center-xvfb.py
 
 check-system-management:
 	/usr/bin/python3 tests/test-system-management.py
@@ -678,6 +708,9 @@ check-desktop-update: dwm
 check-test-runner:
 	@$(call run_managed_test,tests/test-run-tests.sh)
 
+check-test-runner-podman:
+	@$(call run_managed_test,tests/test-run-tests-podman.sh)
+
 release-check: all
 	@set -eu; \
 	first="$$(mktemp)"; \
@@ -751,6 +784,13 @@ check: check-picom check-picom-xvfb
 	$(MAKE) check-quickshell-large-surfaces-xvfb
 	$(MAKE) check-quickshell-panel-menus
 	$(MAKE) check-quickshell-panel-settings
+	$(MAKE) check-update-center-settings
+	$(MAKE) check-update-center
+	$(MAKE) check-update-center-terminal
+	$(MAKE) check-update-center-window-rule
+	$(MAKE) check-quickshell-update-center-model
+	$(MAKE) check-quickshell-update-center
+	$(MAKE) check-quickshell-update-center-xvfb
 	$(MAKE) check-accessibility
 	$(MAKE) check-quickshell-command-menu
 	$(MAKE) check-quickshell-qml
@@ -778,12 +818,15 @@ check: check-picom check-picom-xvfb
 	$(MAKE) check-install
 	$(MAKE) check-install-preservation
 	$(MAKE) check-test-runner
+	$(MAKE) check-test-runner-podman
 	$(MAKE) check-lightdm-config
 	$(MAKE) release-check
 
-.PHONY: print-dnf-defaults-helper check-initial-update install-files install-user-files install-system-files clean all check check-desktop-update check-picom check-picom-xvfb check-accessibility check-appearance check-phase5-optional-components check-build-config check-build-deps check-default-apps check-xdg-autostart check-dev-sync-install \
+.PHONY: check-update-center check-update-center-terminal check-update-center-window-rule check-quickshell-update-center-model check-quickshell-update-center check-quickshell-update-center-xvfb print-dnf-defaults-helper check-initial-update install-files install-user-files install-system-files clean all check check-desktop-update check-picom check-picom-xvfb check-accessibility check-appearance check-phase5-optional-components check-build-config check-build-deps check-default-apps check-xdg-autostart check-dev-sync-install \
 	check-cursor-reload \
 	check-test-runner \
+	check-test-runner-podman \
+	check-update-center-settings \
 	check-display-profile check-display-setup check-fedora-iso-builder check-fedora-packages check-fedora-platform check-format check-install \
 	check-gearlever-install check-herdr-install check-install-manifest check-install-preservation check-kickstart check-lock \
 	check-session-guards check-session-migration check-screenshot check-release-helper check-shell check-webapp-launch check-diagnostics check-status check-system-health check-system-management check-quickshell-system-management check-settings \

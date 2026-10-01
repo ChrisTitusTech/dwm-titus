@@ -45,7 +45,9 @@ grep -Fq 'ipcActionRequested(string target, string action, string argument, var 
 grep -Fq 'function focusedScreen()' "$repo/config/quickshell/state/DwmState.qml"
 grep -Fq 'property int focusedMonitorIndex: -1' "$repo/config/quickshell/state/DwmState.qml"
 grep -Fq 'root.focusedMonitorIndex >= 0' "$repo/config/quickshell/state/DwmState.qml"
-grep -Fq 'if (visible) commandMenuModel.close();' "$shell"
+launcher_body=$(sed -n '/    LauncherModel {/,/^    }$/p' "$shell")
+printf '%s\n' "$launcher_body" | grep -Fq 'if (visible) {'
+printf '%s\n' "$launcher_body" | grep -Fq 'commandMenuModel.close();'
 select_panel_popup_body=$(sed -n '/function selectPanelPopup(panel, popupId)/,/^    }$/p' "$shell")
 printf '%s\n' "$select_panel_popup_body" | grep -Fq 'commandMenuModel.close();'
 open_menu_body=$(sed -n '/function openCommandMenu(screen)/,/^    }$/p' "$shell")

@@ -2,6 +2,7 @@
 """Interrupt actual native CLI children against private services and journals."""
 
 import os
+import pathlib
 import runpy
 import signal
 import sys
@@ -10,6 +11,7 @@ os.environ["DBUS_SYSTEM_BUS_ADDRESS"] = os.environ["DBUS_SESSION_BUS_ADDRESS"]
 from gi.repository import Gio, GLib
 
 provider = runpy.run_path(sys.argv[1], run_name="regional_interruption_fixture")
+child_path = str(pathlib.Path(__file__).with_name("system-regional-cli-child.py"))
 bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
 time_name = "org.freedesktop.timedate1"
 locale_name = "org.freedesktop.locale1"
@@ -120,7 +122,7 @@ def check(action, argument, method, signum, stage):
             loop.quit()
 
     case["stop"] = stop
-    child = Gio.Subprocess.new(["/usr/bin/python3", sys.argv[1], action, argument, generation],
+    child = Gio.Subprocess.new(["/usr/bin/python3", child_path, sys.argv[1], action, argument, generation],
         Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE)
     case["child"] = child
     child.communicate_utf8_async(None, None, finished, None)
@@ -131,6 +133,7 @@ def check(action, argument, method, signum, stage):
         assert "callback_error" not in case, case.get("callback_error")
         assert child.get_if_exited() and child.get_exit_status() == 1
         _, output, diagnostic = case["output"]
+        assert case["calls"], (action, signum, stage, "child never reached private services", output, diagnostic)
         assert diagnostic == "", diagnostic
         assert output.endswith("complete\toperation\n"), output
         assert "\nerror\tregional\tinterrupted\t" in output, output

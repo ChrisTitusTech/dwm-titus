@@ -7,6 +7,7 @@ import importlib.machinery
 import importlib.util
 import json
 import os
+import re
 import shutil
 from pathlib import Path
 import subprocess
@@ -566,6 +567,83 @@ class DesktopUpdate(unittest.TestCase):
             update.exchange(Path(entry["target"]), Path(entry["backup"]))
         self.assertEqual((self.config / "quickshell/file").read_text(), "original")
 
+    def test_gui_migration_is_staged_and_reversible(self):
+        source = self.base / "source"
+        (source / "config/quickshell").mkdir(parents=True)
+        (source / "config/quickshell/file").write_text("updated")
+        (source / "scripts").mkdir()
+        helper = source / "scripts/dwm-migrate-update-center-window-rule"
+        shutil.copy2(REPO / "scripts" / helper.name, helper)
+        rules = self.config / "dwm-titus/window-rules.toml"
+        rules.parent.mkdir()
+        original = '# personal rules\nrules = [{ class="MyApp", isfloating=1 }]\n'
+        rules.write_text(original)
+        rules_directory_inode = rules.parent.stat().st_ino
+        personal = rules.with_name("themes.toml")
+        personal.write_text("personal settings")
+        def migrate(args, **kwargs):
+            self.assertEqual(args[0], "/usr/bin/python3")
+            self.assertEqual(kwargs["readonly"], (source,))
+            self.assertEqual(kwargs["writable"], (Path(args[2]).parent,))
+            subprocess.run(args, check=True, capture_output=True)
+        with patch.object(update, "sandbox_run", side_effect=migrate):
+            entries = update.prepare_user(source, "d" * 32)
+        self.assertEqual(rules.read_text(), original)
+        self.assertEqual(len(entries), 3)
+        for entry in entries:
+            update.exchange(Path(entry["target"]), Path(entry["backup"]))
+        self.assertIn('class="DwmUpdateCenter"', rules.read_text())
+        self.assertIn(original.splitlines()[0], rules.read_text())
+        self.assertEqual(personal.read_text(), "personal settings")
+        # File replacement keeps the directory (and dwm inotify watch) alive.
+        self.assertEqual(rules.parent.stat().st_ino, rules_directory_inode)
+        self.assertEqual(Path(entries[2]["backup"]).read_text(), original)
+        for entry in entries:
+            entry["swapped"] = True
+            Path(entry["backup"]).chmod(update.private_mode(Path(entry["backup"])))
+        operation = "d" * 32
+        directory = self.state / "operations" / operation
+        update.write_json(directory / "preview.json", {"manifest": str(self.manifest_path)})
+        update.write_json(directory / "user-backup.json", entries)
+        update.write_json(self.state / "status.json", {**update.status_default(), "state": "interrupted", "operation": operation})
+        with patch.object(update, "trusted_installation"), patch.object(update, "quickshell_processes", return_value=set()):
+            self.assertEqual(update.recover(operation)["state"], "failed")
+        self.assertEqual(rules.read_text(), original)
+        self.assertEqual(rules.stat().st_mode & 0o777, entries[2]["originalMode"])
+        self.assertEqual(personal.read_text(), "personal settings")
+
+    def test_gui_migration_preserves_symlink_and_special_rules(self):
+        source = self.base / "source"
+        (source / "config/quickshell").mkdir(parents=True)
+        (source / "scripts").mkdir()
+        helper = source / "scripts/dwm-migrate-update-center-window-rule"
+        shutil.copy2(REPO / "scripts" / helper.name, helper)
+        rules = self.config / "dwm-titus/window-rules.toml"
+        rules.parent.mkdir()
+        destination = self.base / "personal-rules.toml"
+        destination.write_text("rules = []\n")
+        for kind in ("symlink", "fifo", "directory"):
+            with self.subTest(kind=kind), patch.object(update, "sandbox_run") as sandbox:
+                if kind == "symlink":
+                    rules.symlink_to(destination)
+                elif kind == "fifo":
+                    os.mkfifo(rules)
+                else:
+                    rules.mkdir()
+                original = rules.lstat()
+                try:
+                    entries = update.prepare_user(source, "e" * 32)
+                    self.assertEqual([entry["target"] for entry in entries],
+                                     [str(self.data), str(self.config / "quickshell")])
+                    for entry in entries:
+                        shutil.rmtree(entry["staging"])
+                    self.assertEqual(rules.lstat().st_ino, original.st_ino)
+                    self.assertEqual(rules.lstat().st_mode, original.st_mode)
+                    self.assertEqual(destination.read_text(), "rules = []\n")
+                    sandbox.assert_not_called()
+                finally:
+                    rules.rmdir() if kind == "directory" else rules.unlink()
+
     def test_local_branch_and_dirty_source_block_updates(self):
         (self.data / ".git").mkdir()
         self.command.return_value = "topic"
@@ -697,6 +775,20 @@ class DesktopUpdate(unittest.TestCase):
         candidate["packages"] = ["git"]
         privileged.validate_candidate(candidate, self.manifest)
 
+    def test_installed_commands_fit_existing_upgrade_namespace(self):
+        # These legacy command destinations already existed before Update Center.
+        legacy = "active-audio check-deps.sh disable-powersaving install-gearlever install-herdr nvidia-gpu nvidia-suspend-test.sh nvidia-temp pkg-scan.py power-management.sh protonrestart theme-apply.sh webapp-create webapp-launch xdg-enable-autostart.sh xscreensaver-setup.sh".split()
+        installed = copy.deepcopy(self.manifest)
+        record = {"sha256": "c" * 64, "mode": 0o755}
+        installed["files"].update({str(self.base / "bin" / name): record for name in legacy})
+        makefile = (REPO / "Makefile").read_text()
+        commands = re.search(r"(?ms)^INSTALL_COMMANDS = (.*?)^INSTALL_COMMAND_NAMES", makefile).group(1)
+        names = [Path(name).name for name in commands.replace("\\", " ").split()]
+        self.assertIn("dwm-migrate-update-center-window-rule", names)
+        candidate = copy.deepcopy(installed)
+        candidate["files"].update({str(self.base / "bin" / name): record for name in names})
+        privileged.validate_candidate(candidate, installed)
+
     def test_candidate_rejects_paths_outside_owned_namespaces(self):
         for name in ("/etc/shadow", "/usr/share/themes/Other/gtk.css",
                      "/usr/share/themes/Dwm-New/../../../etc/shadow",
@@ -739,6 +831,76 @@ class DesktopUpdate(unittest.TestCase):
         with tarfile.open(bundle) as archive:
             self.assertEqual(archive.getnames(), ["manifest.json", "0"])
             self.assertTrue(all(member.isfile() for member in archive))
+
+    def test_receipt_backup_failure_cleans_file_migration_staging(self):
+        directory = self.base / "receipt-failure"
+        fixture = (REPO / "tests/fixtures/desktop-worker-scenario.py").read_text()
+        injection = """
+original_prepare = update.prepare_user
+original_write = update.write_json
+def prepare_migration(source, operation):
+    helper = source / "scripts/dwm-migrate-update-center-window-rule"
+    shutil.copy2(repo / "scripts" / helper.name, helper)
+    rules = config / "dwm-titus/window-rules.toml"
+    rules.write_text('rules = [{class="Personal", isfloating=1}]\\n')
+    original_sandbox = update.sandbox_run
+    def migrate(args, **kwargs):
+        if str(args[0]) == "/usr/bin/python3":
+            return subprocess.run(args, check=True, capture_output=True, text=True).stdout
+        return original_sandbox(args, **kwargs)
+    update.sandbox_run = migrate
+    return original_prepare(source, operation)
+def fail_receipt(path, value):
+    if path.name == "receipt-backup.json":
+        raise OSError("injected receipt backup failure")
+    return original_write(path, value)
+update.prepare_user = prepare_migration
+update.write_json = fail_receipt
+sys.exit(update.worker(operation))
+"""
+        fixture = fixture.replace("sys.exit(update.worker(operation))", injection)
+        result = subprocess.run([sys.executable, "-c", fixture, REPO, directory, "success"],
+                                capture_output=True, text=True, timeout=15)
+        self.assertEqual(result.returncode, 1, result.stderr)
+        operation_dir = directory / "state/operations" / ("c" * 32)
+        status = update.read_json(directory / "state/status.json")
+        self.assertEqual(status["state"], "failed")
+        self.assertIn("injected receipt backup failure", status["detail"])
+        self.assertNotIn("NotADirectoryError", (operation_dir / "update.log").read_text())
+        for path in (operation_dir / "source", operation_dir / "stage", operation_dir / "bundle.tar"):
+            self.assertFalse(path.exists(), str(path))
+        entries = update.read_json(operation_dir / "user-backup.json")
+        self.assertEqual(len(entries), 3)
+        for entry in entries:
+            self.assertFalse(Path(entry["staging"]).exists(), entry["staging"])
+        self.assertEqual((directory / "config/dwm-titus/window-rules.toml").read_text(),
+                         'rules = [{class="Personal", isfloating=1}]\n')
+        self.assertEqual((directory / "config/dwm-titus/themes.toml").read_text(), "personal theme")
+        self.assertEqual((directory / "prefix/bin/dwm").read_text(), "old binary")
+
+    def test_cleanup_attempts_remaining_roots_after_one_failure(self):
+        failed = self.base / "unremovable-stage"
+        failed.mkdir()
+        source = self.base / "source-to-remove"
+        source.mkdir()
+        bundle = self.base / "bundle-to-remove.tar"
+        bundle.write_text("bundle")
+        external = self.base / "preserved"
+        external.mkdir()
+        link = self.base / "stage-link"
+        link.symlink_to(external, target_is_directory=True)
+        original_rmtree = shutil.rmtree
+        def remove(path):
+            if path == failed:
+                raise PermissionError("injected cleanup failure")
+            return original_rmtree(path)
+        with patch.object(update.shutil, "rmtree", side_effect=remove), \
+                self.assertRaisesRegex(RuntimeError, "injected cleanup failure"):
+            update.cleanup_staging([failed, source, bundle, link])
+        self.assertFalse(source.exists())
+        self.assertFalse(bundle.exists())
+        self.assertFalse(link.is_symlink())
+        self.assertTrue(external.is_dir())
 
     def test_worker_waits_for_launcher_lock(self):
         directory = self.base / "lock-wait"
@@ -858,6 +1020,35 @@ class DesktopUpdate(unittest.TestCase):
 
 
 class PrivilegedTransport(unittest.TestCase):
+    def test_sudo_probe_failure_falls_back_to_pkexec(self):
+        helper = "/trusted/dwm-desktop-update-root"
+        operation, generation, revision = "a" * 32, "b" * 64, "c" * 40
+        failures = (
+            subprocess.TimeoutExpired(cmd="sudo", timeout=10),
+            OSError("sudo unavailable"),
+        )
+        for failure in failures:
+            with self.subTest(failure=type(failure).__name__), \
+                    patch.object(update.shutil, "which", return_value="/usr/bin/sudo"), \
+                    patch.object(update.subprocess, "run", side_effect=failure) as probe:
+                session = REAL_SESSION(helper, operation, generation, revision)
+            probe.assert_called_once_with(["/usr/bin/sudo", "-n", "true"],
+                                          capture_output=True, timeout=10)
+            self.assertEqual(session.command,
+                             ["/usr/bin/pkexec", helper, "session", "update",
+                              operation, generation, revision])
+
+    def test_sudo_authorization_selection(self):
+        helper = "/trusted/dwm-desktop-update-root"
+        for executable, status in ((None, None), ("/usr/bin/sudo", 1), ("/usr/bin/sudo", 0)):
+            with self.subTest(executable=executable, status=status), \
+                    patch.object(update.shutil, "which", return_value=executable), \
+                    patch.object(update.subprocess, "run", return_value=SimpleNamespace(returncode=status)) as probe:
+                session = REAL_SESSION(helper, "a" * 32, "b" * 64, "c" * 40)
+            expected = ["/usr/bin/sudo", "-n"] if status == 0 else ["/usr/bin/pkexec"]
+            self.assertEqual(session.command[:len(expected)], expected)
+            self.assertEqual(probe.call_count, 0 if executable is None else 1)
+
     def session(self, body):
         client = REAL_SESSION("unused", "a" * 32, "b" * 64, "c" * 40)
         client.command = [sys.executable, "-u", "-c", body]

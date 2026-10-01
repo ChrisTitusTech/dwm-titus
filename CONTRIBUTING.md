@@ -50,6 +50,39 @@ Fedora package, VM, and X11 checks require their documented host tools. If a
 required environment is unavailable, state exactly what was not tested in the
 pull request instead of claiming universal validation.
 
+For automated Fedora 44 checks from another host, use rootless Podman:
+
+```sh
+scripts/run-tests-podman make check-update-center-settings
+scripts/run-tests-podman make clean all
+scripts/run-tests-podman
+```
+
+The runner builds `localhost/dwm-titus-tests:fedora-44` from the shared package
+map and delegates to `scripts/run-tests`. Fedora 44 is pinned; package versions
+resolve from Fedora 44 repositories at build time. Image/container storage is
+the only persistent container-engine state. Both the current worktree and Git
+repository are mounted read-only without SELinux relabeling, using
+nonrecursive binds. The runner requires host `findmnt` and rejects every
+nested mount below either source, including ignored scratch, before building
+and again before running. Failure to inspect mounts stops execution; mounted
+source is never silently omitted. Keep source and mount topology stable while
+staging. History, tracked modifications, deletions, and nonignored untracked
+source are staged into an
+independent disposable clone with a synthetic commit. An unreferenced detached
+HEAD and its history are transferred through a read-only object stream.
+Host-staged ignored files are force-staged from the filtered NUL-delimited
+manifest; other ignored local artifacts and host Git metadata are excluded.
+Tests use private container networking for Fedora repository checks and
+receive no host D-Bus or display sockets. Source
+mount paths containing commas are rejected because of Podman's mount syntax.
+
+This covers automated compilation, lint, private-bus mocks, and nested Xvfb
+checks; it does not qualify a real session, systemd, polkit, or hardware. Gates
+requiring real services or additional VM/image tools remain separate validation.
+Run `scripts/run-tests make check-test-runner-podman` for the runner contract
+without Podman. This target neither launches containers nor extends `check`.
+
 ## Change Guidelines
 
 - Preserve the C99 style and avoid new mandatory dependencies unless they are
