@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Exercise Update Center managed window modes and interaction in isolated X11."""
+"""Exercise the anchored Update Center popup and terminal modes in isolated X11."""
 
 import os
 import json
@@ -65,7 +65,6 @@ import qs.updatecenter
 
 ShellRoot {{
     id: harness
-    readonly property var updateWindow: updateLoader.item
     function findItem(item: var, name: string): var {{
         if (item.objectName === name) return item;
         for (const child of item.children || []) {{
@@ -101,6 +100,7 @@ ShellRoot {{
         signal settingsSaveFinished(bool success)
         property string probeAction: ""
         property string probeUrl: ""
+        property int anchorX: 320
         readonly property bool busy: activeOperation !== null
         function open() {{ visible = true; }}
         function close() {{ visible = false; settingsMode = false; discardSettings(); }}
@@ -149,6 +149,7 @@ ShellRoot {{
         exclusiveZone: 30
         color: Theme.barBackground
 
+        Rectangle {{ id: updateButton; x: 240; y: 2; width: 40; height: 26; color: "#ff00ff" }}
 
         ProviderRow {{
             id: probeRow
@@ -179,14 +180,12 @@ ShellRoot {{
         Rectangle {{ anchors.fill: parent; color: "#aa3333" }}
     }}
 
-    LazyLoader {{
-        id: updateLoader
-        active: model.visible
-        UpdateCenterWindow {{
-            updateCenterModel: model
-            panelWindow: panel
-            onExclusiveOpenRequested: otherPopup.visible = false
-        }}
+    UpdateCenterWindow {{
+        id: updateWindow
+        updateCenterModel: model
+        panelWindow: panel
+        anchorX: model.anchorX
+        onExclusiveOpenRequested: otherPopup.visible = false
     }}
 
     FloatingWindow {{
@@ -291,6 +290,8 @@ ShellRoot {{
         }}
         function ageClockRunning(): string {{ return String(updateWindow !== null && updateWindow.ageClockRunning); }}
         function floating(): string {{ return String(model.savedFloating); }}
+        function setAnchor(value: int): void {{ model.anchorX = value; }}
+        function anchorToButton(): void {{ model.anchorX = updateButton.x + updateButton.width / 2; }}
     }}
 }}'''
 
@@ -361,9 +362,15 @@ with tempfile.TemporaryDirectory(prefix="update-center-xvfb-", dir=tmp_root) as 
         popup_id = next(window for window, data in geometries.items() if int(data["HEIGHT"]) > 30)
         panel_geometry = geometries[panel_id]
         popup_geometry = geometries[popup_id]
-        assert int(popup_geometry["WIDTH"]) <= 480, "Default Update Center did not float"
-        assert int(popup_geometry["HEIGHT"]) <= 480, "Window overflowed the monitor"
-        assert "dwm updates floating" in run(env, "xdotool", "getwindowname", popup_id).stdout
+
+        def popup_window():
+            return next((window for window in visible_windows(env, shell.pid)
+                         if window != panel_id and "mode-test-companion" not in
+                         run(env, "xdotool", "getwindowname", window).stdout), None)
+
+        assert int(popup_geometry["Y"]) == int(panel_geometry["Y"]) + int(panel_geometry["HEIGHT"])
+        assert int(popup_geometry["WIDTH"]) == 640, "Popup did not remain bounded to narrow monitor"
+        assert int(popup_geometry["HEIGHT"]) <= 450, "Popup overflowed below the panel"
         time.sleep(0.2)
         run(env, "xdotool", "mousemove", "10", "15", check=True)
         time.sleep(0.1)
@@ -440,8 +447,18 @@ with tempfile.TemporaryDirectory(prefix="update-center-xvfb-", dir=tmp_root) as 
         light_image = screenshot()
         assert color_bounds(light_image, (244, 244, 244))[4] > 1000
         call("dark")
+        call("anchorToButton")
         time.sleep(0.2)
-        assert color_bounds(screenshot(), (32, 38, 48))[4] > 1000
+        card_bounds = color_bounds(screenshot(), (32, 38, 48))
+        assert card_bounds[:4] == (21, 31, 498, card_bounds[3]), \
+            f"Rendered card did not center below the button at x=260: {card_bounds}"
+        assert card_bounds[4] > 1000
+        call("setAnchor", 620)
+        time.sleep(0.2)
+        clamped_bounds = color_bounds(screenshot(), (32, 38, 48))
+        assert clamped_bounds[0] == 161 and clamped_bounds[2] == 638, \
+            f"Narrow-screen button anchoring did not clamp the card: {clamped_bounds}"
+        call("setAnchor", 320)
         call("reducedMotion")
         assert call("motionDuration") == "0"
         call("normalMotion")
@@ -482,14 +499,13 @@ with tempfile.TemporaryDirectory(prefix="update-center-xvfb-", dir=tmp_root) as 
         position = json.loads(call("buttonPosition", "updateCenterSave"))
         run(env, "xdotool", "mousemove", str(position["x"]), str(position["y"]), "click", "1", check=True)
         wait_for(lambda: call("floating") == "true", "Window mode toggle was not saved")
-        assert "dwm updates floating" in run(env, "xdotool", "getwindowname", popup_id).stdout
         call("close")
         call("open")
-        popup_id = wait_for(lambda: run(env, "xdotool", "search", "--onlyvisible", "--name", "dwm updates floating").stdout.strip(),
-                            "Saved floating window mode was not applied")
+        popup_id = wait_for(popup_window, "Popup did not reopen")
         time.sleep(0.2)
-        floating_geometry = geometry(env, popup_id)
-        assert int(floating_geometry["WIDTH"]) <= 480, floating_geometry
+        reopened_geometry = geometry(env, popup_id)
+        assert all(reopened_geometry[key] == popup_geometry[key] for key in ("X", "Y", "WIDTH", "HEIGHT")), \
+            "Terminal mode changed popup geometry"
         call("showCompanion", "true")
         companion_id = wait_for(lambda: run(env, "xdotool", "search", "--onlyvisible", "--name", "mode-test-companion").stdout.strip(),
                                 "Companion window unavailable")
@@ -499,19 +515,19 @@ with tempfile.TemporaryDirectory(prefix="update-center-xvfb-", dir=tmp_root) as 
         time.sleep(0.2)
         call("viewportBounds", "true")
         position = json.loads(call("buttonPosition", "updateCenterFloatByDefault"))
-        run(env, "xdotool", "windowactivate", "--sync", popup_id, check=True)
+        run(env, "xdotool", "windowfocus", popup_id, check=True)
         run(env, "xdotool", "mousemove", str(position["x"]), str(position["y"]), "click", "1", check=True)
         position = json.loads(call("buttonPosition", "updateCenterSave"))
         run(env, "xdotool", "mousemove", str(position["x"]), str(position["y"]), "click", "1", check=True)
         wait_for(lambda: call("floating") == "false", "Tiled mode toggle was not saved")
         call("close")
         call("open")
-        popup_id = wait_for(lambda: run(env, "xdotool", "search", "--onlyvisible", "--name", "dwm updates floating").stdout.strip(),
-                            "Popup stopped floating with tiled terminals selected")
+        popup_id = wait_for(popup_window, "Popup did not reopen with tiled terminals selected")
         wait_for(lambda: int(geometry(env, companion_id)["WIDTH"]) > 600,
                  "Update Center took a tiling slot with tiled terminals selected")
         # Exercise the real wrapper and runner identity without updating packages.
         # A terminal must take a tiling slot only when the saved toggle is off.
+        call("close")
         if shutil.which("alacritty"):
             settings = str(REPO / "scripts/dwm-update-center-settings")
             identity_script = (
@@ -543,9 +559,19 @@ with tempfile.TemporaryDirectory(prefix="update-center-xvfb-", dir=tmp_root) as 
                 wait_for(lambda: int(geometry(env, companion_id)["WIDTH"]) > 600,
                          "Terminal did not release its tiling slot")
         call("showCompanion", "false")
+        wait_for(lambda: companion_id not in visible_windows(env, shell.pid),
+                 "Companion window did not close")
+        wait_for(lambda: run(env, "xdotool", "getwindowfocus").stdout.strip() != companion_id,
+                 "dwm did not release companion focus")
+        # Match a real panel click after dwm releases its last managed client.
+        # Otherwise its delayed focus reset can dismiss the newly opened popup.
+        run(env, "xdotool", "windowfocus", "--sync", panel_id, check=True)
+        call("open")
+        popup_id = wait_for(popup_window, "Popup did not reopen after terminal checks")
         call("settings")
         time.sleep(0.2)
         call("viewportBounds", "true")
+        popup_id = wait_for(popup_window, "Settings popup did not settle")
         run(env, "xdotool", "windowfocus", popup_id, check=True)
         call("failSaves")
         run(env, "xdotool", "key", "Tab", check=True)
@@ -579,14 +605,7 @@ with tempfile.TemporaryDirectory(prefix="update-center-xvfb-", dir=tmp_root) as 
         run(env, *ipc, "open", check=True)
         wait_for(lambda: len(visible_windows(env, shell.pid)) == 2, "Popup did not reopen")
         run(env, "xdotool", "mousemove", "10", "300", "click", "1", check=True)
-        assert len(visible_windows(env, shell.pid)) == 2, "Clicking outside dismissed a managed window"
-        call("close")
-        call("open")
-        popup_id = wait_for(lambda: run(env, "xdotool", "search", "--onlyvisible", "--name", "dwm updates floating").stdout.strip(),
-                            "Window did not reopen for WM close")
-        run(env, "xdotool", "windowactivate", "--sync", popup_id, check=True)
-        run(env, "xdotool", "key", "super+q", check=True)
-        wait_for(lambda: len(visible_windows(env, shell.pid)) == 1, "Window-manager close left Update Center open")
+        wait_for(lambda: len(visible_windows(env, shell.pid)) == 1, "Click-away did not dismiss the popup")
         assert shell.poll() is None, "Closing Update Center terminated the shell"
         call("enableProgress")
         call("open")

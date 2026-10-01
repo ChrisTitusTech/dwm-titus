@@ -38,12 +38,13 @@ idle.
 
 ## Panel Update Center
 
-Click the update icon beside the clock to open the Update Center as a floating window.
+Click the update icon beside the clock to open the Update Center popup beneath
+that icon. Its card sizes to its content and stays within the active screen.
 In its Settings tab, enable **Float update terminal** and Save to float the next
 update or recovery terminal. This preference never changes the Update Center
 window itself. Existing preferences without a window mode default to tiled
-terminals; saved modes are preserved and now apply to terminals. Escape or the window-manager close action closes
-the window; clicking outside leaves it open. It lists
+terminals; saved modes are preserved and now apply to terminals. Escape or a
+click outside the card closes the popup. It lists
 Fedora packages, the managed desktop, and optional Flatpak and mise providers.
 Expand a provider to inspect its available updates, then choose **Update** for
 that provider. Updates run in a dedicated terminal using the saved mode; closing the panel

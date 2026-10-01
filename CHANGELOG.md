@@ -24,6 +24,10 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Restore the original panel-anchored Update Center popup, including content-based
+  sizing and click-away dismissal. Keep the floating/tiled preference scoped to
+  update and recovery terminals.
+
 - Restore access to desktop update progress from the Update Center, and skip
   optional window-rule migration for symlinked or special personal files.
 - Keep Update Center controls reachable on short screens and with large text,
