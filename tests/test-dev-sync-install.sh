@@ -106,7 +106,28 @@ for required_command in xsettingsd dump_xsettings xkbset bwrap; do
 		exit 1
 	}
 done
-grep -Fq 'rpm -q NetworkManager-wifi' "$source_update_probe"
+cat >"$test_bin/rpm" <<'EOF'
+#!/bin/sh
+[ "$1" = -q ] || exit 2
+[ "$2" != "${DWM_TEST_MISSING_PACKAGE:-}" ]
+EOF
+chmod +x "$test_bin/rpm"
+probe_source_update() {
+	PATH="$test_bin:$PATH" sh -c '
+		set -eu
+		. "$1"
+		repo_dir=$2
+		work=$3
+		source_update_dependencies_ready
+	' sh "$source_update_probe" "$test_repo" "$work"
+}
+probe_source_update
+for package in NetworkManager-wifi gnome-keyring gnome-keyring-pam; do
+	if DWM_TEST_MISSING_PACKAGE="$package" probe_source_update; then
+		printf 'Source-update readiness missed absent package: %s\n' "$package" >&2
+		exit 1
+	fi
+done
 run_check() {
 	PATH="$test_bin:$PATH" \
 		DWM_DEV_SYNC_SKIP_RUNTIME=1 \

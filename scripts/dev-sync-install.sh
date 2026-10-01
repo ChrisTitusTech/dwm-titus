@@ -157,8 +157,12 @@ source_update_dependencies_ready() {
 		command -v dump_xsettings >/dev/null 2>&1 &&
 		command -v xkbset >/dev/null 2>&1 &&
 		command -v bwrap >/dev/null 2>&1 &&
-		/usr/bin/python3 -c 'import ctypes; ctypes.CDLL("libseccomp.so.2")' >/dev/null 2>&1 &&
-		rpm -q NetworkManager-wifi >/dev/null 2>&1
+		/usr/bin/python3 -c 'import ctypes; ctypes.CDLL("libseccomp.so.2")' >/dev/null 2>&1 || return 1
+	"$repo_dir/scripts/dwm-packages.sh" fedora source-update >"$work/source-update-packages" || return 1
+	while IFS= read -r package; do
+		[ -n "$package" ] || continue
+		rpm -q "$package" >/dev/null 2>&1 || return 1
+	done <"$work/source-update-packages"
 }
 
 source_update_dependencies_needed() {

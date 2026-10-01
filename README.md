@@ -106,13 +106,15 @@ before making changes.
 | --- | --- |
 | `core` | The X11 session, required dependencies, and one terminal emulator. |
 | `recommended` | The complete everyday desktop, including Alacritty, Quickshell, Gear Lever for AppImages, theming, screenshots, audio, brightness, and the PackageKit, Python RPM binding, AccountsService, CUPS, and printer-tool prerequisites for Phase 6 system management. |
-| `full` | The recommended desktop plus optional file-manager, keyring, wallpaper, display-manager, and supported Fedora gaming integrations. |
+| `full` | The recommended desktop plus optional file-manager, wallpaper, display-manager, and supported Fedora gaming integrations. |
 
 `maim` is an optional dependency used only by the screenshot hotkeys. If it is
 unavailable, installation continues and reports that the screenshot hotkeys
 remain disabled; invoking one makes `dwm-screenshot` exit with
 `dwm-screenshot: maim is not installed`. `xclip` and `xdotool` remain required
 runtime dependencies for the X11 desktop and its other managed helpers.
+Every profile includes `gnome-keyring` and `gnome-keyring-pam` for credential
+storage and password-login unlock. Both Fedora image variants include them too.
 
 ## Dependencies
 
