@@ -86,7 +86,11 @@ done
 for package in xsettingsd xkbset bubblewrap libseccomp NetworkManager-wifi; do
 	dwm_packages fedora source-update | grep -Fx "$package" >/dev/null
 done
-[[ $("$repo/scripts/dwm-packages.sh" fedora source-update) == $'xsettingsd\nxkbset\nbubblewrap\nlibseccomp\nNetworkManager-wifi' ]]
+for profile in runtime-required required full source-update; do
+	for package in gnome-keyring gnome-keyring-pam; do
+		dwm_packages fedora "$profile" | grep -Fx "$package" >/dev/null
+	done
+done
 grep -Fq 'dwm_install_package_profile system-management' "$repo/install.sh"
 grep -Fq 'check_cmd "xsettingsd"' "$repo/scripts/check-deps.sh"
 grep -Fq 'xsetroot xkbset' "$repo/scripts/check-deps.sh"

@@ -41,6 +41,11 @@ dwm_packages() {
 		;;
 	fedora:runtime-required)
 		printf '%s\n' dbus-x11 curl git procps-ng psmisc unzip util-linux xclip xdotool xprop xdg-utils
+		dwm_packages "$family" keyring
+		;;
+	fedora:keyring)
+		# The daemon alone cannot unlock the login keyring through PAM.
+		printf '%s\n' gnome-keyring gnome-keyring-pam
 		;;
 	fedora:desktop)
 		# Fedora 44 publishes the compatible Quickshell snapshot in its official
@@ -64,11 +69,12 @@ dwm_packages() {
 		# Dependencies introduced after the initial installation that the supported
 		# source-checkout synchronization path must reconcile for existing systems.
 		printf '%s\n' xsettingsd xkbset bubblewrap libseccomp NetworkManager-wifi
+		dwm_packages "$family" keyring
 		;;
 	fedora:desktop-optional)
 		printf '%s\n' \
 			Thunar gvfs gvfs-smb tumbler thunar-archive-plugin file-roller \
-			xdg-user-dirs gnome-keyring gnome-keyring-pam NetworkManager \
+			xdg-user-dirs NetworkManager \
 			NetworkManager-wifi rsync
 		;;
 	fedora:gaming)

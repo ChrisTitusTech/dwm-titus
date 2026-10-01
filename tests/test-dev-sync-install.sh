@@ -106,7 +106,30 @@ for required_command in xsettingsd dump_xsettings xkbset bwrap; do
 		exit 1
 	}
 done
-grep -Fq 'rpm -q NetworkManager-wifi' "$source_update_probe"
+cat >"$test_bin/rpm" <<'EOF'
+#!/bin/sh
+[ "$1" = -q ] || exit 2
+[ -z "${DWM_TEST_PACKAGE_REPAIR_MARKER:-}" ] ||
+	[ ! -e "$DWM_TEST_PACKAGE_REPAIR_MARKER" ] || exit 0
+[ "$2" != "${DWM_TEST_MISSING_PACKAGE:-}" ]
+EOF
+chmod +x "$test_bin/rpm"
+probe_source_update() {
+	PATH="$test_bin:$PATH" sh -c '
+		set -eu
+		. "$1"
+		repo_dir=$2
+		work=$3
+		source_update_dependencies_ready "${DWM_TEST_SOURCE_UPDATE_PROFILE:-source-update}"
+	' sh "$source_update_probe" "$test_repo" "$work"
+}
+probe_source_update
+for package in NetworkManager-wifi gnome-keyring gnome-keyring-pam; do
+	if DWM_TEST_MISSING_PACKAGE="$package" probe_source_update; then
+		printf 'Source-update readiness missed absent package: %s\n' "$package" >&2
+		exit 1
+	fi
+done
 run_check() {
 	PATH="$test_bin:$PATH" \
 		DWM_DEV_SYNC_SKIP_RUNTIME=1 \
@@ -121,7 +144,7 @@ run_check() {
 		XDG_STATE_HOME="$state_home" \
 		DWM_DEV_SYNC_TEST_MODE="${DWM_DEV_SYNC_TEST_MODE:-1}" \
 		DWM_DEV_SYNC_DESKTOP_FEATURE="${DWM_DEV_SYNC_DESKTOP_FEATURE:-1}" \
-		DWM_DEV_SYNC_SOURCE_UPDATE_READY="${DWM_DEV_SYNC_SOURCE_UPDATE_READY:-1}" \
+		DWM_DEV_SYNC_SOURCE_UPDATE_READY="${DWM_DEV_SYNC_SOURCE_UPDATE_READY-1}" \
 		"$test_repo/scripts/dev-sync-install.sh" --check
 }
 
@@ -135,12 +158,55 @@ if DWM_DEV_SYNC_SOURCE_UPDATE_READY=0 run_check >"$output" 2>&1; then
 	exit 1
 fi
 grep -Fq 'source-update dependencies are missing' "$output"
-DWM_DEV_SYNC_DESKTOP_FEATURE=0 DWM_DEV_SYNC_SOURCE_UPDATE_READY=0 run_check >"$output"
+DWM_DEV_SYNC_DESKTOP_FEATURE=0 DWM_DEV_SYNC_SOURCE_UPDATE_READY='' run_check >"$output"
 grep -Fqx 'All managed files match the checkout.' "$output"
 if grep -Fq 'source-update dependencies' "$output"; then
 	printf '%s\n' 'Core-profile check reached desktop dependency reconciliation.' >&2
 	exit 1
 fi
+# Core checks must fail on missing keyring packages without requiring desktop tools.
+for package in gnome-keyring gnome-keyring-pam; do
+	if DWM_DEV_SYNC_DESKTOP_FEATURE=0 DWM_DEV_SYNC_SOURCE_UPDATE_READY='' \
+		DWM_TEST_MISSING_PACKAGE="$package" run_check >"$output" 2>&1; then
+		printf 'Core check missed absent package: %s\n' "$package" >&2
+		exit 1
+	fi
+	grep -Fq 'source-update dependencies are missing' "$output"
+done
+DWM_TEST_SOURCE_UPDATE_PROFILE=keyring DWM_TEST_MISSING_PACKAGE=NetworkManager-wifi probe_source_update
+
+# Exercise the actual core reconciliation transaction with isolated RPM/DNF stubs.
+sed -n '/^source_update_dependencies_ready() {$/,/^verification_failed=0$/p' \
+	"$test_repo/scripts/dev-sync-install.sh" >"$work/reconcile-probe"
+printf 'ID=fedora\n' >"$work/fedora"
+cat >"$test_bin/sudo" <<'EOF'
+#!/bin/sh
+exec "$@"
+EOF
+cat >"$test_bin/dnf" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$@" >>"${DWM_TEST_PACKAGE_LOG:?}"
+: >"${DWM_TEST_PACKAGE_REPAIR_MARKER:?}"
+EOF
+chmod +x "$test_bin/sudo" "$test_bin/dnf"
+PATH="$test_bin:$PATH" DWM_DEV_SYNC_TEST_MODE=1 DWM_DEV_SYNC_DESKTOP_FEATURE=0 \
+	DWM_TEST_MISSING_PACKAGE=gnome-keyring-pam DWM_TEST_PACKAGE_LOG="$work/core-packages" \
+	DWM_TEST_PACKAGE_REPAIR_MARKER="$work/core-repaired" sh -c '
+	set -eu
+	. "$1"
+	repo_dir=$2
+	work=$3
+	os_release_file=$work/fedora
+	check_only=0
+	die() { printf "%s\n" "$*" >&2; exit 1; }
+	note() { printf "%s\n" "$*"; }
+	reconcile_source_update_dependencies
+	# A second sync must skip the package transaction once repaired.
+	reconcile_source_update_dependencies
+' sh "$work/reconcile-probe" "$test_repo" "$work" >"$output"
+printf '%s\n' install -y gnome-keyring gnome-keyring-pam >"$work/core-packages.expected"
+cmp "$work/core-packages.expected" "$work/core-packages"
+rm "$test_bin/sudo" "$test_bin/dnf"
 mv "$test_bin/xsettingsd.missing" "$test_bin/xsettingsd"
 
 cat >"$test_bin/id" <<'EOF'

@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/dwm-packages.sh
+source "$SCRIPT_DIR/dwm-packages.sh"
+
 format=human
 required_fail=0
 optional_fail=0
@@ -84,6 +88,18 @@ check_required_cmd() {
 	else
 		required_missing "dependency-command-$1" "$1" "$1 is required but missing"
 	fi
+}
+
+check_keyring() {
+	local package
+	while IFS= read -r package; do
+		if have_cmd rpm && rpm -q "$package" >/dev/null 2>&1; then
+			ok "dependency-package-$package" "$package" "$package is installed"
+		else
+			required_missing "dependency-package-$package" "$package" \
+				"Install $package for secret storage and automatic keyring unlock at password login; then log out and back in"
+		fi
+	done < <(dwm_packages fedora keyring)
 }
 
 check_optional_cmd() {
@@ -191,6 +207,7 @@ main() {
 		check_required_cmd "$cmd"
 	done
 	check_terminal
+	check_keyring
 
 	if [[ $format == human ]]; then
 		printf '\nOptional desktop\n'

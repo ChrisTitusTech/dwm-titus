@@ -120,6 +120,14 @@ check_cmd "picom"
 check_cmd "feh"
 check_cmd "xsettingsd"
 check_cmd "bwrap"
+while IFS= read -r package; do
+	if command -v rpm >/dev/null 2>&1 && rpm -q "$package" >/dev/null 2>&1; then
+		printf '  ok %s\n' "$package"
+	else
+		printf '  missing %s (required for keyring login integration; log out and back in after installation)\n' "$package"
+		MISSING=$((MISSING + 1))
+	fi
+done < <(dwm_packages "$DISTRO_FAMILY" keyring)
 check_optional_cmd "maim"
 check_cmd "xclip"
 check_cmd "xdotool"

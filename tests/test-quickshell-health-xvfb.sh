@@ -44,10 +44,18 @@ sed -i '/title="dwm network password"/a\
 grep -Fqx '  { title="dwm control center",         isfloating=1, alwaysontop=1 },' \
 	"$config_home/dwm-titus/window-rules.toml"
 cp "$repo/scripts/dwm-system-health" "$repo/scripts/dwm-diagnostics" \
+	"$repo/scripts/dwm-packages.sh" \
 	"$repo/scripts/dwm-quickshell-controlcenter" "$repo/scripts/dwm-quickshell-controls" \
 	"$repo/scripts/dwm-quickshell-launcher" "$repo/scripts/dwm-quickshell-network" \
 	"$repo/scripts/dwm-quickshell-pointer" \
 	"$data_home/dwm-titus/scripts/"
+
+# Fail if the isolated health backend silently loses dependency diagnostics.
+HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home XDG_RUNTIME_DIR=$runtime \
+	"$data_home/dwm-titus/scripts/dwm-system-health" scan-user >"$work/dependencies.tsv"
+for package in gnome-keyring gnome-keyring-pam; do
+	grep -F "$(printf '\tdependency-package-%s\t' "$package")" "$work/dependencies.tsv" >/dev/null
+done
 
 Xvfb "$display" -screen 0 1024x768x24 -nolisten tcp -extension GLX >"$work/xvfb.log" 2>&1 &
 xvfb_pid=$!

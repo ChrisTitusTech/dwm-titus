@@ -107,7 +107,15 @@ cp "$repo/scripts/dwm-settings-provider" "$repo/scripts/dwm-system-health" \
 	"$repo/scripts/dwm-display-setup" "$repo/scripts/dwm-quickshell-controlcenter" \
 	"$repo/scripts/dwm-quickshell-controls" "$repo/scripts/dwm-quickshell-network" \
 	"$repo/scripts/dwm-quickshell-launcher" "$repo/scripts/dwm-diagnostics" \
+	"$repo/scripts/dwm-packages.sh" \
 	"$repo/scripts/dwm-lock" "$data_home/dwm-titus/scripts/"
+
+# Fail if the isolated health backend silently loses dependency diagnostics.
+HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home XDG_RUNTIME_DIR=$runtime \
+	"$data_home/dwm-titus/scripts/dwm-system-health" scan-user >"$work/dependencies.tsv"
+for package in gnome-keyring gnome-keyring-pam; do
+	grep -F "$(printf '\tdependency-package-%s\t' "$package")" "$work/dependencies.tsv" >/dev/null
+done
 
 cat >"$data_home/applications/dwm-large-surface-test.desktop" <<'DESKTOP'
 [Desktop Entry]
