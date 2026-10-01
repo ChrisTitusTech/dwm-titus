@@ -385,9 +385,17 @@ be validated against the supported Fedora release.
 Runtime dependencies are classified as:
 
 - Core: an X11 server/session, D-Bus session support, one usable terminal
-  emulator, and the tools required by configured core keybindings. Alacritty
-  is the preferred emulator, with the existing supported-terminal fallback
+  emulator, GNOME Keyring credential storage and PAM password-login integration
+  (`gnome-keyring` and `gnome-keyring-pam`), and the tools required by configured
+  core keybindings. Alacritty is the preferred emulator, with the existing
+  supported-terminal fallback
   chain retained when Alacritty is unavailable.
+  Source synchronization must reconcile the keyring pair even without
+  Quickshell installed, while keeping desktop-only update dependencies gated
+  on Quickshell. Dependency diagnostics must report a missing daemon or PAM
+  package and offer the installer repair path. Automatic keyring unlock at
+  password login requires matching account/keyring passwords; autologin and
+  `startx` do not supply a password to this PAM path.
 - Recommended desktop: Alacritty, Quickshell, Picom, Feh, Dex, a polkit agent,
   notification tools, audio controls, screenshot tooling, Nerd/emoji fonts,
   Flatpak with its GTK portal, the Phase 6 system-management runtime
