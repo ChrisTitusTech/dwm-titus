@@ -16,9 +16,18 @@ ShellRoot {
         if (!condition) throw new Error(message);
     }
 
+    QtObject {
+        id: desktopProgress
+        property bool active: false
+        property var status: ({ state: "current", operation: "" })
+        property int shown: 0
+        function showProgress() { shown++; }
+    }
+
     UpdateCenterModel {
         id: model
         connectivityState: "offline"
+        desktopUpdateModel: desktopProgress
     }
 
     Loader {
@@ -86,6 +95,13 @@ ShellRoot {
                     model.activeOperation.outcome = "unknown";
                     test.require(model.shouldShow(), "recovery state must force panel visibility");
                     model.activeOperation = null;
+                    desktopProgress.active = true;
+                    test.require(model.desktopProgressAvailable && model.shouldShow(), "desktop worker progress must keep the panel action visible");
+                    model.open();
+                    test.require(model.showDesktopProgress() && !model.visible && desktopProgress.shown === 1,
+                        "desktop progress must reopen without losing the separate Update Center popup action");
+                    desktopProgress.active = false;
+                    test.require(!model.showDesktopProgress(), "idle desktop without an operation must not open progress");
                     model.savedAlwaysShow = true;
                     model.providers = cachedProviders;
                     model.totalUpdates = cachedTotalUpdates;
@@ -95,6 +111,16 @@ ShellRoot {
                     test.require(model.providers[0].detail === "cache", "cached state must load immediately while offline");
                     test.require(model.settingsBaseline === "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
                         "post-save status reload must replace the delayed pre-save baseline");
+                    const unavailableSettings = "update-center-settings-protocol\t1\t0\nstate\tunavailable\tUnsafe preferences preserved\npreference\trefreshSeconds\t3600\npreference\talwaysShow\tenabled\nbaseline\tunavailable\ncomplete\tstatus\n";
+                    test.require(model.loadSettings(unavailableSettings) && model.savedRefreshSeconds === 3600
+                            && model.savedAlwaysShow && !model.settingsWritable
+                            && model.settingsError === "Unsafe preferences preserved",
+                        "unavailable preferences must apply readable defaults and preservation guidance");
+                    test.require(!model.saveSettings(), "unavailable preferences must not dispatch writes");
+                    test.require(Protocol.parseSettings(unavailableSettings.replace("state\tunavailable", "state\tavailable")) === null,
+                        "unavailable baseline must not be accepted for writable preferences");
+                    test.require(model.loadSettings("update-center-settings-protocol\t1\t0\nstate\tavailable\tReady\npreference\trefreshSeconds\t900\npreference\talwaysShow\tenabled\nbaseline\tbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\ncomplete\tstatus\n")
+                            && model.settingsWritable, "safe preferences must restore editing");
                     const prior = model.providers;
                     const valid = "update-center-protocol\t1\t0\nprovider\tfedora\tFedora\tavailable\t1\t1\tfresh\t10\tyes\t\tReady\nitem\tfedora\tupdate\tPackage\t1\t2\tpkg\tsystem\thttps://example.test/release\ncomplete\tsnapshot\n";
                     const invalid = [
@@ -131,6 +157,13 @@ ShellRoot {
                     test.step = 2;
                 } else if (test.step === 2 && model.settingsError.indexOf("changed") >= 0) {
                     test.require(model.savedRefreshSeconds === 1000, "concurrent save errors must not mutate saved settings");
+                    model.settingsBaseline = "stale-conflicting-baseline";
+                    model.close();
+                    model.showSettings();
+                    test.step = 19;
+                } else if (test.step === 19 && !model.settingsLoading && model.settingsBaseline !== "stale-conflicting-baseline") {
+                    test.require(model.settingsBaseline === "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                        "reopening preferences must recover the current baseline without restarting the shell");
                     test.require(model.acceptConnectivity("connectivity\t1\tonline"), "global online event must be accepted");
                     test.transitionTick = test.ticks;
                     test.step = 20;

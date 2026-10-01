@@ -632,8 +632,11 @@ class DesktopUpdate(unittest.TestCase):
                     rules.mkdir()
                 original = rules.lstat()
                 try:
-                    with self.assertRaisesRegex(RuntimeError, "symlinks|regular file"):
-                        update.prepare_user(source, "e" * 32)
+                    entries = update.prepare_user(source, "e" * 32)
+                    self.assertEqual([entry["target"] for entry in entries],
+                                     [str(self.data), str(self.config / "quickshell")])
+                    for entry in entries:
+                        shutil.rmtree(entry["staging"])
                     self.assertEqual(rules.lstat().st_ino, original.st_ino)
                     self.assertEqual(rules.lstat().st_mode, original.st_mode)
                     self.assertEqual(destination.read_text(), "rules = []\n")

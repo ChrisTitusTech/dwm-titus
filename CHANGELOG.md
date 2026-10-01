@@ -21,6 +21,17 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Restore access to desktop update progress from the Update Center, and skip
+  optional window-rule migration for symlinked or special personal files.
+- Keep Update Center controls reachable on short screens and with large text,
+  and reload preferences when reopening their editor after a save conflict.
+  Unsafe preference files show defaults and preservation guidance without
+  permitting writes. Save commits typed interval text and remains retryable
+  after repeated identical errors.
+- Preserve Flatpak scope completion across interrupted recovery attempts and
+  stop bounded helper descendants on timeout. Keep long non-ASCII error
+  details within the operation journal's byte limit.
+
 - Show Fedora updates through the native DNF terminal workflow, preserving full
   transaction output and confirmation. Limit discovery to update state and
   correctly parse active PackageKit operations during legacy recovery.

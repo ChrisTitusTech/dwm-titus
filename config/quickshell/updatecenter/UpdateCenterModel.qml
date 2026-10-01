@@ -7,6 +7,11 @@ import "UpdateCenterProtocol.js" as Protocol
 Scope {
     id: root
 
+    property var desktopUpdateModel: null
+    readonly property bool desktopProgressAvailable: root.desktopUpdateModel !== null
+        && (root.desktopUpdateModel.active
+            || ["failed", "interrupted", "restart-required"].indexOf(root.desktopUpdateModel.status.state) >= 0
+            || (root.desktopUpdateModel.status.state === "current" && !!root.desktopUpdateModel.status.operation))
     property var providers: []
     property int totalUpdates: 0
     property bool visible: false
@@ -20,12 +25,15 @@ Scope {
     property int savedRefreshSeconds: 3600
     property bool savedAlwaysShow: true
     property string settingsBaseline: "absent"
+    readonly property bool settingsWritable: root.settingsBaseline !== "unavailable"
     property bool initialCacheLoaded: false
     property bool initialLiveScanComplete: false
     property bool connectivityReady: false
     property bool startupDelayElapsed: false
     property bool pendingForceRefresh: false
     property bool pendingSettingsReload: false
+    property bool pendingSaveReload: false
+    signal settingsSaveFinished(bool success)
     readonly property bool online: root.connectivityState !== "offline"
     readonly property bool busy: root.activeOperation !== null
     readonly property bool scanning: scanProcess.running
@@ -43,8 +51,15 @@ Scope {
     }
 
     function shouldShow() {
-        return root.busy || root.hasExceptionalState() || root.hasRestartGuidance()
+        return root.desktopProgressAvailable || root.busy || root.hasExceptionalState() || root.hasRestartGuidance()
             || root.totalUpdates > 0 || root.savedAlwaysShow;
+    }
+
+    function showDesktopProgress() {
+        if (!root.desktopProgressAvailable) return false;
+        root.close();
+        root.desktopUpdateModel.showProgress();
+        return true;
     }
 
     function open() { root.visible = true; }
@@ -105,7 +120,7 @@ Scope {
         return true;
     }
 
-    function reconcileOperation(text, source) {
+    function reconcileOperation(text) {
         const parsed = Protocol.parseAction(text);
         if (parsed === null) {
             root.message = "Update operation state is unavailable";
@@ -144,7 +159,7 @@ Scope {
         }
         operationWatch.buffer += line + "\n";
         if (line === "complete\taction") {
-            root.reconcileOperation(operationWatch.buffer, "watch");
+            root.reconcileOperation(operationWatch.buffer);
             operationWatch.buffer = "";
         }
     }
@@ -185,6 +200,7 @@ Scope {
     function showSettings() {
         root.settingsMode = true;
         root.discardSettings();
+        root.refreshSettings();
     }
 
     function discardSettings() {
@@ -194,7 +210,11 @@ Scope {
     }
 
     function saveSettings() {
-        if (settingsActionProcess.running || !Number.isInteger(root.draftRefreshSeconds)
+        if (!root.settingsWritable) {
+            root.settingsError = "Preferences are read-only; restore safe configuration access and reopen Settings";
+            return false;
+        }
+        if (settingsActionProcess.running || root.pendingSaveReload || !Number.isInteger(root.draftRefreshSeconds)
                 || root.draftRefreshSeconds < 300 || draftRefreshSeconds > 21600) {
             root.settingsError = "Refresh interval must be an integer from 300 to 21600 seconds";
             return false;
@@ -308,7 +328,12 @@ Scope {
         running: false
         stdout: StdioCollector { id: settingsStatusOutput }
         onExited: (exitCode, exitStatus) => { // qmllint disable signal-handler-parameters
-            if (exitStatus === 0 && exitCode === 0) root.loadSettings(settingsStatusOutput.text);
+            const accepted = exitStatus === 0 && exitCode === 0 && root.loadSettings(settingsStatusOutput.text);
+            if (!accepted) root.settingsError = "Update preferences are unavailable";
+            if (root.pendingSaveReload && !root.pendingSettingsReload) {
+                root.pendingSaveReload = false;
+                root.settingsSaveFinished(accepted && root.settingsError.length === 0);
+            }
             settingsDrainTimer.start();
         }
     }
@@ -320,10 +345,12 @@ Scope {
         stderr: StdioCollector { id: settingsActionError }
         onExited: (exitCode, exitStatus) => { // qmllint disable signal-handler-parameters
             if (exitStatus === 0 && exitCode === 0) {
+                root.pendingSaveReload = true;
                 root.refreshSettings();
             } else {
                 const detail = settingsActionError.text.trim();
                 root.settingsError = detail.length > 0 ? detail : "Update preferences changed; refresh and try again";
+                root.settingsSaveFinished(false);
             }
         }
     }

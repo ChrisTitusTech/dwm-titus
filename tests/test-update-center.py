@@ -119,9 +119,7 @@ class SnapshotProtocolTests(unittest.TestCase):
         self.assertTrue(output.startswith("update-center-protocol\t1\t0\nprovider\tfedora\t"))
         self.assertTrue(output.endswith("complete\tsnapshot\n"))
         self.assertEqual(output, self.api["render_snapshot"]([result]))
-        self.assertEqual(self.api["unescape"](self.api["escape"]("a\tb\nc\\d")), "a\tb\nc\\d")
-        with self.assertRaises(ValueError):
-            self.api["unescape"]("\\q")
+        self.assertEqual(self.api["escape"]("a\tb\nc\\d"), "a\\tb\\nc\\\\d")
         for text in ("\x01", "\x1b", "\x7f", "\x85"):
             with self.subTest(text=repr(text)), self.assertRaises(ValueError):
                 self.api["escape"](text)
@@ -809,7 +807,6 @@ class RegistryDiscoveryTests(unittest.TestCase):
         self.assertEqual([p.identifier for p in self.api["REGISTRY"]], ["fedora", "dwm-titus", "flatpak", "mise"])
         for provider in self.api["REGISTRY"]:
             self.assertRegex(provider.identifier, r"^[a-z][a-z0-9-]*$")
-            self.assertRegex(provider.icon, r"^[a-z][a-z0-9-]*$")
             self.assertTrue(callable(getattr(provider, "discover", None)), "provider discover function missing")
             self.assertIs(type(provider.can_update), bool)
             self.assertIs(type(provider.can_recover), bool)

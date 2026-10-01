@@ -253,6 +253,7 @@ ShellRoot {
 
     UpdateCenterModel {
         id: updateCenterModel
+        desktopUpdateModel: desktopUpdateModel
     }
 
     SettingsModel {

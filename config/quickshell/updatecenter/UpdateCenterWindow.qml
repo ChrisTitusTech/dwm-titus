@@ -12,7 +12,6 @@ ClickAwayPopup {
     required property var panelWindow
     property int anchorX: panelWindow ? panelWindow.width / 2 : 0
     property bool savePending: false
-    property bool saveObservedReload: false
     property string saveStatus: ""
     property int nowSeconds: Math.floor(Date.now() / 1000)
     readonly property bool ageClockRunning: ageTimer.running
@@ -35,7 +34,15 @@ ClickAwayPopup {
 
     function requestSave() {
         root.saveStatus = "";
-        root.saveObservedReload = false;
+        const editor = refreshSpin.contentItem as TextInput;
+        const seconds = editor ? refreshSpin.valueFromText(editor.text, refreshSpin.locale) : NaN;
+        if (!editor || !editor.acceptableInput || !Number.isInteger(seconds)
+                || seconds < refreshSpin.from || seconds > refreshSpin.to) {
+            root.updateCenterModel.settingsError = "Refresh interval must be an integer from 300 to 21600 seconds";
+            return;
+        }
+        root.updateCenterModel.draftRefreshSeconds = seconds;
+        updateCard.forceActiveFocus();
         root.savePending = true;
         if (!root.updateCenterModel.saveSettings()) root.savePending = false;
     }
@@ -92,32 +99,17 @@ ClickAwayPopup {
         Connections {
             target: root.updateCenterModel
 
-            function onSettingsLoadingChanged() {
+            function onSettingsSaveFinished(success) {
                 if (!root.savePending) return;
-                if (root.updateCenterModel.settingsLoading) {
-                    root.saveObservedReload = true;
-                } else if (root.saveObservedReload) {
-                    root.savePending = false;
-                    root.saveObservedReload = false;
-                    root.saveStatus = root.updateCenterModel.settingsError.length > 0 ? "" : "Preferences saved";
-                }
-            }
-
-            function onSettingsErrorChanged() {
-                if (root.savePending && root.updateCenterModel.settingsError.length > 0) {
-                    root.savePending = false;
-                    root.saveObservedReload = false;
-                    root.saveStatus = "";
-                }
+                root.savePending = false;
+                root.saveStatus = success ? "Preferences saved" : "";
             }
         }
 
         ColumnLayout {
             id: contentColumn
 
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.top: parent.top
+            anchors.fill: parent
             spacing: Theme.spacingLg
 
             RowLayout {
@@ -131,6 +123,14 @@ ClickAwayPopup {
                     font.pixelSize: Theme.fontTitleSize
                     font.bold: true
                     Accessible.role: Accessible.Heading
+                }
+
+                ShellButton {
+                    objectName: "updateCenterDesktopProgress"
+                    label: "Progress"
+                    accessibleDescription: "Reopen desktop update progress"
+                    visible: root.updateCenterModel.desktopProgressAvailable === true
+                    onActivated: root.updateCenterModel.showDesktopProgress()
                 }
 
                 ShellButton {
@@ -182,6 +182,8 @@ ClickAwayPopup {
 
                 objectName: "updateCenterUpdatesViewport"
                 Layout.fillWidth: true
+                Layout.fillHeight: true
+                Layout.minimumHeight: 0
                 Layout.preferredHeight: Math.min(providerColumn.implicitHeight, Theme.scaledSize(430))
                 visible: !root.updateCenterModel.settingsMode
                 contentWidth: width
@@ -221,112 +223,130 @@ ClickAwayPopup {
                 }
             }
 
-            ColumnLayout {
+            Flickable {
+                id: settingsViewport
+
+                objectName: "updateCenterSettingsViewport"
                 Layout.fillWidth: true
+                Layout.fillHeight: true
+                Layout.minimumHeight: 0
+                Layout.preferredHeight: Math.min(settingsColumn.implicitHeight, Theme.scaledSize(430))
                 visible: root.updateCenterModel.settingsMode
-                spacing: Theme.spacingXl
+                contentWidth: width
+                contentHeight: settingsColumn.implicitHeight
+                boundsBehavior: Flickable.StopAtBounds
+                flickableDirection: Flickable.VerticalFlick
+                clip: true
 
-                SectionLabel { label: "Discovered providers" }
+                ColumnLayout {
+                    id: settingsColumn
+                    width: settingsViewport.width
+                    spacing: Theme.spacingXl
 
-                Repeater {
-                    model: root.updateCenterModel.providers
+                    SectionLabel { label: "Discovered providers" }
+
+                    Repeater {
+                        model: root.updateCenterModel.providers
+
+                        RowLayout {
+                            required property var modelData
+
+                            Layout.fillWidth: true
+
+                            UiText {
+                                Layout.fillWidth: true
+                                text: parent.modelData.name
+                                color: Theme.menuText
+                                elide: Text.ElideRight
+                            }
+
+                            UiText {
+                                text: parent.modelData.status
+                                color: Theme.menuMutedText
+                            }
+                        }
+                    }
+
+                    PanelSeparator {}
 
                     RowLayout {
-                        required property var modelData
-
                         Layout.fillWidth: true
 
                         UiText {
                             Layout.fillWidth: true
-                            text: parent.modelData.name
+                            text: "Refresh interval (seconds)"
                             color: Theme.menuText
-                            elide: Text.ElideRight
                         }
+
+                        Controls.SpinBox {
+                            id: refreshSpin
+
+                            objectName: "updateCenterRefreshInterval"
+                            from: 300
+                            to: 21600
+                            editable: true
+                            value: root.updateCenterModel.draftRefreshSeconds
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.inputFontSize
+                            palette.base: Theme.controlNormalFill
+                            palette.text: Theme.textStrong
+                            palette.button: Theme.controlNormalFill
+                            palette.buttonText: Theme.text
+                            palette.window: Theme.popupBackground
+                            palette.highlight: Theme.accent
+                            palette.highlightedText: Theme.accentText
+                            Accessible.name: "Refresh interval in seconds"
+                            onValueModified: root.updateCenterModel.draftRefreshSeconds = value
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
 
                         UiText {
-                            text: parent.modelData.status
-                            color: Theme.menuMutedText
+                            Layout.fillWidth: true
+                            text: "Always Show"
+                            color: Theme.menuText
                         }
-                    }
-                }
 
-                PanelSeparator {}
-
-                RowLayout {
-                    Layout.fillWidth: true
-
-                    UiText {
-                        Layout.fillWidth: true
-                        text: "Refresh interval (seconds)"
-                        color: Theme.menuText
-                    }
-
-                    Controls.SpinBox {
-                        id: refreshSpin
-
-                        objectName: "updateCenterRefreshInterval"
-                        from: 300
-                        to: 21600
-                        editable: true
-                        value: root.updateCenterModel.draftRefreshSeconds
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.inputFontSize
-                        palette.base: Theme.controlNormalFill
-                        palette.text: Theme.textStrong
-                        palette.button: Theme.controlNormalFill
-                        palette.buttonText: Theme.text
-                        palette.window: Theme.popupBackground
-                        palette.highlight: Theme.accent
-                        palette.highlightedText: Theme.accentText
-                        Accessible.name: "Refresh interval in seconds"
-                        onValueModified: root.updateCenterModel.draftRefreshSeconds = value
-                    }
-                }
-
-                RowLayout {
-                    Layout.fillWidth: true
-
-                    UiText {
-                        Layout.fillWidth: true
-                        text: "Always Show"
-                        color: Theme.menuText
-                    }
-
-                    PanelToggleSwitch {
-                        checked: root.updateCenterModel.draftAlwaysShow
-                        accessibleName: "Always show Update Center indicator"
-                        onToggled: root.updateCenterModel.draftAlwaysShow = !root.updateCenterModel.draftAlwaysShow
-                    }
-                }
-
-                UiText {
-                    Layout.fillWidth: true
-                    visible: root.updateCenterModel.settingsError.length > 0 || root.saveStatus.length > 0
-                    text: root.updateCenterModel.settingsError.length > 0 ? root.updateCenterModel.settingsError : root.saveStatus
-                    color: root.updateCenterModel.settingsError.length > 0 ? Theme.danger : Theme.success
-                    wrapMode: Text.Wrap
-                    Accessible.role: Accessible.AlertMessage
-                }
-
-                RowLayout {
-                    Layout.fillWidth: true
-
-                    Item { Layout.fillWidth: true }
-
-                    ShellButton {
-                        label: "Discard"
-                        enabled: !root.updateCenterModel.settingsLoading
-                        onActivated: {
-                            root.saveStatus = "";
-                            root.updateCenterModel.discardSettings();
+                        PanelToggleSwitch {
+                            checked: root.updateCenterModel.draftAlwaysShow
+                            accessibleName: "Always show Update Center indicator"
+                            onToggled: root.updateCenterModel.draftAlwaysShow = !root.updateCenterModel.draftAlwaysShow
                         }
                     }
 
-                    ShellButton {
-                        label: "Save"
-                        primary: true
-                        enabled: !root.updateCenterModel.settingsLoading && !root.savePending
-                        onActivated: root.requestSave()
+                    UiText {
+                        Layout.fillWidth: true
+                        visible: root.updateCenterModel.settingsError.length > 0 || root.saveStatus.length > 0
+                        text: root.updateCenterModel.settingsError.length > 0 ? root.updateCenterModel.settingsError : root.saveStatus
+                        color: root.updateCenterModel.settingsError.length > 0 ? Theme.danger : Theme.success
+                        wrapMode: Text.Wrap
+                        Accessible.role: Accessible.AlertMessage
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+
+                        Item { Layout.fillWidth: true }
+
+                        ShellButton {
+                            label: "Discard"
+                            enabled: !root.updateCenterModel.settingsLoading
+                            onActivated: {
+                                root.saveStatus = "";
+                                root.updateCenterModel.discardSettings();
+                            }
+                        }
+
+                        ShellButton {
+                            objectName: "updateCenterSave"
+                            label: "Save"
+                            primary: true
+                            enabled: root.updateCenterModel.settingsWritable !== false
+                                && !root.updateCenterModel.settingsLoading && !root.savePending
+                            onActivated: root.requestSave()
+                        }
                     }
                 }
             }

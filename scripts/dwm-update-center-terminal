@@ -1,14 +1,14 @@
 #!/usr/bin/python3
 """Run one validated Update Center provider operation in an interactive terminal."""
 import codecs
+import contextlib
 import ctypes
-import io
-import json
 import os
 import re
 import runpy
 import selectors
 import shutil
+import signal
 import stat
 import subprocess
 import sys
@@ -95,7 +95,10 @@ def print_step(detail, *, output=None):
 
 def checkpoint(operation, phase, detail, *, output=None):
     print_step(detail, output=output)
-    return CENTER["update_operation"](operation, phase=phase, provider_phase=phase, detail=detail)
+    changes = {"phase": phase, "detail": detail}
+    if phase != "recovering":
+        changes["provider_phase"] = phase
+    return CENTER["update_operation"](operation, **changes)
 
 
 def executable(name):
@@ -225,20 +228,57 @@ def print_terminal_line(line, *, output=None, width=None, tracker=None):
     destination.flush()
 
 
+@contextlib.contextmanager
+def termination_cleanup():
+    """Unwind Python cleanup on terminal hangup and explicit termination."""
+    previous = {}
+
+    def terminate(signum, _frame):
+        raise SystemExit(128 + signum)
+
+    try:
+        for signum in (signal.SIGHUP, signal.SIGTERM):
+            previous[signum] = signal.signal(signum, terminate)
+        yield
+    finally:
+        for signum, handler in previous.items():
+            signal.signal(signum, handler)
+
+
+@contextlib.contextmanager
+def bounded_process(argv, *, cwd=None, env=None):
+    """Own helper descendants even if the terminal hangs up during a command."""
+    with termination_cleanup():
+        process = None
+        try:
+            process = subprocess.Popen(argv, cwd=cwd, env=env, stdin=None, stdout=subprocess.PIPE,
+                                       stderr=None, bufsize=0, start_new_session=True)
+            yield process
+        finally:
+            # A second hangup must not interrupt cleanup of the owned group.
+            for signum in (signal.SIGHUP, signal.SIGTERM):
+                signal.signal(signum, signal.SIG_IGN)
+            if process is not None:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                process.wait()
+                process.stdout.close()
+
+
 def stream_process(argv, *, cwd=None, env=None, timeout=DEFAULT_TIMEOUT, stream=True):
     """Execute argv, streaming decoded lines bounded by size and deadline."""
     if not isinstance(argv, list) or not argv or any(not isinstance(value, str) for value in argv):
         raise ValueError("invalid provider argv")
     if not isinstance(timeout, (int, float)) or timeout <= 0:
         raise ValueError("invalid timeout")
-    process = subprocess.Popen(argv, cwd=cwd, env=env, stdin=None, stdout=subprocess.PIPE,
-                               stderr=None, bufsize=0)
-    output, size = [], 0
-    buffer = ""
-    tracker = ProgressTracker()
-    decoder = codecs.getincrementaldecoder("utf-8")(errors="strict")
-    deadline = time.monotonic() + timeout
-    try:
+    with bounded_process(argv, cwd=cwd, env=env) as process:
+        output, size = [], 0
+        buffer = ""
+        tracker = ProgressTracker()
+        decoder = codecs.getincrementaldecoder("utf-8")(errors="strict")
+        deadline = time.monotonic() + timeout
         with selectors.DefaultSelector() as selector:
             os.set_blocking(process.stdout.fileno(), False)
             selector.register(process.stdout, selectors.EVENT_READ)
@@ -280,14 +320,6 @@ def stream_process(argv, *, cwd=None, env=None, timeout=DEFAULT_TIMEOUT, stream=
             except subprocess.TimeoutExpired as error:
                 raise TimeoutError("command timed out") from error
             return status, "".join(output)
-    finally:
-        try:
-            if process.poll() is None:
-                process.kill()
-                process.wait()
-        except OSError:
-            pass
-        process.stdout.close()
 
 
 def run_command(argv, *, cwd=None, env=None, timeout=DEFAULT_TIMEOUT, stream=True):
@@ -307,7 +339,8 @@ def run_protocol_command(argv, *, timeout=DEFAULT_TIMEOUT):
 
 
 def result(outcome, phase, detail, restart="none", hold=True):
-    return {"outcome": outcome, "phase": phase, "detail": detail[:8192], "restart": restart, "hold": hold}
+    detail = detail.encode("utf-8")[:8192].decode("utf-8", errors="ignore")
+    return {"outcome": outcome, "phase": phase, "detail": detail, "restart": restart, "hold": hold}
 
 
 def records(payload, kind):
@@ -366,34 +399,23 @@ def fedora_restart(payload):
     return rows[0][3] if rows[0][2] == "available" else "unknown"
 
 
-def execute_packagekit(operation, action):
+def recover_packagekit(operation):
+    """Reconcile retained PackageKit work without starting a new transaction."""
     helper = str(CENTER_PATH.with_name("dwm-system-management"))
     checkpoint(operation, "preparing", "Preparing authoritative PackageKit state")
     initial = run_command([helper, "snapshot-updates"], stream=False, timeout=60)
-    if action == "update":
-        generations = records(initial, "snapshot-generation")
-        if len(generations) != 1 or not re.fullmatch(r"[0-9a-f]{64}", generations[0][1]):
-            raise ValueError("PackageKit snapshot generation unavailable")
-        checkpoint(operation, "fedora-executing", "Running PackageKit update")
-        terminal = run_protocol_command([helper, "updates-install-all", generations[0][1]])
-        protocol_action = "updates-install-all"
-    else:
-        # Snapshot performs journal reconciliation; attach to its exact retained
-        # owner when work is still observable instead of starting a mutation.
-        operations = records(initial, "active-operation") or records(initial, "terminal-handoff")
-        checkpoint(operation, "recovering", "Reconciling retained PackageKit operation")
-        terminal = run_protocol_command([helper, "watch-operation", operations[0][1]]) if operations else initial
-        protocol_action = operations[0][2] if operations else "updates-install-all"
+    # Snapshot performs journal reconciliation; attach to its exact retained
+    # owner when work is still observable instead of starting a mutation.
+    operations = records(initial, "active-operation") or records(initial, "terminal-handoff")
+    checkpoint(operation, "recovering", "Reconciling retained PackageKit operation")
+    terminal = run_protocol_command([helper, "watch-operation", operations[0][1]]) if operations else initial
+    protocol_action = operations[0][2] if operations else "updates-install-all"
     terminal_state = parse_operation_stream(terminal, protocol_action) if records(terminal, "operation") else None
-    if action == "update" and terminal_state is None:
-        reconciled = run_command([helper, "snapshot-updates"], stream=False)
-        return result("failed", "failed", "PackageKit did not start the update transaction",
-                      fedora_restart(reconciled))
     reconciled = run_command([helper, "snapshot-updates"], stream=False)
     unresolved = records(reconciled, "active-operation") or records(reconciled, "terminal-handoff")
     state = terminal_state["state"] if terminal_state else "interrupted" if unresolved else "succeeded"
     restart = fedora_restart(reconciled)
-    if action == "recover" and state == "interrupted" and terminal_state is not None:
+    if state == "interrupted" and terminal_state is not None:
         expected = [terminal_state["operation"], protocol_action,
                     "update" if protocol_action == "updates-install-all" else "refresh"]
         handoffs = records(reconciled, "terminal-handoff")
@@ -406,7 +428,7 @@ def execute_packagekit(operation, action):
             if not records(acknowledged, "active-operation") and not records(acknowledged, "terminal-handoff"):
                 return result("unknown", "failed", "PackageKit state refreshed and interrupted result acknowledged; "
                               "the previous update outcome remains unknown. " + terminal_state["detail"], restart)
-    if action == "recover" and terminal_state is None and not records(reconciled, "active-operation") \
+    if terminal_state is None and not records(reconciled, "active-operation") \
             and not records(reconciled, "terminal-handoff"):
         return result("unknown", "failed", "PackageKit state refreshed; the previous update outcome remains unknown.", restart)
     if terminal_state is not None and state != "interrupted":
@@ -466,7 +488,7 @@ def execute_fedora(operation, action):
         if receipt is None or receipt["operation"] != operation:
             raise ValueError("Fedora recovery does not own the active reservation")
         if receipt["recovery_provider_phase"] != "fedora-dnf":
-            return execute_packagekit(operation, action)
+            return recover_packagekit(operation)
         # Recover is an explicit retry, with DNF's native lock and fresh
         # interactive plan/confirmation. It never claims rollback or that the
         # previous transaction succeeded.
@@ -731,7 +753,7 @@ def completion_hold(value, *, input_stream=None, output=None):
     destination.flush()
 
 
-def main(argv=None):
+def run_terminal(argv=None):
     args = sys.argv[1:] if argv is None else argv
     if len(args) != 3:
         print("usage: dwm-update-center-terminal OPERATION_ID PROVIDER update|recover", file=sys.stderr)
@@ -757,6 +779,13 @@ def main(argv=None):
     except (OSError, ValueError) as error:
         print(str(error), file=sys.stderr)
         return 1
+
+
+def main(argv=None):
+    # Preflight discovery has its own bounded subprocess cleanup. Keep it on
+    # the same unwind path as mutation helpers when the terminal disappears.
+    with termination_cleanup():
+        return run_terminal(argv)
 
 
 if __name__ == "__main__":

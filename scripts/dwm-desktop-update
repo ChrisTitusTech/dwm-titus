@@ -976,9 +976,11 @@ def prepare_user(source, operation):
     config, data, _ = paths()
     targets = [data, config / "quickshell"]
     migrator = source / "scripts/dwm-migrate-update-center-window-rule"
-    if migrator.is_file() and (config / "dwm-titus/window-rules.toml").exists():
-        # Personal rules join the same staged, verified, reversible transaction.
-        targets.append(config / "dwm-titus/window-rules.toml")
+    rules = config / "dwm-titus/window-rules.toml"
+    if migrator.is_file() and not rules.is_symlink() and rules.is_file():
+        # Only regular personal rules join the reversible migration. Preserve
+        # custom symlinks and special files without blocking the desktop update.
+        targets.append(rules)
     prepared = []
     with contextlib.ExitStack() as cleanup:
         for index, target in enumerate(targets):

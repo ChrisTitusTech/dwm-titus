@@ -2,6 +2,7 @@
 """Exercise Update Center popup geometry and interaction in isolated X11."""
 
 import os
+import json
 import shutil
 import subprocess
 import tempfile
@@ -63,6 +64,16 @@ import qs.core
 import qs.updatecenter
 
 ShellRoot {{
+    id: harness
+    function findItem(item: var, name: string): var {{
+        if (item.objectName === name) return item;
+        for (const child of item.children || []) {{
+            const found = findItem(child, name);
+            if (found) return found;
+        }}
+        return null;
+    }}
+
     QtObject {{
         id: model
         property var providers: {providers}
@@ -76,9 +87,15 @@ ShellRoot {{
         property string settingsError: ""
         property bool scanning: false
         property bool settingsLoading: false
+        property bool desktopProgressAvailable: false
+        property int progressCount: 0
+        function showDesktopProgress() {{ progressCount++; close(); }}
         property bool online: true
         property int refreshCount: 0
         property int saveCount: 0
+        property int savedSeconds: 3600
+        property bool failSave: false
+        signal settingsSaveFinished(bool success)
         property string probeAction: ""
         property string probeUrl: ""
         property int anchorX: 320
@@ -90,7 +107,7 @@ ShellRoot {{
         function recover(providerId) {{ message = "recover:" + providerId; visible = false; return true; }}
         function showSettings() {{ settingsMode = true; discardSettings(); }}
         function discardSettings() {{ draftRefreshSeconds = 3600; draftAlwaysShow = true; settingsError = ""; }}
-        function saveSettings() {{ saveCount++; message = "saved"; settingsLoading = true; saveTimer.start(); return true; }}
+        function saveSettings() {{ saveCount++; savedSeconds = draftRefreshSeconds; message = "saved"; settingsLoading = true; saveTimer.start(); return true; }}
     }}
 
     QtObject {{
@@ -116,7 +133,11 @@ ShellRoot {{
         id: saveTimer
         interval: 20
         repeat: false
-        onTriggered: model.settingsLoading = false
+        onTriggered: {{
+            model.settingsLoading = false;
+            if (model.failSave) model.settingsError = "Repeated save failure";
+            model.settingsSaveFinished(!model.failSave);
+        }}
     }}
 
     PanelWindow {{
@@ -167,6 +188,28 @@ ShellRoot {{
 
     IpcHandler {{
         target: "update-center-test"
+        function largeText(): void {{ Theme.applyFontPreferences(Theme.fontFamily, 2.0); }}
+        function normalText(): void {{ Theme.applyFontPreferences(Theme.fontFamily, 1.0); }}
+        function editInterval(): void {{ harness.findItem(updateWindow.contentItem, "updateCenterRefreshInterval").contentItem.forceActiveFocus(); }}
+        function savedSeconds(): string {{ return String(model.savedSeconds); }}
+        function failSaves(): void {{ model.failSave = true; }}
+        function savePending(): string {{ return String(updateWindow.savePending); }}
+        function enableProgress(): void {{ model.desktopProgressAvailable = true; }}
+        function progressCount(): string {{ return String(model.progressCount); }}
+        function buttonPosition(name: string): string {{
+            const button = harness.findItem(updateWindow.contentItem, name);
+            const point = button.mapToGlobal(button.width / 2, button.height / 2);
+            return JSON.stringify({{ x: Math.round(point.x), y: Math.round(point.y) }});
+        }}
+        function viewportBounds(settings: bool): string {{
+            const card = harness.findItem(updateWindow.contentItem, "updateCenterCard");
+            const viewport = harness.findItem(card, settings ? "updateCenterSettingsViewport" : "updateCenterUpdatesViewport");
+            const point = viewport.mapToItem(card, 0, 0);
+            viewport.contentY = Math.max(0, viewport.contentHeight - viewport.height);
+            return JSON.stringify({{ top: point.y, bottom: point.y + viewport.height,
+                height: viewport.height, cardHeight: card.height, contentHeight: viewport.contentHeight,
+                endVisible: viewport.atYEnd }});
+        }}
         function open(): void {{ model.open(); }}
         function close(): void {{ model.close(); }}
         function openOther(): void {{ model.close(); otherPopup.visible = true; }}
@@ -405,8 +448,13 @@ with tempfile.TemporaryDirectory(prefix="update-center-xvfb-", dir=tmp_root) as 
         run(env, "xdotool", "windowfocus", popup_id, check=True)
         time.sleep(0.2)
         before_refresh, before_save = map(int, call("counts").split(":"))
-        run(env, "xdotool", "mousemove", "525", "318", "click", "1", check=True)
+        call("editInterval")
+        run(env, "xdotool", "key", "ctrl+a", check=True)
+        run(env, "xdotool", "type", "7200", check=True)
+        position = json.loads(call("buttonPosition", "updateCenterSave"))
+        run(env, "xdotool", "mousemove", str(position["x"]), str(position["y"]), "click", "1", check=True)
         wait_for(lambda: call("saveStatus") == "Preferences saved", "Save did not report successful persistence")
+        assert call("savedSeconds") == "7200", "Save ignored the uncommitted interval text"
         clicked_refresh, clicked_save = map(int, call("counts").split(":"))
         assert clicked_refresh == before_refresh and clicked_save == before_save + 1
         run(env, "xdotool", "key", "r", check=True)
@@ -425,6 +473,30 @@ with tempfile.TemporaryDirectory(prefix="update-center-xvfb-", dir=tmp_root) as 
         editor_refresh, editor_save = map(int, call("counts").split(":"))
         assert editor_refresh == shortcut_refresh and editor_save == shortcut_save, \
             f"S escaped the focused interval editor: before={shortcut_refresh, shortcut_save} after={editor_refresh, editor_save}"
+        call("failSaves")
+        run(env, "xdotool", "key", "Tab", check=True)
+        for attempt in range(2):
+            _, previous_saves = map(int, call("counts").split(":"))
+            position = json.loads(call("buttonPosition", "updateCenterSave"))
+            run(env, "xdotool", "mousemove", str(position["x"]), str(position["y"]), "click", "1", check=True)
+            wait_for(lambda: int(call("counts").split(":")[1]) == previous_saves + 1,
+                     "Repeated save error left the button disabled")
+            wait_for(lambda: call("savePending") == "false", "Failed save never completed")
+            assert call("saveStatus") == "", "Failed save claimed success"
+
+        call("largeText")
+        for settings in (True, False):
+            if not settings:
+                call("close")
+                call("open")
+            time.sleep(0.2)
+            bounds = json.loads(call("viewportBounds", str(settings).lower()))
+            assert 0 < bounds["height"] < bounds["contentHeight"], bounds
+            assert 0 <= bounds["top"] < bounds["bottom"] <= bounds["cardHeight"], bounds
+            assert bounds["endVisible"], "Last controls cannot be scrolled into view"
+        call("normalText")
+        time.sleep(0.2)
+
         run(env, "xdotool", "key", "Escape", check=True)
         wait_for(lambda: popup_id not in visible_windows(env, shell.pid), "Escape did not close the popup")
 
@@ -432,7 +504,23 @@ with tempfile.TemporaryDirectory(prefix="update-center-xvfb-", dir=tmp_root) as 
         wait_for(lambda: len(visible_windows(env, shell.pid)) == 2, "Popup did not reopen")
         run(env, "xdotool", "mousemove", "10", "300", "click", "1", check=True)
         wait_for(lambda: len(visible_windows(env, shell.pid)) == 1, "Click-away did not dismiss the popup")
+        call("enableProgress")
+        call("open")
+        time.sleep(0.2)
+        position = json.loads(call("buttonPosition", "updateCenterDesktopProgress"))
+        run(env, "xdotool", "mousemove", str(position["x"]), str(position["y"]), "click", "1", check=True)
+        wait_for(lambda: call("progressCount") == "1", "Progress button did not reopen desktop progress")
+        wait_for(lambda: len(visible_windows(env, shell.pid)) == 1, "Opening desktop progress left the popup visible")
         assert shell.poll() is None
+        def cpu_ticks():
+            fields = Path(f"/proc/{shell.pid}/stat").read_text().rsplit(") ", 1)[1].split()
+            return int(fields[11]) + int(fields[12])
+        time.sleep(0.2)
+        started, ticks = time.monotonic(), cpu_ticks()
+        time.sleep(3)
+        cpu_percent = (cpu_ticks() - ticks) / os.sysconf("SC_CLK_TCK") / (time.monotonic() - started) * 100
+        assert cpu_percent < 5, f"Closed Update Center shell is not near idle: {cpu_percent:.2f}% CPU"
+        print(f"Closed Update Center shell CPU: {cpu_percent:.2f}%")
         print("Quickshell Update Center Xvfb geometry, focus, overflow, theme, and dismissal: PASS")
     finally:
         shell.terminate()

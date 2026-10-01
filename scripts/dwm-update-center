@@ -40,7 +40,6 @@ class ProviderMetadata:
     identifier: str
     name: str
     core: bool
-    icon: str
     scanner: str
     can_update: bool = True
     can_recover: bool = False
@@ -51,11 +50,11 @@ class ProviderMetadata:
 
 
 REGISTRY = (
-    ProviderMetadata("fedora", "Fedora", True, "fedora", "scan_fedora", can_recover=True),
-    ProviderMetadata("dwm-titus", "DWM-Titus", True, "dwm-titus", "scan_desktop", can_recover=True),
+    ProviderMetadata("fedora", "Fedora", True, "scan_fedora", can_recover=True),
+    ProviderMetadata("dwm-titus", "DWM-Titus", True, "scan_desktop", can_recover=True),
     # Optional-provider recovery means supported recheck/retry, never rollback.
-    ProviderMetadata("flatpak", "Flatpak", False, "flatpak", "scan_flatpak", can_recover=True),
-    ProviderMetadata("mise", "Mise", False, "mise", "scan_mise", can_recover=True),
+    ProviderMetadata("flatpak", "Flatpak", False, "scan_flatpak", can_recover=True),
+    ProviderMetadata("mise", "Mise", False, "scan_mise", can_recover=True),
 )
 
 OPERATION_PATTERN = re.compile(r"op-[0-9a-f]{32}")
@@ -204,12 +203,16 @@ def reserve_operation(provider, action, now=None):
                                          or observed == existing["terminal_identity"]):
                 raise BlockingIOError("the interrupted provider terminal is still active")
         recovery_provider_phase = existing["provider_phase"] if action == "recover" and existing is not None else "reserved"
+        if action == "recover" and recovery_provider_phase in {"reserved", "recovering"}:
+            # Older recovery attempts replaced their scope checkpoint with a
+            # generic phase. Keep the inherited evidence until work advances.
+            recovery_provider_phase = existing["recovery_provider_phase"]
         if (action == "recover" and provider == "fedora" and existing is not None
                 and "fedora-dnf" in {existing["provider_phase"], existing["recovery_provider_phase"]}):
             recovery_provider_phase = "fedora-dnf"
         value = {"schema": 1, "operation": "op-" + secrets.token_hex(16), "provider": provider,
                  "action": action, "phase": "reserved",
-                 "provider_phase": "fedora-dnf" if recovery_provider_phase == "fedora-dnf" else "reserved",
+                 "provider_phase": recovery_provider_phase,
                  "outcome": "pending", "created": now,
                  "updated": now, "terminal_pid": 0, "terminal_identity": "",
                  "launcher_pid": os.getpid(), "launcher_identity": process_identity(os.getpid()) or "",
@@ -402,24 +405,6 @@ def escape(value):
     if any((ord(char) < 32 and char not in "\t\r\n") or 127 <= ord(char) <= 159 for char in value):
         raise ValueError("invalid protocol control character")
     return value.replace("\\", "\\\\").replace("\t", "\\t").replace("\n", "\\n").replace("\r", "\\r")
-
-
-def unescape(value):
-    escapes = {"\\": "\\", "t": "\t", "n": "\n", "r": "\r"}
-    result = []
-    index = 0
-    while index < len(value):
-        char = value[index]
-        if char == "\\":
-            index += 1
-            if index == len(value) or value[index] not in escapes:
-                raise ValueError("invalid protocol escape")
-            char = escapes[value[index]]
-        result.append(char)
-        index += 1
-    decoded = "".join(result)
-    escape(decoded)
-    return decoded
 
 
 def require_fedora(path=Path("/etc/os-release")):

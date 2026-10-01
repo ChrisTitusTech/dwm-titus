@@ -42,8 +42,10 @@ Click the update icon beside the clock to open the Update Center. It lists
 Fedora packages, the managed desktop, and optional Flatpak and mise providers.
 Expand a provider to inspect its available updates, then choose **Update** for
 that provider. Updates run in a dedicated floating terminal; closing the panel
-leaves the operation running. Read the terminal result and press a key to close
-it. Interrupted work retains recovery guidance instead of claiming success.
+leaves the operation running. **Progress** reopens the separate desktop-update
+progress window while desktop work is active or needs attention. Read the terminal
+result and press a key to close it. Interrupted work retains recovery guidance
+instead of claiming success.
 Fedora updates run the installed DNF5 directly in that terminal, with its full
 transaction plan, download progress, package/scriptlet output, and confirmation
 prompt. Existing sudo authorization is reused; otherwise sudo prompts in the
@@ -82,8 +84,10 @@ evidence when only one scope completes.
 Source installation and later desktop updates back up existing window rules
 before adding the Update Center terminal's floating/no-swallow rule. Login also
 performs this idempotent migration for the first upgrade from an older worker.
-Personal rules and unrelated settings remain intact. The fresh-image initial
-package-update offer and mirror measurement continue through the existing
+Personal rules and unrelated settings remain intact. Symlinked and non-regular
+personal rule files are left unchanged and do not block the desktop update.
+The fresh-image initial package-update offer and mirror measurement continue
+through the existing
 [first-update workflow](INITIAL-UPDATE.md).
 
 ## Installation and compatibility

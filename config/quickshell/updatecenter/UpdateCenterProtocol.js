@@ -150,11 +150,13 @@ function parseSettings(payload) {
             else if (values[0] === "preference" && values.length === 3 && values[1] === "alwaysShow" && alwaysShow === null
                     && (values[2] === "enabled" || values[2] === "disabled")) alwaysShow = values[2] === "enabled";
             else if (values[0] === "baseline" && values.length === 2 && baseline === null
-                    && (values[1] === "absent" || /^[0-9a-f]{64}$/.test(values[1]))) baseline = values[1];
+                    && (["absent", "unavailable"].indexOf(values[1]) >= 0 || /^[0-9a-f]{64}$/.test(values[1]))) baseline = values[1];
             else throw new Error("invalid setting");
         }
         if (state === null || refreshSeconds === null || refreshSeconds < 300 || alwaysShow === null || baseline === null)
             throw new Error("incomplete settings");
+        if ((baseline === "unavailable") !== (state.status === "unavailable"))
+            throw new Error("inconsistent settings baseline");
         return deepFreeze({ state: state.status, detail: state.detail, refreshSeconds: refreshSeconds,
             alwaysShow: alwaysShow, baseline: baseline });
     } catch (error) {

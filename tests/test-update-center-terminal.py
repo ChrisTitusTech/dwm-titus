@@ -5,6 +5,8 @@ import io
 import json
 import os
 import runpy
+import signal
+import time
 import subprocess
 import sys
 import tempfile
@@ -127,6 +129,26 @@ class ReservationTests(Environment):
             closed = self.api["terminal_closed"](operation["operation"], now=11)
         self.assertEqual((closed["phase"], closed["provider_phase"]),
                          ("system-complete/user-failed", "flatpak-user"))
+
+    def test_repeated_flatpak_recovery_preserves_completed_scope(self):
+        runner = runpy.run_path(str(RUNNER))
+        for phase in ("reserved", "recovering", "flatpak-user", "flatpak-user-complete"):
+            with self.subTest(phase=phase):
+                previous = self.api["reserve_operation"]("flatpak", "update")
+                self.api["update_operation"](previous["operation"], phase="system-complete/user-failed",
+                    provider_phase="flatpak-user", outcome="failed")
+                recovery = self.api["reserve_operation"]("flatpak", "recover")
+                # Include receipts produced before recovery preserved checkpoints.
+                self.api["update_operation"](recovery["operation"], phase="interrupted",
+                    outcome="unknown", provider_phase=phase)
+                retry = self.api["reserve_operation"]("flatpak", "recover")
+                expected = "flatpak-user-complete" if phase == "flatpak-user-complete" else "flatpak-user"
+                self.assertEqual(retry["provider_phase"], expected)
+                self.assertEqual(retry["recovery_provider_phase"], expected)
+                with contextlib.redirect_stdout(io.StringIO()):
+                    runner["checkpoint"](retry["operation"], "recovering", "Rechecking scopes")
+                self.assertEqual(self.api["read_operation"]()["provider_phase"], expected)
+                self.api["update_operation"](retry["operation"], phase="closed", outcome="unknown")
 
     def test_child_completion_cannot_be_regressed_to_launched_by_parent(self):
         class Child:
@@ -268,7 +290,7 @@ class RunnerTests(Environment):
         self.assertNotIn("validate_sudo_password", self.api)
         self.assertNotIn("prompt_sudo_password", self.api)
 
-    def run_adapter(self, provider, action, responses=None, recovery_basis=("interrupted", "flatpak-system"), legacy=False):
+    def run_adapter(self, provider, action, responses=None, recovery_basis=("interrupted", "flatpak-system")):
         calls = []
         phases = []
         responses = list(responses or [])
@@ -285,7 +307,7 @@ class RunnerTests(Environment):
                         flatpak_recovery_basis=lambda operation: recovery_basis,
                         executable=lambda name: "/usr/bin/" + name,
                         trusted_desktop_helper=lambda: "/usr/bin/dwm-desktop-update"):
-            result = self.api["execute_packagekit"](self.operation, action) if legacy else self.api["execute_provider"](self.operation, provider, action)
+            result = self.api["execute_provider"](self.operation, provider, action)
         return result, calls, phases
 
     def fedora_snapshot(self, generation="b" * 64, restart="none", active=""):
@@ -587,31 +609,20 @@ class RunnerTests(Environment):
                         self.assertRaises(PermissionError):
                     self.api["trusted_native_command"]("/usr/bin/dnf5")
 
-    def test_fedora_uses_packagekit_snapshot_update_watch_and_reconciliation(self):
-        snapshot = self.fedora_snapshot(restart="system")
-        result, calls, phases = self.run_adapter("fedora", "update", [snapshot, self.operation_stream(), snapshot, ""], legacy=True)
-        self.assertEqual([call[0][1] for call in calls], ["snapshot-updates", "updates-install-all", "snapshot-updates", "ack-operation"])
-        self.assertEqual(calls[1][0][2], "b" * 64)
-        self.assertEqual(calls[3][0][2], "op-" + "c" * 32)
-        self.assertEqual((result["outcome"], result["restart"]), ("succeeded", "system"))
-        self.assertEqual(phases, ["preparing", "fedora-executing"])
-
-    def test_fedora_rejects_malformed_authoritative_stream(self):
+    def test_packagekit_recovery_rejects_malformed_authoritative_stream(self):
+        handoff = "terminal-handoff\top-" + "c" * 32 + "\tupdates-install-all\tupdate\n"
         with self.assertRaisesRegex(ValueError, "PackageKit operation"):
-            self.run_adapter("fedora", "update", [self.fedora_snapshot(),
-                self.operation_stream().replace("complete\toperation", "complete\tsnapshot")], legacy=True)
+            self.run_adapter("fedora", "recover", [self.fedora_snapshot(active=handoff),
+                self.operation_stream().replace("complete\toperation", "complete\tsnapshot")])
 
-    def test_fedora_update_without_operation_records_reports_failure(self):
-        snapshot = self.fedora_snapshot(restart="none")
-        no_operation_stream = (
-            "system-management-protocol\t1\t0\n"
-            "error\tupdates\tauthorization\tAuthentication was dismissed\n"
-            "complete\toperation\n"
-        )
-        result, calls, phases = self.run_adapter("fedora", "update", [snapshot, no_operation_stream, snapshot], legacy=True)
-        self.assertEqual(result["outcome"], "failed")
-        self.assertEqual(result["phase"], "failed")
-        self.assertIn("did not start", result["detail"])
+    def test_result_bounds_multibyte_detail_for_operation_receipt(self):
+        center = self.api["CENTER"]
+        operation = center["reserve_operation"]("mise", "update")
+        result = self.api["result"]("unknown", "interrupted", "\u00e9" * 8192)
+        recorded = center["update_operation"](operation["operation"], phase=result["phase"],
+            outcome=result["outcome"], detail=result["detail"])
+        self.assertEqual(recorded["outcome"], "unknown")
+        self.assertEqual(recorded["detail"], "\u00e9" * 4096)
 
     def test_interrupted_fedora_recovery_acknowledges_without_claiming_success(self):
         handoff = "terminal-handoff\top-" + "c" * 32 + "\tupdates-install-all\tupdate\n"
@@ -686,6 +697,66 @@ class RunnerTests(Environment):
         code = 'import time; time.sleep(10)'
         with self.assertRaises(TimeoutError):
             self.api["run_command"]([sys.executable, "-c", code], timeout=0.1)
+
+    def test_run_command_timeout_reaps_descendants_after_leader_exit(self):
+        pidfile = Path(self.temp.name) / "descendant.pid"
+        code = ("import subprocess, sys; from pathlib import Path; "
+                "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)']); "
+                "Path(sys.argv[1]).write_text(str(child.pid))")
+        try:
+            with self.assertRaises(TimeoutError):
+                self.api["run_command"]([sys.executable, "-c", code, str(pidfile)], timeout=0.5)
+            pid = int(pidfile.read_text())
+            for _ in range(100):
+                if self.api["CENTER"]["process_identity"](pid) is None:
+                    break
+                self.api["time"].sleep(0.01)
+            self.assertIsNone(self.api["CENTER"]["process_identity"](pid))
+        finally:
+            if pidfile.exists():
+                try:
+                    os.kill(int(pidfile.read_text()), 9)
+                except ProcessLookupError:
+                    pass
+
+    def test_terminal_hangup_and_termination_clean_up_bounded_helpers(self):
+        cases = [(signum, mode) for signum in (signal.SIGHUP, signal.SIGTERM)
+                 for mode in ("stream", "preflight")]
+        for signum, mode in cases:
+            with self.subTest(signal=signum, mode=mode):
+                pidfile = Path(self.temp.name) / f"helper-{signum}-{mode}.pid"
+                helper = ("import os, sys, time; from pathlib import Path; "
+                          "Path(sys.argv[1]).write_text(str(os.getpid())); time.sleep(30)")
+                code = ("import runpy, sys; api = runpy.run_path(sys.argv[1]); "
+                        "api['run_command']([sys.executable, '-c', sys.argv[2], sys.argv[3]])")
+                if mode == "preflight":
+                    code = ("import runpy, sys; api = runpy.run_path(sys.argv[1]); "
+                            "op = 'op-' + 'a' * 32; "
+                            "api['main'].__globals__['set_terminal_identity'] = lambda: True; "
+                            "api['CENTER']['active_operation'] = lambda: dict(operation=op, provider='mise', action='update'); "
+                            "api['CENTER']['update_operation'] = lambda *args, **kwargs: None; "
+                            "api['execute_provider'].__globals__['validate_provider_action'] = "
+                            "lambda *args: api['CENTER']['run_bounded']([sys.executable, '-c', sys.argv[2], sys.argv[3]]); "
+                            "raise SystemExit(api['main']([op, 'mise', 'update']))")
+                runner = subprocess.Popen([sys.executable, "-c", code, str(RUNNER), helper, str(pidfile)],
+                                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                try:
+                    deadline = time.monotonic() + 5
+                    while not pidfile.exists() and time.monotonic() < deadline:
+                        time.sleep(0.01)
+                    self.assertTrue(pidfile.exists(), "bounded helper did not start")
+                    runner.send_signal(signum)
+                    self.assertEqual(runner.wait(timeout=5), 128 + signum)
+                    self.assertIsNone(self.api["CENTER"]["process_identity"](int(pidfile.read_text())))
+                finally:
+                    if runner.poll() is None:
+                        runner.terminate()
+                        runner.wait(timeout=5)
+                    if pidfile.exists():
+                        try:
+                            os.kill(int(pidfile.read_text()), signal.SIGKILL)
+                        except ProcessLookupError:
+                            pass
 
     def test_run_command_enforces_max_bytes_on_unbounded_line(self):
         code = 'import sys; [sys.stdout.write("x" * 1024) or sys.stdout.flush() for _ in range(10000)]'
