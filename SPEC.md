@@ -130,8 +130,9 @@ state providers and be explicitly profiled to show that it remains near idle.
 The managed shell requires Quickshell 0.3.0 or Fedora 44's compatible
 `0.2.1^git20260209.dacfa9d` snapshot. That Fedora snapshot contains the
 `PopupWindow.grabFocus` API used by the shell; an unpatched upstream 0.2.1 is
-not sufficient. Update Center opens as a normal dwm-managed tiled window by default. Its Settings
-tab offers a persistent Float by default toggle that applies on the next opening.
+not sufficient. Update Center always opens as a dwm-managed floating window. Its
+Settings tab offers a persistent Float update terminal toggle that applies to
+the next update or recovery terminal; those terminals default to tiled.
 It closes through Escape or the window-manager close action. Other anchored control popups
 must close on Escape and on a click outside their visible card under X11.
 Visible shell surfaces must be opaque and follow the active theme selected in

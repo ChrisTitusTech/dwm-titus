@@ -20,7 +20,6 @@ Scope {
     property bool draftAlwaysShow: true
     property bool draftFloating: false
     property bool savedFloating: false
-    property bool windowFloating: false
     property var activeOperation: null
     property string connectivityState: "unknown"
     property string message: ""
@@ -66,7 +65,6 @@ Scope {
     }
 
     function open() {
-        if (!root.visible) root.windowFloating = root.savedFloating;
         root.visible = true;
     }
     function close() { root.visible = false; root.settingsMode = false; root.discardSettings(); }

@@ -85,7 +85,6 @@ ShellRoot {{
         property bool draftAlwaysShow: true
         property bool draftFloating: false
         property bool savedFloating: false
-        property bool windowFloating: false
         property var activeOperation: null
         property string message: ""
         property string settingsError: ""
@@ -103,7 +102,7 @@ ShellRoot {{
         property string probeAction: ""
         property string probeUrl: ""
         readonly property bool busy: activeOperation !== null
-        function open() {{ windowFloating = savedFloating; visible = true; }}
+        function open() {{ visible = true; }}
         function close() {{ visible = false; settingsMode = false; discardSettings(); }}
         function refresh(force) {{ refreshCount++; message = force ? "Manual refresh requested" : ""; return true; }}
         function launch(providerId) {{ message = "launch:" + providerId; visible = false; return true; }}
@@ -362,9 +361,9 @@ with tempfile.TemporaryDirectory(prefix="update-center-xvfb-", dir=tmp_root) as 
         popup_id = next(window for window, data in geometries.items() if int(data["HEIGHT"]) > 30)
         panel_geometry = geometries[panel_id]
         popup_geometry = geometries[popup_id]
-        assert int(popup_geometry["WIDTH"]) > 480, "Default Update Center did not tile"
+        assert int(popup_geometry["WIDTH"]) <= 480, "Default Update Center did not float"
         assert int(popup_geometry["HEIGHT"]) <= 480, "Window overflowed the monitor"
-        assert "dwm updates tiled" in run(env, "xdotool", "getwindowname", popup_id).stdout
+        assert "dwm updates floating" in run(env, "xdotool", "getwindowname", popup_id).stdout
         time.sleep(0.2)
         run(env, "xdotool", "mousemove", "10", "15", check=True)
         time.sleep(0.1)
@@ -476,14 +475,14 @@ with tempfile.TemporaryDirectory(prefix="update-center-xvfb-", dir=tmp_root) as 
         editor_refresh, editor_save = map(int, call("counts").split(":"))
         assert editor_refresh == shortcut_refresh and editor_save == shortcut_save, \
             f"S escaped the focused interval editor: before={shortcut_refresh, shortcut_save} after={editor_refresh, editor_save}"
-        # Save the actual switch, then prove dwm manages both opening modes.
+        # Save both terminal modes and prove the popup always stays floating.
         call("viewportBounds", "true")
         position = json.loads(call("buttonPosition", "updateCenterFloatByDefault"))
         run(env, "xdotool", "mousemove", str(position["x"]), str(position["y"]), "click", "1", check=True)
         position = json.loads(call("buttonPosition", "updateCenterSave"))
         run(env, "xdotool", "mousemove", str(position["x"]), str(position["y"]), "click", "1", check=True)
         wait_for(lambda: call("floating") == "true", "Window mode toggle was not saved")
-        assert "dwm updates tiled" in run(env, "xdotool", "getwindowname", popup_id).stdout
+        assert "dwm updates floating" in run(env, "xdotool", "getwindowname", popup_id).stdout
         call("close")
         call("open")
         popup_id = wait_for(lambda: run(env, "xdotool", "search", "--onlyvisible", "--name", "dwm updates floating").stdout.strip(),
@@ -507,10 +506,42 @@ with tempfile.TemporaryDirectory(prefix="update-center-xvfb-", dir=tmp_root) as 
         wait_for(lambda: call("floating") == "false", "Tiled mode toggle was not saved")
         call("close")
         call("open")
-        popup_id = wait_for(lambda: run(env, "xdotool", "search", "--onlyvisible", "--name", "dwm updates tiled").stdout.strip(),
-                            "Saved tiled window mode was not applied")
-        wait_for(lambda: int(geometry(env, companion_id)["WIDTH"]) < 600,
-                 "Tiled Update Center did not join the layout")
+        popup_id = wait_for(lambda: run(env, "xdotool", "search", "--onlyvisible", "--name", "dwm updates floating").stdout.strip(),
+                            "Popup stopped floating with tiled terminals selected")
+        wait_for(lambda: int(geometry(env, companion_id)["WIDTH"]) > 600,
+                 "Update Center took a tiling slot with tiled terminals selected")
+        # Exercise the real wrapper and runner identity without updating packages.
+        # A terminal must take a tiling slot only when the saved toggle is off.
+        if shutil.which("alacritty"):
+            settings = str(REPO / "scripts/dwm-update-center-settings")
+            identity_script = (
+                "import runpy,time; "
+                f"runpy.run_path({str(REPO / 'scripts/dwm-update-center-terminal')!r})"
+                "['set_terminal_identity'](); time.sleep(30)"
+            )
+            for mode in ("tiled", "floating"):
+                status = run(env, settings, "status", check=True).stdout
+                baseline = next(line.split("\t")[1] for line in status.splitlines()
+                                if line.startswith("baseline\t"))
+                run(env, settings, "set", "3600", "enabled", baseline, mode, check=True)
+                terminal = subprocess.Popen(
+                    [str(REPO / "scripts/dwm-terminal"), "--update-center",
+                     "/usr/bin/python3", "-c", identity_script],
+                    env={**env, "DWM_UPDATE_CENTER_TERMINAL": "alacritty",
+                         "LIBGL_ALWAYS_SOFTWARE": "1"}, stdout=log, stderr=log)
+                try:
+                    title = "dwm update center" + (" tiled" if mode == "tiled" else "")
+                    terminal_id = wait_for(lambda: run(env, "xdotool", "search", "--onlyvisible",
+                                                      "--name", "^" + title + "$").stdout.strip(),
+                                           f"{mode} update terminal did not open")
+                    wait_for(lambda: (int(geometry(env, companion_id)["WIDTH"]) < 600) == (mode == "tiled"),
+                             f"Update terminal did not use saved {mode} mode")
+                    assert "DwmUpdateCenter" in run(env, "xprop", "-id", terminal_id, "WM_CLASS").stdout
+                finally:
+                    terminal.terminate()
+                    terminal.wait(timeout=5)
+                wait_for(lambda: int(geometry(env, companion_id)["WIDTH"]) > 600,
+                         "Terminal did not release its tiling slot")
         call("showCompanion", "false")
         call("settings")
         time.sleep(0.2)
@@ -551,7 +582,7 @@ with tempfile.TemporaryDirectory(prefix="update-center-xvfb-", dir=tmp_root) as 
         assert len(visible_windows(env, shell.pid)) == 2, "Clicking outside dismissed a managed window"
         call("close")
         call("open")
-        popup_id = wait_for(lambda: run(env, "xdotool", "search", "--onlyvisible", "--name", "dwm updates tiled").stdout.strip(),
+        popup_id = wait_for(lambda: run(env, "xdotool", "search", "--onlyvisible", "--name", "dwm updates floating").stdout.strip(),
                             "Window did not reopen for WM close")
         run(env, "xdotool", "windowactivate", "--sync", popup_id, check=True)
         run(env, "xdotool", "key", "super+q", check=True)

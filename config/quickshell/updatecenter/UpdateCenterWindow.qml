@@ -48,7 +48,7 @@ FloatingWindow {
     }
 
     visible: panelWindow !== null && panelWindow.screen !== null && updateCenterModel.visible
-    title: updateCenterModel.windowFloating ? "dwm updates floating" : "dwm updates tiled"
+    title: "dwm updates floating"
     screen: panelWindow ? panelWindow.screen : null
     implicitWidth: Math.min(root.cardWidth, root.screen ? root.screen.width : root.cardWidth)
     implicitHeight: root.maximumHeight
@@ -321,21 +321,21 @@ FloatingWindow {
 
                         UiText {
                             Layout.fillWidth: true
-                            text: "Float by default"
+                            text: "Float update terminal"
                             color: Theme.menuText
                         }
 
                         PanelToggleSwitch {
                             objectName: "updateCenterFloatByDefault"
                             checked: root.updateCenterModel.draftFloating
-                            accessibleName: "Float Update Center by default"
+                            accessibleName: "Float update terminal by default"
                             onToggled: root.updateCenterModel.draftFloating = !root.updateCenterModel.draftFloating
                         }
                     }
 
                     UiText {
                         Layout.fillWidth: true
-                        text: "Window mode applies the next time Update Center opens."
+                        text: "Applies to the next update terminal. Update Center always floats."
                         color: Theme.menuMutedText
                         wrapMode: Text.Wrap
                     }

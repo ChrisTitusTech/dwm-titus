@@ -15,6 +15,8 @@ RULES = [
      "instance": "dwm-update-center", "isfloating": 1, "noswallow": 1},
     {"title": "dwm updates tiled", "isfloating": 0, "noswallow": 1},
     {"title": "dwm updates floating", "isfloating": 1, "noswallow": 1},
+    {"title": "dwm update center tiled", "class": "DwmUpdateCenter",
+     "instance": "dwm-update-center", "isfloating": 0, "noswallow": 1},
 ]
 
 

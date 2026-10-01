@@ -35,7 +35,8 @@ def set_terminal_identity(environment=None, output=None):
     """Apply the fixed Task 7 identity to this terminal; never include opaque tokens."""
     environment = os.environ if environment is None else environment
     destination = sys.stdout if output is None else output
-    destination.write("\033]0;" + TERMINAL_TITLE + "\007")
+    title = TERMINAL_TITLE + (" tiled" if environment.get("DWM_UPDATE_CENTER_WINDOW_MODE") == "tiled" else "")
+    destination.write("\033]0;" + title + "\007")
     destination.flush()
     if environment.get("DWM_UPDATE_CENTER_TERMINAL_IDENTITY") == "1":
         return True
@@ -56,7 +57,7 @@ def set_terminal_identity(environment=None, output=None):
             return False
         try:
             hint = XClassHint(TERMINAL_INSTANCE, TERMINAL_CLASS)
-            return bool(library.XStoreName(display, window, TERMINAL_TITLE.encode("utf-8"))
+            return bool(library.XStoreName(display, window, title.encode("utf-8"))
                         and library.XSetClassHint(display, window, ctypes.byref(hint))
                         and library.XSync(display, 0) == 0)
         finally:

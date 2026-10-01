@@ -68,15 +68,6 @@ ShellRoot {
                 if (test.step === 0 && test.ticks > 10 && model.initialCacheLoaded
                         && initiallyFullModel.initialCacheLoaded && model.savedRefreshSeconds === 900) {
                     test.require(!model.savedFloating, "legacy preferences default to tiled");
-                    model.savedFloating = true;
-                    model.open();
-                    test.require(model.windowFloating, "opening snapshots floating preference");
-                    model.savedFloating = false;
-                    test.require(model.windowFloating, "saving does not move an open window");
-                    model.close();
-                    model.open();
-                    test.require(!model.windowFloating, "reopening applies tiled preference");
-                    model.close();
                     const operationEnvelope = "update-center-action-protocol\t1\t0\noperation\top-00000000000000000000000000000000\tfedora\trecover\t";
                     for (const phase of ["failed", "closed"])
                         test.require(Protocol.parseAction(operationEnvelope + phase + "\tunknown\ncomplete\taction\n") !== null,

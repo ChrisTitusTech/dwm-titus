@@ -972,6 +972,12 @@ class RunnerTests(Environment):
         self.assertEqual(self.api["TERMINAL_CLASS"], b"DwmUpdateCenter")
         self.assertNotIn(self.operation, output.getvalue())
 
+    def test_tiled_terminal_keeps_its_title_when_runner_starts(self):
+        output = io.StringIO()
+        self.assertTrue(self.api["set_terminal_identity"](
+            {"DWM_UPDATE_CENTER_TERMINAL_IDENTITY": "1", "DWM_UPDATE_CENTER_WINDOW_MODE": "tiled"}, output))
+        self.assertEqual(output.getvalue(), "\033]0;dwm update center tiled\007")
+
     def test_terminal_wrapper_identity_is_accepted_without_windowid(self):
         output = io.StringIO()
         self.assertTrue(self.api["set_terminal_identity"](

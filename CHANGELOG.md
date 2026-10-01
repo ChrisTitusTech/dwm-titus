@@ -8,12 +8,12 @@ versions from `config.mk`.
 
 ### Added
 
-- Open Update Center as a tiled window by default, with a saved Float by default
-  toggle in its Settings tab. The choice applies on the next opening.
+- Keep Update Center floating and apply its saved Float update terminal toggle
+  to the next update or recovery terminal, which defaults to tiled.
 
 - Add the panel Update Center for Fedora, desktop, Flatpak, and mise updates,
   with provider counts, refresh preferences, terminal progress, and recovery.
-  Existing window rules gain a backed-up floating/no-swallow rule for its
+  Existing window rules gain backed-up floating/tiled no-swallow rules for its
   terminals during source and desktop updates.
 
 ### Changed
