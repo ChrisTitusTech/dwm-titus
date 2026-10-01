@@ -10,17 +10,18 @@ import tomllib
 from pathlib import Path
 
 
-RULE = {
-    "title": "dwm update center",
-    "class": "DwmUpdateCenter",
-    "instance": "dwm-update-center",
-    "isfloating": 1,
-    "noswallow": 1,
-}
-RULE_TEXT = (
-    '  { title="dwm update center", class="DwmUpdateCenter", '
-    'instance="dwm-update-center", isfloating=1, noswallow=1 },\n'
-)
+RULES = [
+    {"title": "dwm update center", "class": "DwmUpdateCenter",
+     "instance": "dwm-update-center", "isfloating": 1, "noswallow": 1},
+    {"title": "dwm updates tiled", "isfloating": 0, "noswallow": 1},
+    {"title": "dwm updates floating", "isfloating": 1, "noswallow": 1},
+]
+
+
+def rule_text(rule):
+    fields = [f'{key}="{value}"' if isinstance(value, str) else f"{key}={value}"
+              for key, value in rule.items()]
+    return "  { " + ", ".join(fields) + " },\n"
 
 
 def rules_array_end(text):
@@ -85,8 +86,10 @@ def migrate(path):
     rules = document.get("rules")
     if not isinstance(rules, list):
         raise ValueError("missing top-level rules array")
-    if any(all(rule.get(key) == value for key, value in RULE.items())
-           for rule in rules if isinstance(rule, dict)):
+    missing = [expected for expected in RULES
+               if not any(all(rule.get(key) == value for key, value in expected.items())
+                          for rule in rules if isinstance(rule, dict))]
+    if not missing:
         return False
 
     end, needs_comma = rules_array_end(original)
@@ -99,7 +102,7 @@ def migrate(path):
             prefix = prefix.rstrip("\r\n") + ",\n"
     elif prefix and not prefix.endswith("\n"):
         prefix += "\n"
-    migrated = prefix + RULE_TEXT + original[end:]
+    migrated = prefix + "".join(rule_text(rule) for rule in missing) + original[end:]
     try:
         tomllib.loads(migrated)
     except tomllib.TOMLDecodeError as error:

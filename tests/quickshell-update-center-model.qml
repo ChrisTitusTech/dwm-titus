@@ -67,6 +67,16 @@ ShellRoot {
                 }
                 if (test.step === 0 && test.ticks > 10 && model.initialCacheLoaded
                         && initiallyFullModel.initialCacheLoaded && model.savedRefreshSeconds === 900) {
+                    test.require(!model.savedFloating, "legacy preferences default to tiled");
+                    model.savedFloating = true;
+                    model.open();
+                    test.require(model.windowFloating, "opening snapshots floating preference");
+                    model.savedFloating = false;
+                    test.require(model.windowFloating, "saving does not move an open window");
+                    model.close();
+                    model.open();
+                    test.require(!model.windowFloating, "reopening applies tiled preference");
+                    model.close();
                     const operationEnvelope = "update-center-action-protocol\t1\t0\noperation\top-00000000000000000000000000000000\tfedora\trecover\t";
                     for (const phase of ["failed", "closed"])
                         test.require(Protocol.parseAction(operationEnvelope + phase + "\tunknown\ncomplete\taction\n") !== null,
@@ -142,12 +152,14 @@ ShellRoot {
                     test.require(model.savedRefreshSeconds === 900 && model.savedAlwaysShow, "settings edits must remain drafts");
                     model.discardSettings();
                     test.require(model.draftRefreshSeconds === 900 && model.draftAlwaysShow, "discard must restore saved settings");
+                    model.draftFloating = true;
                     model.draftRefreshSeconds = 1000;
                     model.draftAlwaysShow = false;
                     test.require(model.saveSettings(), "subsequent save must use the refreshed baseline");
                     test.step = 1;
                     initiallyFullLoader.active = false;
                 } else if (test.step === 1 && model.savedRefreshSeconds === 1000) {
+                    test.require(model.savedFloating, "saved window mode must survive helper reload");
                     test.require(model.settingsBaseline === "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
                         "successful subsequent save must refresh its baseline");
                     test.require(model.refreshIntervalMilliseconds === 1000000 && !model.savedAlwaysShow,

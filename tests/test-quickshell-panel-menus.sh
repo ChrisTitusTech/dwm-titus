@@ -45,7 +45,6 @@ assert 'root.updateCenterModel.totalUpdates.toString()' in panel
 assert 'labelSpacing: 4' in panel
 assert 'visible: root.updateCenterModel.shouldShow()' in panel
 assert 'root.popupRequested(root, "updatecenter")' in panel
-assert 'function updateCenterAnchorX()' in panel
 assert 'objectName: "desktopUpdateIndicator"' not in panel
 
 assert 'import qs.updatecenter' in shell
@@ -55,8 +54,6 @@ assert 'updateCenterModel: updateCenterModel' in shell
 assert 'function requestPanelPopup(panel, popupId)' in shell
 assert 'updateCenterModel.close();' in shell
 assert 'updateCenterModel.open();' in shell
-assert 'property real updateCenterAnchorX: 0' in shell
-assert 'root.updateCenterAnchorX = panel.updateCenterAnchorX();' in shell
 PY
 
 grep -Fq 'outlined: true' "$panel/DwmPanel.qml"

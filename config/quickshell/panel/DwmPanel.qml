@@ -10,12 +10,6 @@ PanelWindow {
     id: root
 
     signal popupRequested(var panelWindow, string popupId)
-    function updateCenterAnchorX() {
-        const point = updateCenterIndicator.mapToGlobal(updateCenterIndicator.width / 2, 0);
-        const screenX = root.screen && root.screen.x !== undefined ? root.screen.x : 0;
-        return point.x - screenX;
-    }
-
     function batteryIcon(percent, status) {
         if (status.toLowerCase() === "charging") {
             return "󰂄";

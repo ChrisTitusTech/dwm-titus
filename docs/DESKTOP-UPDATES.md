@@ -38,7 +38,11 @@ idle.
 
 ## Panel Update Center
 
-Click the update icon beside the clock to open the Update Center. It lists
+Click the update icon beside the clock to open the Update Center as a tiled window.
+In its Settings tab, enable **Float by default** and Save to open it floating
+instead. The saved mode applies on the next opening. Existing preferences without
+a window mode default to tiled. Escape or the window-manager close action closes
+the window; clicking outside leaves it open. It lists
 Fedora packages, the managed desktop, and optional Flatpak and mise providers.
 Expand a provider to inspect its available updates, then choose **Update** for
 that provider. Updates run in a dedicated floating terminal; closing the panel
@@ -82,7 +86,7 @@ Flatpak updates process system and user scopes separately and preserve recovery
 evidence when only one scope completes.
 
 Source installation and later desktop updates back up existing window rules
-before adding the Update Center terminal's floating/no-swallow rule. Login also
+before adding the Update Center window-mode and terminal floating/no-swallow rules. Login also
 performs this idempotent migration for the first upgrade from an older worker.
 Personal rules and unrelated settings remain intact. Symlinked and non-regular
 personal rule files are left unchanged and do not block the desktop update.

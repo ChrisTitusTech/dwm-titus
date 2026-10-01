@@ -58,20 +58,27 @@ with tempfile.TemporaryDirectory(prefix="update-center-settings-", dir=os.enviro
         run("set", value, "enabled", baseline, error="refreshSeconds must be an integer from 300 to 21600")
         assert not state.exists()
     run("set", "300", "true", baseline, error="alwaysShow must be enabled or disabled")
-    run("set", "300", "enabled", error="usage: status | set REFRESH_SECONDS ALWAYS_SHOW BASELINE | reset BASELINE")
-    run("set", "300", "enabled", baseline, "extra", error="usage: status | set REFRESH_SECONDS ALWAYS_SHOW BASELINE | reset BASELINE")
+    run("set", "300", "enabled", error="usage: status | set REFRESH_SECONDS ALWAYS_SHOW BASELINE [WINDOW_MODE] | reset BASELINE")
+    run("set", "300", "enabled", baseline, "extra", error="windowMode must be tiled or floating")
     for seconds in ("300", "21600"):
         output = run("set", seconds, "disabled", status("defaults" if not state.exists() else "available", "3600" if not state.exists() else "300", "enabled" if not state.exists() else "disabled"))
         assert output.startswith("update-center-settings-action-protocol\t1\t0\n")
         assert output.endswith("complete\tset\n")
         status("available", seconds, "disabled")
         assert state.stat().st_mode & 0o777 == 0o600
+    # Legacy callers preserve a saved mode; old files default to tiled.
+    token = status("available", "21600", "disabled")
+    run("set", "21600", "disabled", token, "floating")
+    assert "preference\twindowMode\tfloating" in run("status")
+    run("set", "21600", "disabled", status("available", "21600", "disabled"))
+    assert "preference\twindowMode\tfloating" in run("status")
     saved = state.read_bytes()
     run("reset", baseline, error="preferences changed; refresh status before saving")
     assert state.read_bytes() == saved
     run("reset", status("available", "21600", "disabled"))
     status()
     assert not state.exists()
+    assert "preference\twindowMode\ttiled" in run("status")
 
     header = "update-center-settings-protocol\t1\t0\n"
     malformed = [header + "refreshSeconds\t300\nalwaysShow\tenabled\nrefreshSeconds\t400\n",

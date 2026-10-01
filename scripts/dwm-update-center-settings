@@ -14,8 +14,8 @@ import time
 HEADER = "update-center-settings-protocol\t1\t0"
 ACTION_HEADER = "update-center-settings-action-protocol\t1\t0"
 NAME = "update-center.conf"
-DEFAULTS = ("3600", "enabled")
-USAGE = "usage: status | set REFRESH_SECONDS ALWAYS_SHOW BASELINE | reset BASELINE"
+DEFAULTS = ("3600", "enabled", "tiled")
+USAGE = "usage: status | set REFRESH_SECONDS ALWAYS_SHOW BASELINE [WINDOW_MODE] | reset BASELINE"
 DIRECTORY_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
 FILE_FLAGS = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC
 
@@ -110,14 +110,15 @@ def parse(data):
         values = {}
         for line in lines[1:]:
             key, value = line.split("\t")
-            if key not in ("refreshSeconds", "alwaysShow") or key in values:
+            if key not in ("refreshSeconds", "alwaysShow", "windowMode") or key in values:
                 raise ValueError
             values[key] = value
-        if (set(values) != {"refreshSeconds", "alwaysShow"} or
+        if (not {"refreshSeconds", "alwaysShow"}.issubset(values) or
                 not refresh_valid(values["refreshSeconds"]) or
-                values["alwaysShow"] not in ("enabled", "disabled")):
+                values["alwaysShow"] not in ("enabled", "disabled") or
+                values.get("windowMode", "tiled") not in ("tiled", "floating")):
             raise ValueError
-        return values["refreshSeconds"], values["alwaysShow"]
+        return values["refreshSeconds"], values["alwaysShow"], values.get("windowMode", "tiled")
     except (UnicodeError, ValueError):
         raise Rejected("malformed persistent state; preserving file") from None
 
@@ -163,6 +164,7 @@ def emit_status(config):
     print(f"state\t{kind}\t{detail}")
     print(f"preference\trefreshSeconds\t{values[0]}")
     print(f"preference\talwaysShow\t{values[1]}")
+    print(f"preference\twindowMode\t{values[2]}")
     print(f"baseline\t{token}")
     print("complete\tstatus")
 
@@ -200,7 +202,9 @@ def lock(runtime):
 def mutate(config, runtime, command, baseline, values):
     with lock(runtime), config_directory(config, create=True) as fd:
         token, data = snapshot(fd)
-        parse(data)
+        previous = parse(data)
+        if len(values) == 2:
+            values = (*values, previous[2])
         if token != baseline:
             raise Rejected("preferences changed; refresh status before saving")
         staged = f".update-center.{secrets.token_hex(12)}"
@@ -208,7 +212,7 @@ def mutate(config, runtime, command, baseline, values):
                            0o600, dir_fd=fd)
         committed = False
         try:
-            content = f"{HEADER}\nrefreshSeconds\t{values[0]}\nalwaysShow\t{values[1]}\n".encode("ascii")
+            content = f"{HEADER}\nrefreshSeconds\t{values[0]}\nalwaysShow\t{values[1]}\nwindowMode\t{values[2]}\n".encode("ascii")
             with os.fdopen(stage_fd, "wb") as stream:
                 stream.write(content)
                 stream.flush()
@@ -249,12 +253,16 @@ def main():
         config, _ = paths()
         emit_status(config)
         return
-    if len(args) == 4 and args[0] == "set":
+    if len(args) in (4, 5) and args[0] == "set":
         if not refresh_valid(args[1]):
             raise Rejected("refreshSeconds must be an integer from 300 to 21600")
         if args[2] not in ("enabled", "disabled"):
             raise Rejected("alwaysShow must be enabled or disabled")
         values, baseline = (args[1], args[2]), args[3]
+        if len(args) == 5:
+            if args[4] not in ("tiled", "floating"):
+                raise Rejected("windowMode must be tiled or floating")
+            values = (*values, args[4])
     elif len(args) == 2 and args[0] == "reset":
         values, baseline = DEFAULTS, args[1]
     else:

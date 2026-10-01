@@ -92,7 +92,9 @@ rules = [
 '''
         result, migrated = self.run_migration(original)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(migrated, original)
+        rules = tomllib.loads(migrated)["rules"]
+        self.assertEqual(len(rules), 3)
+        self.assertEqual(sum(rule.get("class") == "DwmUpdateCenter" for rule in rules), 1)
 
     def test_invalid_config_is_preserved_and_rejected(self):
         original = "rules = [\n  { broken = },\n]\n"
@@ -109,7 +111,7 @@ rules = [
         result, migrated = self.run_migration(original)
         self.assertEqual(result.returncode, 0, result.stderr)
         rules = tomllib.loads(migrated)["rules"]
-        self.assertEqual(len(rules), 2)
+        self.assertEqual(len(rules), 4)
 
 
 

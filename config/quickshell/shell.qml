@@ -27,7 +27,6 @@ ShellRoot {
     id: root
 
     property var selectedPanelWindow: null
-    property real updateCenterAnchorX: 0
     readonly property var defaultPanelWindow: panelVariants.instances.length > 0
         ? panelVariants.instances[0] : null
     readonly property var activePanelWindow: selectedPanelWindow && selectedPanelWindow.screen
@@ -59,7 +58,6 @@ ShellRoot {
         const updateCenterWasVisible = updateCenterModel.visible;
         root.selectPanelPopup(panel, popupId);
         if (popupId === "updatecenter") {
-            root.updateCenterAnchorX = panel.updateCenterAnchorX();
             if (updateCenterWasVisible && samePanel) updateCenterModel.close();
             else updateCenterModel.open();
         }
@@ -1208,11 +1206,14 @@ ShellRoot {
         panelWindow: root.activePanelWindow
     }
 
-    UpdateCenterWindow {
-        updateCenterModel: updateCenterModel
-        panelWindow: root.activePanelWindow
-        anchorX: root.updateCenterAnchorX
-        onExclusiveOpenRequested: root.selectPanelPopup(root.activePanelWindow, "updatecenter")
+    LazyLoader {
+        active: updateCenterModel.visible
+
+        UpdateCenterWindow {
+            updateCenterModel: updateCenterModel
+            panelWindow: root.activePanelWindow
+            onExclusiveOpenRequested: root.selectPanelPopup(root.activePanelWindow, "updatecenter")
+        }
     }
 
     BluetoothWindow {

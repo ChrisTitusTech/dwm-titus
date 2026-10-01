@@ -56,7 +56,7 @@ grep -Fq 'root.providerBusy ? "Busy" : root.providerRecoverable ? "Recover" : "U
 grep -Fq 'enabled: !root.providerMissing && (root.providerRecoverable || (!root.globalBusy && root.provider.updateAvailable))' "$row"
 grep -Fq 'visible: (root.expanded || root.providerMissing) && root.visibleDetail().length > 0' "$row"
 
-grep -Fq 'ClickAwayPopup {' "$window"
+grep -Fq 'FloatingWindow {' "$window"
 grep -Fq 'readonly property int cardWidth: Theme.scaledSize(480)' "$window"
 grep -Fq 'property int draftRefreshSeconds: 3600' "$model"
 grep -Fq 'property bool draftAlwaysShow: true' "$model"

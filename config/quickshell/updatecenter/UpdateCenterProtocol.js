@@ -140,7 +140,7 @@ function parseAction(payload) {
 function parseSettings(payload) {
     try {
         const lines = records(payload, "update-center-settings-protocol\t1\t0", "complete\tstatus");
-        let state = null, refreshSeconds = null, alwaysShow = null, baseline = null;
+        let state = null, refreshSeconds = null, alwaysShow = null, baseline = null, windowMode = null;
         for (const values of lines) {
             if (values[0] === "state" && values.length === 3 && state === null
                     && ["available", "defaults", "partial", "unavailable"].indexOf(values[1]) >= 0)
@@ -149,6 +149,8 @@ function parseSettings(payload) {
                 refreshSeconds = integer(values[2], 21600);
             else if (values[0] === "preference" && values.length === 3 && values[1] === "alwaysShow" && alwaysShow === null
                     && (values[2] === "enabled" || values[2] === "disabled")) alwaysShow = values[2] === "enabled";
+            else if (values[0] === "preference" && values.length === 3 && values[1] === "windowMode" && windowMode === null
+                    && ["tiled", "floating"].indexOf(values[2]) >= 0) windowMode = values[2];
             else if (values[0] === "baseline" && values.length === 2 && baseline === null
                     && (["absent", "unavailable"].indexOf(values[1]) >= 0 || /^[0-9a-f]{64}$/.test(values[1]))) baseline = values[1];
             else throw new Error("invalid setting");
@@ -158,7 +160,7 @@ function parseSettings(payload) {
         if ((baseline === "unavailable") !== (state.status === "unavailable"))
             throw new Error("inconsistent settings baseline");
         return deepFreeze({ state: state.status, detail: state.detail, refreshSeconds: refreshSeconds,
-            alwaysShow: alwaysShow, baseline: baseline });
+            alwaysShow: alwaysShow, baseline: baseline, windowMode: windowMode || "tiled" });
     } catch (error) {
         return null;
     }

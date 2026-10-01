@@ -3,14 +3,14 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls as Controls
 import QtQuick.Layouts
+import Quickshell
 import qs.core
 
-ClickAwayPopup {
+FloatingWindow {
     id: root
 
     required property var updateCenterModel
     required property var panelWindow
-    property int anchorX: panelWindow ? panelWindow.width / 2 : 0
     property bool savePending: false
     property string saveStatus: ""
     property int nowSeconds: Math.floor(Date.now() / 1000)
@@ -48,18 +48,19 @@ ClickAwayPopup {
     }
 
     visible: panelWindow !== null && panelWindow.screen !== null && updateCenterModel.visible
-    targetWindow: panelWindow
-    popupX: root.anchorX - root.cardWidth / 2
-    popupY: Theme.panelHeight
-    popupWidth: root.cardWidth
-    popupHeight: Math.min(updateCard.implicitHeight, root.maximumHeight)
-    onDismissed: updateCenterModel.close()
+    title: updateCenterModel.windowFloating ? "dwm updates floating" : "dwm updates tiled"
+    screen: panelWindow ? panelWindow.screen : null
+    implicitWidth: Math.min(root.cardWidth, root.screen ? root.screen.width : root.cardWidth)
+    implicitHeight: root.maximumHeight
+    color: Theme.popupBackground
 
     onVisibleChanged: {
         if (visible) {
             root.nowSeconds = Math.floor(Date.now() / 1000);
             root.exclusiveOpenRequested();
             Qt.callLater(function() { updateCard.forceActiveFocus(); });
+        } else if (root.updateCenterModel.visible) {
+            root.updateCenterModel.close();
         }
     }
 
@@ -77,7 +78,6 @@ ClickAwayPopup {
 
         objectName: "updateCenterCard"
         anchors.fill: parent
-        implicitHeight: Math.min(contentColumn.implicitHeight + margin * 2, root.maximumHeight)
         margin: Theme.spacingXl
         focus: true
         Accessible.role: Accessible.Dialog
@@ -314,6 +314,30 @@ ClickAwayPopup {
                             accessibleName: "Always show Update Center indicator"
                             onToggled: root.updateCenterModel.draftAlwaysShow = !root.updateCenterModel.draftAlwaysShow
                         }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+
+                        UiText {
+                            Layout.fillWidth: true
+                            text: "Float by default"
+                            color: Theme.menuText
+                        }
+
+                        PanelToggleSwitch {
+                            objectName: "updateCenterFloatByDefault"
+                            checked: root.updateCenterModel.draftFloating
+                            accessibleName: "Float Update Center by default"
+                            onToggled: root.updateCenterModel.draftFloating = !root.updateCenterModel.draftFloating
+                        }
+                    }
+
+                    UiText {
+                        Layout.fillWidth: true
+                        text: "Window mode applies the next time Update Center opens."
+                        color: Theme.menuMutedText
+                        wrapMode: Text.Wrap
                     }
 
                     UiText {

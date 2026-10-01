@@ -567,7 +567,7 @@ check-quickshell-update-center:
 	tests/test-quickshell-update-center.sh
 
 check-quickshell-update-center-xvfb: all
-	xvfb-run -a /usr/bin/python3 tests/test-quickshell-update-center-xvfb.py
+	xvfb-run -a -s "-screen 0 640x480x24" /usr/bin/python3 tests/test-quickshell-update-center-xvfb.py
 
 check-system-management:
 	/usr/bin/python3 tests/test-system-management.py

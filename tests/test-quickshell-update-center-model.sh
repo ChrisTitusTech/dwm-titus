@@ -159,19 +159,19 @@ case ${1-} in
 status)
 	count=$(($(cat "$root/status-count" 2>/dev/null || printf 0) + 1))
 	printf '%s\n' "$count" >"$root/status-count"
-	if [ -s "$root/settings" ]; then read -r seconds show baseline <"$root/settings"; else seconds=600 show=disabled baseline=absent; fi
+	if [ -s "$root/settings" ]; then read -r seconds show baseline mode <"$root/settings"; else seconds=600 show=disabled baseline=absent mode=tiled; fi
 	[ "$count" -gt 2 ] || sleep 1
-	printf 'update-center-settings-protocol\t1\t0\nstate\tavailable\tReady\npreference\trefreshSeconds\t%s\npreference\talwaysShow\t%s\nbaseline\t%s\ncomplete\tstatus\n' "$seconds" "$show" "$baseline"
+	printf 'update-center-settings-protocol\t1\t0\nstate\tavailable\tReady\npreference\trefreshSeconds\t%s\npreference\talwaysShow\t%s\npreference\twindowMode\t%s\nbaseline\t%s\ncomplete\tstatus\n' "$seconds" "$show" "$mode" "$baseline"
 	;;
 set)
 	count=$(($(cat "$root/settings-count" 2>/dev/null || printf 0) + 1))
 	printf '%s\n' "$count" >"$root/settings-count"
 	if [ "$count" -gt 2 ]; then printf '%s\n' 'preferences changed; refresh status before saving' >&2; exit 1; fi
 	current=absent
-	[ ! -s "$root/settings" ] || { read -r _ _ current <"$root/settings"; }
+	[ ! -s "$root/settings" ] || { read -r _ _ current _ <"$root/settings"; }
 	[ "$4" = "$current" ] || { printf '%s\n' 'preferences changed; refresh status before saving' >&2; exit 1; }
 	if [ "$count" -eq 1 ]; then baseline=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb; else baseline=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc; fi
-	printf '%s %s %s\n' "$2" "$3" "$baseline" >"$root/settings"
+	printf '%s %s %s %s\n' "$2" "$3" "$baseline" "$5" >"$root/settings"
 	printf 'update-center-settings-action-protocol\t1\t0\nresult\tsuccess\tPreferences saved\nbaseline\t%s\ncomplete\tset\n' "$baseline"
 	;;
 *) exit 2 ;;

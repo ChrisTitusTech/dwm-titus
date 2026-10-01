@@ -18,6 +18,9 @@ Scope {
     property bool settingsMode: false
     property int draftRefreshSeconds: 3600
     property bool draftAlwaysShow: true
+    property bool draftFloating: false
+    property bool savedFloating: false
+    property bool windowFloating: false
     property var activeOperation: null
     property string connectivityState: "unknown"
     property string message: ""
@@ -62,7 +65,10 @@ Scope {
         return true;
     }
 
-    function open() { root.visible = true; }
+    function open() {
+        if (!root.visible) root.windowFloating = root.savedFloating;
+        root.visible = true;
+    }
     function close() { root.visible = false; root.settingsMode = false; root.discardSettings(); }
     function toggle() { if (root.visible) root.close(); else root.open(); }
 
@@ -172,6 +178,8 @@ Scope {
         }
         root.savedRefreshSeconds = parsed.refreshSeconds;
         root.savedAlwaysShow = parsed.alwaysShow;
+        root.savedFloating = parsed.windowMode === "floating";
+        root.draftFloating = root.savedFloating;
         root.settingsBaseline = parsed.baseline;
         root.draftRefreshSeconds = parsed.refreshSeconds;
         root.draftAlwaysShow = parsed.alwaysShow;
@@ -206,6 +214,7 @@ Scope {
     function discardSettings() {
         root.draftRefreshSeconds = root.savedRefreshSeconds;
         root.draftAlwaysShow = root.savedAlwaysShow;
+        root.draftFloating = root.savedFloating;
         root.settingsError = "";
     }
 
@@ -220,7 +229,8 @@ Scope {
             return false;
         }
         settingsActionProcess.command = Commands.updateCenterSettingsCommand("set",
-            [String(root.draftRefreshSeconds), root.draftAlwaysShow ? "enabled" : "disabled", root.settingsBaseline]);
+            [String(root.draftRefreshSeconds), root.draftAlwaysShow ? "enabled" : "disabled", root.settingsBaseline,
+                root.draftFloating ? "floating" : "tiled"]);
         settingsActionProcess.running = true;
         return true;
     }
