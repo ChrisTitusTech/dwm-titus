@@ -16,10 +16,13 @@
 #   tags        tag number 1–9  (0 or omit = follow current tag)
 #   isfloating  1=float  0=tile             isterminal  1=terminal (swallowing)
 #   alwaysontop 1=raise above normal clients  noswallow 1=never swallow this window
+#   For unmanaged overlays, alwaysontop=1 also raises above real fullscreen.
 #
 # ─────────────────────────────────────────────────────────────────────────────
 
 rules = [
+  # Game overlays: match the rewards surface, not the main application.
+  { class="wfhelper", title="WFHelper Relic Rewards", alwaysontop=1 },
   # ── terminals (isterminal=1 enables window swallowing) ───────────────────
   { class="Dwmterm",        isterminal=1 },
   { class="St",             isterminal=1 },

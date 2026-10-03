@@ -100,6 +100,36 @@ $EDITOR config.h
 
 ### Window Rules
 
+#### Game overlays
+
+Add this entry inside `rules = [...]` in
+`~/.config/dwm-titus/window-rules.toml` for WFHelper rewards:
+
+```toml
+{ class="wfhelper", title="WFHelper Relic Rewards", alwaysontop=1 },
+```
+
+New configurations include this rule. Upgrades preserve existing user rules;
+add the entry manually to an existing file. Install the updated dwm and log out
+and back in once to activate the new overlay handling. Subsequent overlay rule
+edits reload live, including for already visible overlays.
+
+For unmanaged (`override_redirect`) overlays, `alwaysontop=1` raises the matching
+surface above fullscreen windows without changing its geometry, input, or focus.
+Only stacking applies; tag, monitor, and floating fields do not manage these
+surfaces. Match both class and title to avoid raising an application's unrelated
+windows. Matching uses case-sensitive substrings; the last matching rule wins,
+and a matching rule with omitted `alwaysontop` resets it to zero.
+
+Inspect other overlays with `xwininfo` and `xprop` to find their window ID,
+`WM_CLASS`, `WM_NAME`, and `_NET_WM_NAME`. Use a similar narrow rule for an
+unmanaged overlay that needs fullscreen priority. Ordinary managed
+always-on-top windows and application `_NET_WM_STATE_ABOVE` hints retain their
+existing priority below real fullscreen; those hints alone do not opt into
+this exception. Borderless games can still request X11 fullscreen. Fake
+fullscreen (`Super+Shift+Y`) is another option when normal floating windows
+need to remain accessible, but can change the game's layout.
+
 Rules in `config.h` let you assign windows to specific tags or force float:
 
 ```c
