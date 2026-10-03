@@ -24,6 +24,9 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Keep WFHelper Relic Rewards above fullscreen games. Unmanaged overlays now
+  honor `alwaysontop` window rules, including live rule and identity changes.
+
 - Restore the original panel-anchored Update Center popup, including content-based
   sizing and click-away dismissal. Keep the floating/tiled preference scoped to
   update and recovery terminals.
