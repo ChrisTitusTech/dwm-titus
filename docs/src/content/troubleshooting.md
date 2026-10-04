@@ -12,7 +12,9 @@ eyebrow: Get unstuck
 If the prompt says the login keyring did not get unlocked, run
 `dwm-diagnostics` or open System Health. The keyring daemon and its PAM login
 module are separate Fedora packages; a working daemon does not prove automatic
-unlock is available. Install missing packages with:
+unlock is available. The display manager's PAM stack must also load
+`pam_gnome_keyring.so`; installing the packages alone does not configure that
+stack. Install missing packages with:
 
 ```sh
 sudo dnf install gnome-keyring gnome-keyring-pam

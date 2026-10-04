@@ -128,7 +128,9 @@ such as file-manager integration, wallpapers, and
 display-manager setup. On x86_64 Fedora, `full` can also install Steam,
 Gamescope, GameMode, and MangoHud after repository approval.
 Every profile includes GNOME Keyring and its PAM module for credential storage
-and automatic unlock at password login.
+and support for automatic unlock at password login. Unlock also requires the
+display manager's PAM stack to load `pam_gnome_keyring.so` and matching account
+and keyring passwords; installing the packages does not configure PAM services.
 The installer separately asks before enabling the `christitustech/copr-fedora`
 COPR for patched Gamescope and RPM Fusion nonfree for Steam. Declining skips the
 gaming subset without affecting other full-profile extras.

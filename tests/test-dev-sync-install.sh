@@ -99,6 +99,12 @@ chmod +x "$test_bin/xsettingsd" "$test_bin/dump_xsettings" "$test_bin/xkbset"
 
 sed -n '/^source_update_dependencies_ready() {$/,/^}$/p' \
 	"$test_repo/scripts/dev-sync-install.sh" >"$source_update_probe"
+# Isolate the package-presence probe from host desktop tools and libseccomp.
+# Production deliberately uses system Python; replace only that interpreter
+# in the extracted function, then check its invocation in the fixture below.
+sed -i 's|/usr/bin/python3 -c |probe_system_python -c |' "$source_update_probe"
+printf '#!/bin/sh\nexit 0\n' >"$test_bin/bwrap"
+chmod +x "$test_bin/bwrap"
 for required_command in xsettingsd dump_xsettings xkbset bwrap; do
 	grep -Fq "command -v $required_command" "$source_update_probe" || {
 		printf 'Source-update readiness omits required command: %s\n' \
@@ -117,6 +123,10 @@ chmod +x "$test_bin/rpm"
 probe_source_update() {
 	PATH="$test_bin:$PATH" sh -c '
 		set -eu
+		probe_system_python() {
+			[ "$#" -eq 2 ] && [ "$1" = -c ] &&
+				[ "$2" = "import ctypes; ctypes.CDLL(\"libseccomp.so.2\")" ]
+		}
 		. "$1"
 		repo_dir=$2
 		work=$3

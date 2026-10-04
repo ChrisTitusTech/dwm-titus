@@ -114,7 +114,9 @@ remain disabled; invoking one makes `dwm-screenshot` exit with
 `dwm-screenshot: maim is not installed`. `xclip` and `xdotool` remain required
 runtime dependencies for the X11 desktop and its other managed helpers.
 Every profile includes `gnome-keyring` and `gnome-keyring-pam` for credential
-storage and password-login unlock. Both Fedora image variants include them too.
+storage and password-login unlock support. Both Fedora image variants include
+them too. Automatic unlock also requires the display manager's PAM stack to
+load `pam_gnome_keyring.so` and matching account/keyring passwords.
 
 ## Dependencies
 

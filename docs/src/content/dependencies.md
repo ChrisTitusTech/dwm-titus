@@ -74,7 +74,7 @@ helpers and service APIs perform the underlying operations.
 | Input controls | `xinput`, `setxkbmap`, `xkbset` | Core. Input settings, keyboard layouts, and accessibility controls. |
 | Input driver | `xorg-x11-drv-libinput` | Desktop. Xorg keyboard and pointer driver integration. |
 | Authorization dialogs | polkit, `mate-polkit` | Desktop selects the authentication agent. Privileged operations use narrow installed helpers and authorization policies; QML stays unprivileged. |
-| Credential storage | `gnome-keyring`, `gnome-keyring-pam` | Core and both images. Secret storage and automatic unlock at password login. Source and desktop updates repair missing keyring packages. |
+| Credential storage | `gnome-keyring`, `gnome-keyring-pam` | Core and both images. Secret storage and password-login unlock support. Automatic unlock requires PAM configuration and matching passwords; see [keyring troubleshooting](/troubleshooting.html#login-keyring-asks-for-a-password-every-login). Source and desktop updates repair missing keyring packages. |
 
 ## Applications and Desktop Integration
 
