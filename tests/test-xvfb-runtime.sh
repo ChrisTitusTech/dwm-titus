@@ -296,6 +296,7 @@ main(int argc, char **argv)
 	int initial_above = 0;
 	int initial_many_states = 0;
 	int override_redirect = 0;
+	int rewards_overlay = 0;
 	int panel = 0;
 	int preconfigure_panel = 0;
 	Window transient_for = None;
@@ -457,6 +458,11 @@ main(int argc, char **argv)
 		override_redirect = 1;
 		popup_state = "_NET_WM_STATE_STAYS_ON_TOP";
 	}
+	else if (argc == 2 && strcmp(argv[1], "wfhelper-rewards") == 0) {
+		override_redirect = 1;
+		rewards_overlay = 1;
+		popup_type = "_NET_WM_WINDOW_TYPE_TOOLBAR";
+	}
 	else if (argc == 2 && strcmp(argv[1], "swallow-terminal") == 0)
 		swallow_terminal = 1;
 
@@ -474,6 +480,12 @@ main(int argc, char **argv)
 		classhint.res_name = panel ? "quickshell" : "dwm-xvfb-runtime";
 		classhint.res_class = panel ? "quickshell"
 			: (swallow_terminal ? "DwmXvfbTerminal" : "DwmXvfbRuntime");
+		XSetClassHint(dpy, win, &classhint);
+	}
+	if (rewards_overlay) {
+		XStoreName(dpy, win, "WFHelper Relic Rewards");
+		classhint.res_name = "wfhelper";
+		classhint.res_class = "wfhelper";
 		XSetClassHint(dpy, win, &classhint);
 	}
 	if (swallow_terminal) {
@@ -1130,6 +1142,54 @@ DISPLAY=$display xdotool key Super+t
 wait_for_top_window "$fullscreen_win"
 wait_for_window_above "$fullscreen_win" "$popup_win"
 DISPLAY=$display xdotool windowfocus "$popup_win"
+wait_for_input_focus "$fullscreen_win"
+kill "$popup_client_pid"
+wait "$popup_client_pid" 2>/dev/null || true
+popup_client_pid=
+
+# WFHelper's unmanaged toolbar must survive fullscreen restacks without focus.
+DISPLAY=$display "$work/xclient" wfhelper-rewards \
+	>"$work/rewards-window-id" 2>"$work/rewards-client.log" &
+popup_client_pid=$!
+i=0
+while [ "$i" -lt 100 ] && [ ! -s "$work/rewards-window-id" ]; do
+	i=$((i + 1))
+	sleep 0.05
+done
+popup_win=$(cat "$work/rewards-window-id")
+[ "$(DISPLAY=$display "$work/xclient" attributes "$popup_win")" = "override_redirect=1" ]
+wait_for_window_above "$popup_win" "$fullscreen_win"
+wait_for_input_focus "$fullscreen_win"
+DISPLAY=$display xdotool key Super+t
+wait_for_window_above "$popup_win" "$fullscreen_win"
+
+# Matching tracks late identity changes and property removal.
+DISPLAY=$display xprop -id "$popup_win" -f WM_NAME 8s -set WM_NAME WFHelper
+wait_for_window_above "$fullscreen_win" "$popup_win"
+DISPLAY=$display xprop -id "$popup_win" -f _NET_WM_NAME 8s \
+	-set _NET_WM_NAME 'WFHelper Relic Rewards'
+wait_for_window_above "$popup_win" "$fullscreen_win"
+DISPLAY=$display xprop -id "$popup_win" -remove WM_CLASS
+wait_for_window_above "$fullscreen_win" "$popup_win"
+DISPLAY=$display xdotool set_window --class wfhelper "$popup_win"
+wait_for_window_above "$popup_win" "$fullscreen_win"
+DISPLAY=$display xprop -id "$popup_win" -remove _NET_WM_NAME
+wait_for_window_above "$fullscreen_win" "$popup_win"
+DISPLAY=$display xprop -id "$popup_win" -f WM_NAME 8s \
+	-set WM_NAME 'WFHelper Relic Rewards'
+wait_for_window_above "$popup_win" "$fullscreen_win"
+
+# Last match wins, and removing the exception takes effect on a live overlay.
+cp "$home/.config/dwm-titus/window-rules.toml" "$work/rewards-rules-backup"
+sed -i '/^]/i\  { class="wfhelper", title="WFHelper Relic Rewards", alwaysontop=0 },' \
+	"$home/.config/dwm-titus/window-rules.toml"
+wait_for_window_above "$fullscreen_win" "$popup_win"
+cp "$work/rewards-rules-backup" "$home/.config/dwm-titus/window-rules.toml"
+wait_for_window_above "$popup_win" "$fullscreen_win"
+sed -i '/class="wfhelper"/d' "$home/.config/dwm-titus/window-rules.toml"
+wait_for_window_above "$fullscreen_win" "$popup_win"
+cp "$work/rewards-rules-backup" "$home/.config/dwm-titus/window-rules.toml"
+wait_for_window_above "$popup_win" "$fullscreen_win"
 wait_for_input_focus "$fullscreen_win"
 kill "$popup_client_pid"
 wait "$popup_client_pid" 2>/dev/null || true
