@@ -133,6 +133,7 @@ struct Client {
 struct OverrideWindow {
 	Window win;
 	int raise;
+	int alwaysontop;
 	OverrideWindow *next;
 };
 
@@ -2381,6 +2382,8 @@ propertynotify(XEvent *e)
 	for (ow = overridewindows; ow && ow->win != ev->window; ow = ow->next);
 	if (ow && (ev->atom == netatom[NetWMState]
 	    || ev->atom == netatom[NetWMWindowType]
+	    || ev->atom == XA_WM_CLASS || ev->atom == XA_WM_NAME
+	    || ev->atom == netatom[NetWMName]
 	    || ev->atom == XA_WM_TRANSIENT_FOR)) {
 		updateoverridewindow(ev->window);
 		restackprioritywindows();
@@ -2714,7 +2717,7 @@ restackprioritywindows(void)
 
 	/* Raise order is the priority contract: always-on-top clients, bars and
 	 * trays, override popups, then real fullscreen clients above all shell
-	 * surfaces. */
+	 * surfaces, except explicitly rule-authorized unmanaged overlays. */
 	for (m = mons; m; m = m->next)
 		raisealwaysontopclients(m->stack);
 	for (m = mons; m; m = m->next)
@@ -2729,6 +2732,9 @@ restackprioritywindows(void)
 			XRaiseWindow(dpy, ow->win);
 	for (m = mons; m; m = m->next)
 		raisefullscreenclients(m->stack);
+	for (ow = overridewindows; ow; ow = ow->next)
+		if (ow->alwaysontop)
+			XRaiseWindow(dpy, ow->win);
 	if (XGetInputFocus(dpy, &focused, &revert))
 		focusfullscreenforoverride(focused);
 }
@@ -3901,6 +3907,13 @@ load_rules_toml(const char *user_path, const char *default_path)
 	}
 	rt_rules  = rt_rules_buf;
 	rt_nrules = nk;
+	if (dpy) {
+		OverrideWindow *ow;
+
+		for (ow = overridewindows; ow; ow = ow->next)
+			updateoverridewindow(ow->win);
+		restackprioritywindows();
+	}
 	fprintf(stderr, "dwm: loaded %d window rules from config\n", nk);
 }
 
@@ -5266,10 +5279,33 @@ updateoverridewindow(Window win)
 	Atom states[NET_WM_STATE_MAX], types[NET_WM_STATE_MAX];
 	OverrideWindow *ow;
 	unsigned long nstates, ntypes;
+	XClassHint ch = { NULL, NULL };
+	char title[256];
+	const char *class, *instance;
+	int i;
 
 	for (ow = overridewindows; ow && ow->win != win; ow = ow->next);
 	if (!ow)
 		return;
+	XGetClassHint(dpy, win, &ch);
+	class = ch.res_class ? ch.res_class : broken;
+	instance = ch.res_name ? ch.res_name : broken;
+	if (!gettextprop(win, netatom[NetWMName], title, sizeof title))
+		gettextprop(win, XA_WM_NAME, title, sizeof title);
+	ow->alwaysontop = 0;
+	/* Override-redirect windows remain unmanaged: only stacking rules apply. */
+	for (i = 0; i < rt_nrules; i++) {
+		const Rule *r = &rt_rules[i];
+
+		if ((!r->title || strstr(title, r->title))
+		&& (!r->class || strstr(class, r->class))
+		&& (!r->instance || strstr(instance, r->instance)))
+			ow->alwaysontop = r->alwaysontop;
+	}
+	if (ch.res_class)
+		XFree(ch.res_class);
+	if (ch.res_name)
+		XFree(ch.res_name);
 	nstates = getwinatomproplist(win, netatom[NetWMState],
 		states, LENGTH(states), NULL);
 	ntypes = getwinatomproplist(win, netatom[NetWMWindowType],

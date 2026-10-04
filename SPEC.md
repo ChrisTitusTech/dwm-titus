@@ -85,6 +85,9 @@ The installed session must provide:
 - Window swallowing.
 - Per-client size factors and stack reordering.
 - Real and fake fullscreen behavior.
+- Unmanaged overlays explicitly matched by an `alwaysontop=1` runtime rule
+  appear above real fullscreen clients without becoming managed or taking focus.
+  Ordinary shell popups and EWMH above hints retain their existing priority.
 - Window icons from `_NET_WM_ICON`.
 - Configured border suppression and cursor-warp behavior.
 - Stable handling of applications that omit optional X properties.
