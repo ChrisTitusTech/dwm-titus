@@ -24,6 +24,11 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Require GNOME Keyring and its separate PAM module in every install profile,
+  detect missing keyring packages in dependency checks and System Health, and
+  repair them during source and desktop updates. This prevents repeated unlock
+  prompts caused by a missing PAM module at password login.
+
 - Keep WFHelper Relic Rewards above fullscreen games. Unmanaged overlays now
   honor `alwaysontop` window rules, including live rule and identity changes.
 

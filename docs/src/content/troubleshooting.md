@@ -7,6 +7,26 @@ eyebrow: Get unstuck
 
 # Troubleshooting
 
+## Login keyring asks for a password every login
+
+If the prompt says the login keyring did not get unlocked, run
+`dwm-diagnostics` or open System Health. The keyring daemon and its PAM login
+module are separate Fedora packages; a working daemon does not prove automatic
+unlock is available. The display manager's PAM stack must also load
+`pam_gnome_keyring.so`; installing the packages alone does not configure that
+stack. Install missing packages with:
+
+```sh
+sudo dnf install gnome-keyring gnome-keyring-pam
+```
+
+Log out and back in with your account password. All installer profiles and
+both image variants include this pair, and source/desktop updates reconcile it
+on existing installations. If the prompt persists, use Passwords and Keys to
+set the Login keyring password to match your account password. Passwordless
+autologin and `startx` do not pass a login password to the keyring, so installing
+the PAM module alone cannot enable automatic unlock for those paths.
+
 ## Gear Lever does not open
 
 Gear Lever requires Flatpak's document portal. If launching it prints a

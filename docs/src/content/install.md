@@ -124,9 +124,13 @@ package names from the shared map:
 
 Use `core` for the required build/X11/session packages, Alacritty, and media applications,
 `recommended` for the complete desktop layer, or `full` for optional extras
-such as file-manager integration, keyring login integration, wallpapers, and
+such as file-manager integration, wallpapers, and
 display-manager setup. On x86_64 Fedora, `full` can also install Steam,
 Gamescope, GameMode, and MangoHud after repository approval.
+Every profile includes GNOME Keyring and its PAM module for credential storage
+and support for automatic unlock at password login. Unlock also requires the
+display manager's PAM stack to load `pam_gnome_keyring.so` and matching account
+and keyring passwords; installing the packages does not configure PAM services.
 The installer separately asks before enabling the `christitustech/copr-fedora`
 COPR for patched Gamescope and RPM Fusion nonfree for Steam. Declining skips the
 gaming subset without affecting other full-profile extras.
@@ -222,7 +226,7 @@ Installer package profiles are selected with `DWM_INSTALL_PROFILE`:
   rerun the recommended or full installer to add the Phase 6 PackageKit,
   Python RPM binding, AccountsService, CUPS, and printer-tool packages.
 - `full`: `recommended` plus optional extras such as Thunar with SMB-share
-  browsing, network tray utilities, keyring login integration,
+  browsing, network tray utilities,
   wallpapers, and display-manager setup. x86_64 Fedora full installs also
   include Steam, Gamescope, and 64-bit and 32-bit GameMode and MangoHud support
   after separate repository approval.

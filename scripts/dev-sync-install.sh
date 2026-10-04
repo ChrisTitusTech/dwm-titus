@@ -145,6 +145,7 @@ prepare_expected_files() {
 }
 
 source_update_dependencies_ready() {
+	dependency_profile=$1
 	if [ "${DWM_DEV_SYNC_TEST_MODE:-0}" = 1 ] &&
 		[ -n "${DWM_DEV_SYNC_SOURCE_UPDATE_READY:-}" ]; then
 		case $DWM_DEV_SYNC_SOURCE_UPDATE_READY in
@@ -153,12 +154,18 @@ source_update_dependencies_ready() {
 		*) die "invalid DWM_DEV_SYNC_SOURCE_UPDATE_READY value" ;;
 		esac
 	fi
-	command -v xsettingsd >/dev/null 2>&1 &&
-		command -v dump_xsettings >/dev/null 2>&1 &&
-		command -v xkbset >/dev/null 2>&1 &&
-		command -v bwrap >/dev/null 2>&1 &&
-		/usr/bin/python3 -c 'import ctypes; ctypes.CDLL("libseccomp.so.2")' >/dev/null 2>&1 &&
-		rpm -q NetworkManager-wifi >/dev/null 2>&1
+	if [ "$dependency_profile" = source-update ]; then
+		command -v xsettingsd >/dev/null 2>&1 &&
+			command -v dump_xsettings >/dev/null 2>&1 &&
+			command -v xkbset >/dev/null 2>&1 &&
+			command -v bwrap >/dev/null 2>&1 &&
+			/usr/bin/python3 -c 'import ctypes; ctypes.CDLL("libseccomp.so.2")' >/dev/null 2>&1 || return 1
+	fi
+	"$repo_dir/scripts/dwm-packages.sh" fedora "$dependency_profile" >"$work/source-update-packages" || return 1
+	while IFS= read -r package; do
+		[ -n "$package" ] || continue
+		rpm -q "$package" >/dev/null 2>&1 || return 1
+	done <"$work/source-update-packages"
 }
 
 source_update_dependencies_needed() {
@@ -189,10 +196,11 @@ require_fedora_for_package_changes() {
 
 reconcile_source_update_dependencies() {
 	packages_file=$work/source-update-packages
-	if ! source_update_dependencies_needed; then
-		return 0
+	source_update_profile=keyring
+	if source_update_dependencies_needed; then
+		source_update_profile=source-update
 	fi
-	if source_update_dependencies_ready; then
+	if source_update_dependencies_ready "$source_update_profile"; then
 		return 0
 	fi
 	if [ "$check_only" -eq 1 ]; then
@@ -203,7 +211,7 @@ reconcile_source_update_dependencies() {
 	command -v dnf >/dev/null 2>&1 ||
 		die "dnf is required to install source-update dependencies"
 	require_fedora_for_package_changes
-	"$repo_dir/scripts/dwm-packages.sh" fedora source-update >"$packages_file" ||
+	"$repo_dir/scripts/dwm-packages.sh" fedora "$source_update_profile" >"$packages_file" ||
 		die "could not resolve source-update dependencies"
 	set --
 	while IFS= read -r package; do
@@ -212,7 +220,7 @@ reconcile_source_update_dependencies() {
 	[ "$#" -gt 0 ] || die "source-update dependency profile is empty"
 	note "Installing required source-update dependencies: $*"
 	sudo dnf install -y "$@"
-	source_update_dependencies_ready ||
+	source_update_dependencies_ready "$source_update_profile" ||
 		die "source-update dependencies are still unavailable after installation"
 }
 

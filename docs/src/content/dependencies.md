@@ -24,7 +24,7 @@ are the source of truth for package selection and conditional installation.
 | --- | --- |
 | `core` | Build tools and libraries, X11, required runtime utilities, media applications, and one supported terminal. It does not install the complete Quickshell desktop. |
 | `recommended` | Core plus Quickshell, desktop services, system-management prerequisites, themes, fonts, and Gear Lever. Screenshot and some theme packages are attempted with failure-tolerant handling. |
-| `full` | Recommended plus optional file management, keyring, administration and toolkit utilities, wallpapers, and supported gaming integrations. Installs LightDM if no display manager is detected. |
+| `full` | Recommended plus optional file management, administration and toolkit utilities, wallpapers, and supported gaming integrations. Installs LightDM if no display manager is detected. |
 | Dedicated Fedora image | A prepared complete desktop, including image-specific application defaults and boot/storage support. End-user image installation works offline. |
 
 In the tables below, **Core** means every existing-system profile,
@@ -74,7 +74,7 @@ helpers and service APIs perform the underlying operations.
 | Input controls | `xinput`, `setxkbmap`, `xkbset` | Core. Input settings, keyboard layouts, and accessibility controls. |
 | Input driver | `xorg-x11-drv-libinput` | Desktop. Xorg keyboard and pointer driver integration. |
 | Authorization dialogs | polkit, `mate-polkit` | Desktop selects the authentication agent. Privileged operations use narrow installed helpers and authorization policies; QML stays unprivileged. |
-| Credential storage | `gnome-keyring`, `gnome-keyring-pam` | Full. Secret storage and login integration. |
+| Credential storage | `gnome-keyring`, `gnome-keyring-pam` | Core and both images. Secret storage and password-login unlock support. Automatic unlock requires PAM configuration and matching passwords; see [keyring troubleshooting](/troubleshooting.html#login-keyring-asks-for-a-password-every-login). Source and desktop updates repair missing keyring packages. |
 
 ## Applications and Desktop Integration
 
@@ -121,8 +121,8 @@ selected advanced operations to the relevant tools.
 | File synchronization | `rsync` | Full optional group; also used by image-building tooling. |
 
 The source-update reconciliation group is deliberately smaller than a complete
-installation profile: `xsettingsd`, `xkbset`, `bubblewrap`, `libseccomp`, and
-`NetworkManager-wifi`.
+installation profile: `xsettingsd`, `xkbset`, `bubblewrap`, `libseccomp`,
+`NetworkManager-wifi`, `gnome-keyring`, and `gnome-keyring-pam`.
 Rerun the installer with `recommended` or `full` to add that profile's complete
 system-management prerequisites to an older installation.
 
