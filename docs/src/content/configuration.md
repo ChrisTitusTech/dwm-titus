@@ -100,35 +100,73 @@ $EDITOR config.h
 
 ### Window Rules
 
-#### Game overlays
+#### Overlays above other applications
 
-Add this entry inside `rules = [...]` in
-`~/.config/dwm-titus/window-rules.toml` for WFHelper rewards:
+An overlay's application chooses whether its X11 window is managed. This is
+separate from whether the window looks like a borderless overlay:
 
-```toml
-{ class="wfhelper", title="WFHelper Relic Rewards", alwaysontop=1 },
-```
+| Window kind | X11 setting | Who controls it | `alwaysontop=1` behavior |
+| --- | --- | --- | --- |
+| Managed | `override_redirect=false` | dwm controls placement, tags, borders, focus, and stacking | Floats above normal application windows; real fullscreen stays above it |
+| Unmanaged | `override_redirect=true` | The application controls placement and display; dwm does not tile or tag it | Explicitly matching rules raise it above normal and real fullscreen windows |
 
-New configurations include this rule. Upgrades preserve existing user rules;
-add the entry manually to an existing file. Install the updated dwm and log out
-and back in once to activate the new overlay handling. Subsequent overlay rule
-edits reload live, including for already visible overlays.
+Tooltips, menus, and game overlays commonly use unmanaged windows. WFHelper's
+Relic Rewards window is one example. A rule does not convert a window between
+managed and unmanaged: that normally requires an application setting or a change
+to the application's window-creation code. This stacking exception does not
+change an overlay's position, size, input handling, or focus behavior.
 
-For unmanaged (`override_redirect`) overlays, `alwaysontop=1` raises the matching
-surface above fullscreen windows without changing its geometry, input, or focus.
-Only stacking applies; tag, monitor, and floating fields do not manage these
-surfaces. Match both class and title to avoid raising an application's unrelated
-windows. Matching uses case-sensitive substrings; the last matching rule wins,
-and a matching rule with omitted `alwaysontop` resets it to zero.
+To configure an overlay:
 
-Inspect other overlays with `xwininfo` and `xprop` to find their window ID,
-`WM_CLASS`, `WM_NAME`, and `_NET_WM_NAME`. Use a similar narrow rule for an
-unmanaged overlay that needs fullscreen priority. Ordinary managed
-always-on-top windows and application `_NET_WM_STATE_ABOVE` hints retain their
-existing priority below real fullscreen; those hints alone do not opt into
-this exception. Borderless games can still request X11 fullscreen. Fake
-fullscreen (`Super+Shift+Y`) is another option when normal floating windows
-need to remain accessible, but can change the game's layout.
+1. Show the overlay and run `xwininfo`. Click its window and note the window ID
+   and `Override Redirect State`: `yes` means unmanaged; `no` means managed.
+   Click-through overlays may select the application underneath instead. In
+   that case, run `xwininfo -root -tree`, find the overlay by title, then inspect
+   its ID with `xwininfo -id 0xWINDOW_ID`.
+2. Inspect that same window's identity and state, replacing the placeholder ID:
+
+   ```sh
+   xprop -id 0xWINDOW_ID WM_CLASS WM_NAME _NET_WM_NAME _NET_WM_STATE
+   ```
+
+   `WM_CLASS` lists the instance first and class second. Prefer the overlay's
+   `_NET_WM_NAME` title when present; otherwise use `WM_NAME`. Check the covered
+   application's `_NET_WM_STATE` too if needed: even borderless games can request
+   `_NET_WM_STATE_FULLSCREEN`.
+3. Add a narrow class-and-title rule inside `rules = [...]` in
+   `${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/window-rules.toml`. For example:
+
+   ```toml
+   { class="wfhelper", title="WFHelper Relic Rewards", alwaysontop=1 },
+   ```
+
+   For another overlay, replace those strings with its actual class and title.
+   Avoid a class-only rule when the same application has other windows that
+   should not stay on top.
+4. Save the file. Unmanaged overlay rules reload live, including for already
+   visible overlays. For a managed window, close and reopen that window to
+   ensure its creation-time rules apply. Unmanaged windows only use the stacking
+   field; tag, monitor, and floating fields do not manage these surfaces.
+
+Matching uses case-sensitive substrings. All supplied identity fields must
+match, the last matching rule wins, and a matching rule with omitted
+`alwaysontop` resets it to zero. To remove an unmanaged overlay's fullscreen
+exception, remove its rule or set `alwaysontop=0`; its ordinary application
+stacking hints still apply.
+
+New configurations include the WFHelper rule. Upgrades preserve existing user
+rules, so add the entry manually to an existing file. After installing the dwm
+version that introduces unmanaged overlay rules, log out and back in once to
+activate the binary; a configuration reload alone cannot update running code.
+
+Ordinary managed always-on-top windows and application `_NET_WM_STATE_ABOVE`
+hints retain their existing priority below real fullscreen; those hints alone
+do not opt into this exception. If a managed overlay must appear over an
+application requesting fullscreen, use the application's windowed mode or try
+fake fullscreen (`Super+Shift+Y`) while that application is focused. Fake
+fullscreen can change the application's layout. Changing the overlay application
+to create an unmanaged window is another development option, but it must then
+handle its own positioning and input behavior.
 
 Rules in `config.h` let you assign windows to specific tags or force float:
 
