@@ -51,6 +51,11 @@ rules = [
   { title="dwm updates floating", isfloating=1, noswallow=1 },
   { title="dwm update center", class="DwmUpdateCenter", instance="dwm-update-center", isfloating=1, noswallow=1 },
   { title="dwm update center tiled", class="DwmUpdateCenter", instance="dwm-update-center", isfloating=0, noswallow=1 },
+  # Path File Manager dialogs
+  { title="Path · About",             isfloating=1, alwaysontop=1 },
+  { title="Path · Settings",          isfloating=1, alwaysontop=1 },
+  { title="Path · Connect",           isfloating=1, alwaysontop=1 },
+  { title="Path · QuickLook",         isfloating=1, alwaysontop=1 },
   # { class="Gimp",           isfloating=1 },
   # { class="pavucontrol",    isfloating=1 },
 
