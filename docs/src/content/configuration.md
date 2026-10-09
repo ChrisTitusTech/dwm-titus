@@ -121,8 +121,20 @@ Other monitors and the tag's selected layout stay unchanged. This differs from
 monocle, which uses the available work area. Existing explicitly allowed overlays
 can still appear above fullscreen windows.
 
-Rules hot-reload when saved; reopen the application to apply this option. Like
-other scalar rule fields, the last matching rule wins; `fullscreen=0` or an
+Rules hot-reload when saved; reopening applies them at startup. A title-based
+fullscreen rule also applies once if the matching title arrives after the window
+opens, as can happen with Wine games. For example:
+
+```toml
+{ class="steam_app_24200", title="DC Universe Online [DCUOT.", fullscreen=1 },
+```
+
+This excludes the launcher titled only `DC Universe Online`. Matching uses
+case-sensitive substrings. Later title changes do not force fullscreen back on
+after you exit it. Late title matching does not move the window to a different
+tag or monitor, and saving rules alone does not reapply them to existing windows.
+
+Like other scalar rule fields, the last matching rule wins; `fullscreen=0` or an
 omitted field in that rule disables automatic fullscreen. It does not prevent an
 application from requesting fullscreen itself. Existing files need no migration.
 This is an opening preference, not a lock: the application can leave fullscreen

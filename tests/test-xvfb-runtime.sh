@@ -13,6 +13,22 @@ require_cmd() {
 	done
 }
 
+reload_rules() {
+	reload_before=$(grep -c '^dwm: loaded [0-9][0-9]* window rules from config$' "$work/dwm.log" || true)
+	kill -USR1 "$dwm_pid"
+	reload_attempt=0
+	while [ "$reload_attempt" -lt 100 ]; do
+		reload_after=$(grep -c '^dwm: loaded [0-9][0-9]* window rules from config$' "$work/dwm.log" || true)
+		if [ "$reload_after" -gt "$reload_before" ]; then
+			return 0
+		fi
+		reload_attempt=$((reload_attempt + 1))
+		sleep 0.05
+	done
+	printf '%s\n' 'dwm did not finish reloading window rules' >&2
+	return 1
+}
+
 assert_shrunk_centered() {
 	printf '%s\n---\n%s\n' "$1" "$2" | awk -F= '
 		$0 == "---" { popped = 1; next }
@@ -821,8 +837,7 @@ printf '%s\n' \
 	'  { mod="SUPER", key="u", desc="Xvfb reload tag", func="view", ui=16 },' \
 	'  { mod="SUPER SHIFT", key="y", desc="Xvfb fake fullscreen", func="togglefakefullscreen" },' \
 	']' >"$home/.config/dwm-titus/hotkeys.toml"
-kill -USR1 "$dwm_pid"
-sleep 0.2
+reload_rules
 DISPLAY=$display xdotool key Super+u
 wait_for_current_desktop 4
 
@@ -1265,8 +1280,7 @@ for rule_value in 'fullscreen=1' 'fullscreen=0' 'noswallow=1' 'fullscreen="1"' '
 	sed -i '/^rules = \[/a\  { class="DwmXvfbRuntime", fullscreen=1 },\
   { class="DwmXvfbRuntime", '"$rule_value"' },' \
 		"$home/.config/dwm-titus/window-rules.toml"
-	kill -USR1 "$dwm_pid"
-	sleep 0.2
+	reload_rules
 	: >"$work/rule-window-id"
 	DISPLAY=$display "$work/xclient" >"$work/rule-window-id" 2>"$work/rule-client.log" &
 	fullscreen_client_pid=$!
@@ -1305,11 +1319,58 @@ for rule_value in 'fullscreen=1' 'fullscreen=0' 'noswallow=1' 'fullscreen="1"' '
 	wait "$fullscreen_client_pid" 2>/dev/null || true
 	fullscreen_client_pid=
 done
+# Wine may publish its distinguishing game title only after mapping.
+for late_override in '' 'fullscreen=0' 'noswallow=1'; do
+	cp "$work/fullscreen-rules-backup" "$home/.config/dwm-titus/window-rules.toml"
+	sed -i '/^rules = \[/a\  { class="DwmXvfbRuntime", title="DC Universe Online [DCUOT.", fullscreen=1 },' \
+		"$home/.config/dwm-titus/window-rules.toml"
+	if [ -n "$late_override" ]; then
+		sed -i '/^]/i\  { class="DwmXvfbRuntime", '"$late_override"' },' \
+			"$home/.config/dwm-titus/window-rules.toml"
+	fi
+	reload_rules
+	: >"$work/late-rule-id"
+	DISPLAY=$display "$work/xclient" >"$work/late-rule-id" 2>"$work/late-rule.log" &
+	fullscreen_client_pid=$!
+	i=0
+	while [ "$i" -lt 100 ] && [ ! -s "$work/late-rule-id" ]; do
+		i=$((i + 1))
+		sleep 0.05
+	done
+	rule_win=$(cat "$work/late-rule-id")
+	wait_for_active_window "$rule_win"
+	DISPLAY=$display xdotool set_window --name 'DC Universe Online' "$rule_win"
+	sleep 0.2
+	wait_for_window_state_absent "$rule_win" _NET_WM_STATE_FULLSCREEN
+	DISPLAY=$display xdotool set_window --name 'DC Universe Online [DCUOT.619986]' "$rule_win"
+	if [ -z "$late_override" ]; then
+		wait_for_window_state "$rule_win" _NET_WM_STATE_FULLSCREEN
+		wait_for_fullscreen_monitors 0
+		DISPLAY=$display xdotool getwindowgeometry --shell "$rule_win" >"$work/late-rule-geometry"
+		grep -qx 'X=0' "$work/late-rule-geometry"
+		grep -qx 'Y=0' "$work/late-rule-geometry"
+		grep -qx 'WIDTH=1024' "$work/late-rule-geometry"
+		grep -qx 'HEIGHT=768' "$work/late-rule-geometry"
+		[ "$(DISPLAY=$display "$work/xclient" border "$rule_win")" = border_width=0 ]
+		wait_for_window_above "$rule_win" "$panel_win"
+		DISPLAY=$display "$work/xclient" state "$rule_win" 0 _NET_WM_STATE_FULLSCREEN
+		wait_for_window_state_absent "$rule_win" _NET_WM_STATE_FULLSCREEN
+	fi
+	# Exit stays respected even if the title leaves and reenters the match.
+	DISPLAY=$display xdotool set_window --name 'DC Universe Online' "$rule_win"
+	sleep 0.2
+	DISPLAY=$display xdotool set_window --name 'DC Universe Online [DCUOT.620000]' "$rule_win"
+	sleep 0.2
+	wait_for_window_state_absent "$rule_win" _NET_WM_STATE_FULLSCREEN
+	wait_for_fullscreen_monitors ''
+	kill "$fullscreen_client_pid"
+	wait "$fullscreen_client_pid" 2>/dev/null || true
+	fullscreen_client_pid=
+done
 cp "$work/fullscreen-rules-backup" "$home/.config/dwm-titus/window-rules.toml"
 sed -i '/^rules = \[/a\  { class="DwmXvfbRuntime", fullscreen=1, tags=2 },' \
 	"$home/.config/dwm-titus/window-rules.toml"
-kill -USR1 "$dwm_pid"
-sleep 0.2
+reload_rules
 DISPLAY=$display "$work/xclient" >"$work/rule-hidden-id" 2>"$work/rule-hidden.log" &
 fullscreen_client_pid=$!
 i=0
@@ -1335,8 +1396,7 @@ fullscreen_client_pid=
 DISPLAY=$display xdotool key super+1
 wait_for_current_desktop 0
 cp "$work/fullscreen-rules-backup" "$home/.config/dwm-titus/window-rules.toml"
-kill -USR1 "$dwm_pid"
-sleep 0.2
+reload_rules
 
 kill "$panel_pid"
 wait "$panel_pid" 2>/dev/null || true
@@ -1395,8 +1455,7 @@ for rule_fullscreen in 0 1 fake-parent; do
 	cp "$work/fullscreen-rules-backup" "$home/.config/dwm-titus/window-rules.toml"
 	sed -i '/^rules = \[/a\  { title="dwm-xvfb-swallowed", fullscreen='"$rule_value"' },' \
 		"$home/.config/dwm-titus/window-rules.toml"
-	kill -USR1 "$dwm_pid"
-	sleep 0.2
+	reload_rules
 	: >"$work/swallow-window-ids"
 	rm -f "$work/swallow-child-gate"
 	DISPLAY=$display DWM_XVFB_CHILD_GATE="$work/swallow-child-gate" \
@@ -1469,8 +1528,7 @@ sleep 0.2
 EOF
 chmod +x "$home/.local/share/dwm-titus/scripts/autostop.sh"
 cp "$repo_dir/config/hotkeys.toml" "$home/.config/dwm-titus/hotkeys.toml"
-kill -USR1 "$dwm_pid"
-sleep 0.2
+reload_rules
 DISPLAY=$display xdotool key Super+Shift+q
 i=0
 while [ "$i" -lt 100 ] && kill -0 "$dwm_pid" 2>/dev/null; do

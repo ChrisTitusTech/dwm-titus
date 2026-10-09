@@ -118,6 +118,7 @@ struct Client {
 	unsigned int tags;
 	int isfixed, isfloating, isurgent, neverfocus, oldstate, isfullscreen, isterminal, noswallow, alwaysontop, ewmhabove;
 	int issteam;
+	int rulefullscreenapplied;
 	int beingmoved;
 	int fakefullscreen;
 	pid_t pid;
@@ -604,6 +605,7 @@ applytitlerules(Client *c)
 	unsigned int i;
 	const Rule *r;
 	int changed = 0;
+	int titlefullscreen = 0;
 	XClassHint ch = { NULL, NULL };
 
 	XGetClassHint(dpy, c->win, &ch);
@@ -614,11 +616,13 @@ applytitlerules(Client *c)
 	unsigned int n_active_rules = (unsigned int)rt_nrules;
 	for (i = 0; i < n_active_rules; i++) {
 		r = &active_rules[i];
-		if (!r->title)
-			continue;
-		if ((strstr(c->name, r->title))
+		if ((!r->title || strstr(c->name, r->title))
 		&& (!r->class || strstr(class, r->class))
 		&& (!r->instance || strstr(instance, r->instance))) {
+			/* Include class-only overrides in last-matching-rule precedence. */
+			titlefullscreen = r->title && r->fullscreen;
+			if (!r->title)
+				continue;
 			c->isterminal = r->isterminal;
 			c->noswallow = r->noswallow;
 			if (r->isfloating && !c->isfloating) {
@@ -637,6 +641,18 @@ applytitlerules(Client *c)
 		XFree(ch.res_class);
 	if (ch.res_name)
 		XFree(ch.res_name);
+
+	/* Consume the opening preference once, even across later title changes. */
+	if (titlefullscreen && !c->rulefullscreenapplied) {
+		c->rulefullscreenapplied = 1;
+		if (c->isfullscreen)
+			ewmh_set_fullscreen_state(c, 1);
+		if (c->fakefullscreen == 1)
+			c->fakefullscreen = 2;
+		setfullscreen(c, 1);
+		updatefullscreenmonitors();
+		changed = 1;
+	}
 
 	return changed;
 }
@@ -1914,6 +1930,7 @@ manage(Window w, XWindowAttributes *wa)
 	if (XGetTransientForHint(dpy, w, &trans) && (t = wintoclient(trans))) {
 		c->mon = t->mon;
 		c->tags = t->tags;
+		c->rulefullscreenapplied = 1; /* Transients inherit their parent. */
 	} else {
 		c->mon = selmon;
 		rulefullscreen = applyrules(c);
@@ -1957,6 +1974,7 @@ manage(Window w, XWindowAttributes *wa)
 	if (term && swallow(term, c))
 		c = term;
 	if (rulefullscreen) {
+		c->rulefullscreenapplied = 1;
 		/* Swallowing may inherit state without the child window property. */
 		if (c->isfullscreen)
 			ewmh_set_fullscreen_state(c, 1);
@@ -4337,6 +4355,9 @@ swallow(Client *p, Client *c)
 	int ewmhabove = p->ewmhabove;
 	p->ewmhabove = c->ewmhabove;
 	c->ewmhabove = ewmhabove;
+	int rulefullscreenapplied = p->rulefullscreenapplied;
+	p->rulefullscreenapplied = c->rulefullscreenapplied;
+	c->rulefullscreenapplied = rulefullscreenapplied;
 
 	#if SHOWWINICON
 	Window icon = p->icon;
@@ -4873,6 +4894,7 @@ unswallow(Client *c)
 {
 	c->win = c->swallowing->win;
 	c->ewmhabove = c->swallowing->ewmhabove;
+	c->rulefullscreenapplied = c->swallowing->rulefullscreenapplied;
 
 	#if SHOWWINICON
 	freeicon(c);

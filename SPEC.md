@@ -87,7 +87,9 @@ The installed session must provide:
 - Real and fake fullscreen behavior. A managed window matching a
   `fullscreen=1` TOML rule opens in true fullscreen on its assigned monitor,
   with zero borders and no reserved panel area. The rule applies at management
-  time, preserves normal fullscreen exit, and does not change the tag layout.
+  time or once when a title first matches a fullscreen rule. It preserves normal
+  fullscreen exit and does not change the tag layout. Late title matching does
+  not reassign tags or monitors.
 - Unmanaged overlays explicitly matched by an `alwaysontop=1` runtime rule
   appear above real fullscreen clients without becoming managed or taking focus.
   Ordinary shell popups and EWMH above hints retain their existing priority.
