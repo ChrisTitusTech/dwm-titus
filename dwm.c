@@ -1144,6 +1144,12 @@ configurerequest(XEvent *e)
 	XWindowChanges wc;
 
 	if ((c = wintoclient(ev->window))) {
+		if (c->iswindowedfullscreen) {
+			/* A windowed game may request its old size after our resize. */
+			configure(c);
+			XSync(dpy, False);
+			return;
+		}
 		if (ev->value_mask & CWBorderWidth)
 			c->bw = ev->border_width;
 		else if (c->isfloating || !selmon->lt[selmon->sellt]->arrange) {

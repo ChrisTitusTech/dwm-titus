@@ -1372,6 +1372,14 @@ for windowed_case in startup late both zero omitted invalid; do
 		grep -qx 'HEIGHT=768' "$work/windowed-geometry"
 		[ "$(DISPLAY=$display "$work/xclient" border "$rule_win")" = border_width=0 ]
 		wait_for_window_above "$rule_win" "$panel_win"
+		DISPLAY=$display xdotool windowsize "$rule_win" 640 480
+		DISPLAY=$display xdotool windowmove "$rule_win" 100 120
+		sleep 0.2
+		DISPLAY=$display xdotool getwindowgeometry --shell "$rule_win" >"$work/windowed-request"
+		grep -qx 'X=0' "$work/windowed-request"
+		grep -qx 'Y=0' "$work/windowed-request"
+		grep -qx 'WIDTH=1024' "$work/windowed-request"
+		grep -qx 'HEIGHT=768' "$work/windowed-request"
 		# Client requests must not advertise exclusive fullscreen while this mode is active.
 		DISPLAY=$display "$work/xclient" state "$rule_win" 1 _NET_WM_STATE_FULLSCREEN
 		DISPLAY=$display "$work/xclient" state "$rule_win" 0 _NET_WM_STATE_FULLSCREEN
