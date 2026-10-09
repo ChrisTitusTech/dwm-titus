@@ -1710,7 +1710,7 @@ PATH=$theme_path HOME=$concurrent_home XDG_CONFIG_HOME=$concurrent_config \
 [[ $(grep -Fxc 'include active-theme.conf' "$legacy_kitty") == 1 ]]
 [[ $(grep -v -e '^[[:space:]]*#' -e '^[[:space:]]*$' "$legacy_kitty" | tail -n 1) == 'include active-theme.conf' ]]
 grep -Fqx 'font_size 16.0' "$legacy_kitty"
-grep -Fqx 'include ./nord.conf' "$legacy_kitty"
+[[ $(grep -Fc 'nord.conf' "$legacy_kitty" || :) == 0 ]]
 [[ $(stat -c %a "$legacy_kitty") == 640 ]]
 cmp -s "$work/legacy-kitty.conf" "$legacy_kitty.dwm-titus.bak"
 cp "$legacy_kitty" "$work/migrated-kitty.conf"
@@ -1718,6 +1718,13 @@ PATH=$theme_path HOME=$concurrent_home XDG_CONFIG_HOME=$concurrent_config \
 	XDG_RUNTIME_DIR=$concurrent_runtime DWM_APPEARANCE_THEMES_FILE=$managed_file \
 	"$repo/scripts/theme-apply.sh" >"$work/legacy-kitty-again.out" 2>"$work/legacy-kitty-again.err"
 cmp -s "$work/migrated-kitty.conf" "$legacy_kitty"
+# An include at the top and at the end still loses: Kitty skips the second one.
+printf '%s\n' 'include active-theme.conf' 'color1 #d75f5f' 'include active-theme.conf' >"$legacy_kitty"
+PATH=$theme_path HOME=$concurrent_home XDG_CONFIG_HOME=$concurrent_config \
+	XDG_RUNTIME_DIR=$concurrent_runtime DWM_APPEARANCE_THEMES_FILE=$managed_file \
+	"$repo/scripts/theme-apply.sh" >"$work/duplicate-kitty.out" 2>"$work/duplicate-kitty.err"
+[[ $(grep -Fxc 'include active-theme.conf' "$legacy_kitty") == 1 ]]
+[[ $(grep -v -e '^[[:space:]]*#' -e '^[[:space:]]*$' "$legacy_kitty" | tail -n 1) == 'include active-theme.conf' ]]
 
 reset_fixture
 mkdir -p "$config_home/gtk-3.0"

@@ -557,15 +557,20 @@ color15 $TERM_C15
 EOF
 
 	# Kitty keeps the last value it reads for each color and ignores a file
-	# included twice, so 'include active-theme.conf' must be the last setting in
-	# kitty.conf. Move it there once, keeping the rest of the file and a backup.
+	# included twice, so 'include active-theme.conf' must be the only include of
+	# it and the last setting in kitty.conf. Move it there once, drop the old
+	# shipped nord.conf include, and keep the rest of the file and a backup.
 	KITTY_CONF="$KITTY_DIR/kitty.conf"
 	KITTY_INCLUDE_RE='^[[:space:]]*include[[:space:]]+active-theme[.]conf[[:space:]]*$'
+	KITTY_NORD_RE='^[[:space:]]*include[[:space:]]+([.]/)?nord[.]conf[[:space:]]*$'
 	if [[ -f "$KITTY_CONF" ]]; then
 		kitty_last=$(awk '!/^[[:space:]]*(#|$)/ { line = $0 } END { print line }' "$KITTY_CONF")
-		if [[ ! $kitty_last =~ $KITTY_INCLUDE_RE ]]; then
+		kitty_includes=$(grep -Ec "$KITTY_INCLUDE_RE" "$KITTY_CONF" || :)
+		if [[ ! $kitty_last =~ $KITTY_INCLUDE_RE || $kitty_includes != 1 ]] ||
+			grep -Eq "$KITTY_NORD_RE" "$KITTY_CONF"; then
 			[[ -e "$KITTY_CONF.dwm-titus.bak" ]] || cat "$KITTY_CONF" >"$KITTY_CONF.dwm-titus.bak"
-			kitty_rest=$(awk -v re="$KITTY_INCLUDE_RE" '$0 !~ re' "$KITTY_CONF")
+			kitty_rest=$(awk -v active_re="$KITTY_INCLUDE_RE" -v nord_re="$KITTY_NORD_RE" \
+				'$0 !~ active_re && $0 !~ nord_re' "$KITTY_CONF")
 			printf '%s\n\n# Active theme, managed by theme-apply.sh. Keep this include last.\ninclude active-theme.conf\n' \
 				"$kitty_rest" >"$KITTY_CONF"
 		fi
