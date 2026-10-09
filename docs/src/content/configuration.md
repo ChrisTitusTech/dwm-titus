@@ -127,6 +127,19 @@ fills the monitor, hides the panel, and removes dwm borders without advertising
 hints while active. Start the game in its own windowed mode; dwm does not edit
 game settings, and a game may independently react to the resized window.
 
+Add `ignoresizehints=1` to bypass application minimum, maximum, base-size,
+resize-increment, and aspect-ratio hints during normal tiling and resizing.
+Fixed-size hints then also stop forcing the window to float. This is useful
+for Wine windows and can be combined with `fakefullscreen=1`; fake fullscreen
+already uses a direct monitor-sized resize, while `ignoresizehints` also covers
+normal layout and resize paths. It does not change the game's rendering resolution
+or stretch pixels inside a window that the application refuses to redraw.
+
+Only integer `1` enables it; the last matching rule wins, including zero or an
+omitted field. A late title change recalculates this option and the fixed-size
+status. A window that was already floating stays floating until you toggle it
+back to tiled mode. Existing rules keep their size-hint behavior by default.
+
 Press `Super+Shift+Y` to exit this rule's mode and restore the previous window
 size and border. While active, client fullscreen requests cannot switch it to
 advertised fullscreen or cancel its screen-filling geometry. Outside this rule's
@@ -142,7 +155,7 @@ rule for either mode also applies once if the matching title arrives after the
 window opens, as can happen with Wine games. For example:
 
 ```toml
-{ class="steam_app_24200", title="DC Universe Online [DCUOT.", fakefullscreen=1 },
+{ class="steam_app_24200", title="DC Universe Online [DCUOT.", fakefullscreen=1, ignoresizehints=1 },
 ```
 
 This excludes the launcher titled only `DC Universe Online`. Matching uses

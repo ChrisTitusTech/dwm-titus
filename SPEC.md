@@ -96,6 +96,12 @@ The installed session must provide:
   fullscreen or cancel the geometry; `togglefakefullscreen` exits to the saved
   window state. The existing fake-fullscreen shortcut behavior is otherwise
   unchanged. Neither rule modifies application settings files.
+- A managed window rule with `ignoresizehints=1` bypasses ICCCM min/max/base,
+  increment, and aspect size constraints and disables fixed-hint auto-floating.
+  Last matching rule wins; only integer `1` enables it. Reevaluate on title
+  changes, retain the setting with its window across swallowing, and preserve
+  existing size-hint behavior when disabled. It does not change application
+  rendering resolution.
 - Unmanaged overlays explicitly matched by an `alwaysontop=1` runtime rule
   appear above real fullscreen clients without becoming managed or taking focus.
   Ordinary shell popups and EWMH above hints retain their existing priority.

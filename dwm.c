@@ -119,6 +119,7 @@ struct Client {
 	int isfixed, isfloating, isurgent, neverfocus, oldstate, isfullscreen, isterminal, noswallow, alwaysontop, ewmhabove;
 	int issteam;
 	int rulefullscreenapplied;
+	int ignoresizehints;
 	int iswindowedfullscreen; /* Monitor-sized geometry without EWMH fullscreen. */
 	int beingmoved;
 	int fakefullscreen;
@@ -188,6 +189,7 @@ typedef struct {
 	int monitor;
 	int fullscreen;
 	int fakefullscreen;
+	int ignoresizehints;
 } Rule;
 
 enum { RuleFullscreenNone, RuleFullscreenReal, RuleFullscreenWindowed };
@@ -567,6 +569,7 @@ applyrules(Client *c)
 		{
 			fullscreen = r->fakefullscreen ? RuleFullscreenWindowed
 				: (r->fullscreen ? RuleFullscreenReal : RuleFullscreenNone);
+			c->ignoresizehints = r->ignoresizehints;
 			c->isterminal = r->isterminal;
 			c->noswallow  = r->noswallow;
 			c->isfloating = r->isfloating;
@@ -612,6 +615,7 @@ applytitlerules(Client *c)
 	const Rule *r;
 	int changed = 0;
 	int titlefullscreen = 0;
+	int ignoresizehints = 0;
 	XClassHint ch = { NULL, NULL };
 
 	XGetClassHint(dpy, c->win, &ch);
@@ -625,6 +629,7 @@ applytitlerules(Client *c)
 		if ((!r->title || strstr(c->name, r->title))
 		&& (!r->class || strstr(class, r->class))
 		&& (!r->instance || strstr(instance, r->instance))) {
+			ignoresizehints = r->ignoresizehints;
 			/* Include class-only overrides in last-matching-rule precedence. */
 			titlefullscreen = !r->title ? RuleFullscreenNone
 				: (r->fakefullscreen ? RuleFullscreenWindowed
@@ -649,6 +654,12 @@ applytitlerules(Client *c)
 		XFree(ch.res_class);
 	if (ch.res_name)
 		XFree(ch.res_name);
+
+	if (c->ignoresizehints != ignoresizehints) {
+		c->ignoresizehints = ignoresizehints;
+		updatesizehints(c);
+		changed = 1;
+	}
 
 	/* Consume the opening preference once, even across later title changes. */
 	if (titlefullscreen && !c->rulefullscreenapplied) {
@@ -708,7 +719,8 @@ applysizehints(Client *c, int *x, int *y, int *w, int *h, int interact)
 		*h = bh;
 	if (*w < bh)
 		*w = bh;
-	if (resizehints || c->isfloating || !c->mon->lt[c->mon->sellt]->arrange) {
+	if (!c->ignoresizehints
+	&& (resizehints || c->isfloating || !c->mon->lt[c->mon->sellt]->arrange)) {
 		/* see last two sentences in ICCCM 4.1.2.3 */
 		baseismin = c->basew == c->minw && c->baseh == c->minh;
 		if (!baseismin) { /* temporarily remove base dimensions */
@@ -3933,6 +3945,7 @@ load_rules_toml(const char *user_path, const char *default_path)
 		const TomlValue *vtag  = toml_table_get(&doc, "rules", i, "tags");
 		const TomlValue *vfull = toml_table_get(&doc, "rules", i, "fullscreen");
 		const TomlValue *vfake = toml_table_get(&doc, "rules", i, "fakefullscreen");
+		const TomlValue *vignore = toml_table_get(&doc, "rules", i, "ignoresizehints");
 		const TomlValue *vfl   = toml_table_get(&doc, "rules", i, "isfloating");
 		const TomlValue *vaot  = toml_table_get(&doc, "rules", i, "alwaysontop");
 		const TomlValue *vterm = toml_table_get(&doc, "rules", i, "isterminal");
@@ -3961,6 +3974,7 @@ load_rules_toml(const char *user_path, const char *default_path)
 		                ? (unsigned int)(1 << (vtag->i - 1)) : 0;
 		r->fullscreen = vfull && vfull->type == TOML_INT && vfull->i == 1;
 		r->fakefullscreen = vfake && vfake->type == TOML_INT && vfake->i == 1;
+		r->ignoresizehints = vignore && vignore->type == TOML_INT && vignore->i == 1;
 		r->isfloating = (vfl   && vfl->type   == TOML_INT) ? (int)vfl->i           : 0;
 		r->alwaysontop = (vaot && vaot->type  == TOML_INT) ? (int)vaot->i          : 0;
 		r->isterminal = (vterm && vterm->type == TOML_INT) ? (int)vterm->i         : 0;
@@ -4385,6 +4399,10 @@ swallow(Client *p, Client *c)
 	c->ewmhabove = ewmhabove;
 	/* The child inherits the visible geometry; retain the parent mode for restore. */
 	c->iswindowedfullscreen = p->iswindowedfullscreen;
+	int ignoresizehints = p->ignoresizehints;
+	p->ignoresizehints = c->ignoresizehints;
+	c->ignoresizehints = ignoresizehints;
+	updatesizehints(p);
 	int rulefullscreenapplied = p->rulefullscreenapplied;
 	p->rulefullscreenapplied = c->rulefullscreenapplied;
 	c->rulefullscreenapplied = rulefullscreenapplied;
@@ -4929,6 +4947,8 @@ unswallow(Client *c)
 	c->ewmhabove = c->swallowing->ewmhabove;
 	c->iswindowedfullscreen = c->swallowing->iswindowedfullscreen;
 	c->rulefullscreenapplied = c->swallowing->rulefullscreenapplied;
+	c->ignoresizehints = c->swallowing->ignoresizehints;
+	updatesizehints(c);
 
 	#if SHOWWINICON
 	freeicon(c);
@@ -5292,7 +5312,7 @@ updatesizehints(Client *c)
 		c->maxa = (float)size.max_aspect.x / size.max_aspect.y;
 	} else
 		c->maxa = c->mina = 0.0;
-	c->isfixed = (c->maxw && c->maxh && c->maxw == c->minw && c->maxh == c->minh);
+	c->isfixed = !c->ignoresizehints && (c->maxw && c->maxh && c->maxw == c->minw && c->maxh == c->minh);
 }
 
 void

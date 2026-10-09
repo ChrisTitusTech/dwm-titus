@@ -26,6 +26,7 @@ reload_rules() {
 		sleep 0.05
 	done
 	printf '%s\n' 'dwm did not finish reloading window rules' >&2
+	tail -n 40 "$work/dwm.log" >&2
 	return 1
 }
 
@@ -1324,11 +1325,66 @@ for rule_value in 'fullscreen=1' 'fullscreen=0' 'noswallow=1' 'fullscreen="1"' '
 	wait "$fullscreen_client_pid" 2>/dev/null || true
 	fullscreen_client_pid=
 done
+# A fixed-size hint must not force floating or constrain tiling when ignored.
+for hints_case in enabled late zero omitted invalid; do
+	cp "$work/fullscreen-rules-backup" "$home/.config/dwm-titus/window-rules.toml"
+	hints_fields='ignoresizehints=1'
+	[ "$hints_case" != late ] || hints_fields='title="Ignore Hints", ignoresizehints=1'
+	sed -i '/^rules = \[/a\  { class="DwmXvfbRuntime", '"$hints_fields"' },' \
+		"$home/.config/dwm-titus/window-rules.toml"
+	case $hints_case in
+	zero) hints_override='ignoresizehints=0' ;;
+	omitted) hints_override='noswallow=1' ;;
+	invalid) hints_override='ignoresizehints="1"' ;;
+	*) hints_override= ;;
+	esac
+	if [ -n "$hints_override" ]; then
+		sed -i '/^]/i\  { class="DwmXvfbRuntime", '"$hints_override"' },' \
+			"$home/.config/dwm-titus/window-rules.toml"
+	fi
+	reload_rules
+	: >"$work/hints-id"
+	DISPLAY=$display "$work/xclient" fixed-window >"$work/hints-id" 2>"$work/hints.log" &
+	fullscreen_client_pid=$!
+	i=0
+	while [ "$i" -lt 100 ] && [ ! -s "$work/hints-id" ]; do
+		i=$((i + 1))
+		sleep 0.05
+	done
+	rule_win=$(cat "$work/hints-id")
+	wait_for_active_window "$rule_win"
+	if [ "$hints_case" = late ]; then
+		DISPLAY=$display xdotool getwindowgeometry --shell "$rule_win" >"$work/hints-before"
+		grep -qx 'WIDTH=320' "$work/hints-before"
+		grep -qx 'HEIGHT=180' "$work/hints-before"
+		DISPLAY=$display xdotool set_window --name 'Ignore Hints' "$rule_win"
+		sleep 0.2
+		# It was already floating before the title matched; permit tiling now.
+		DISPLAY=$display xdotool key Super+f
+	fi
+	DISPLAY=$display xdotool key Super+t
+	sleep 0.2
+	DISPLAY=$display xdotool getwindowgeometry --shell "$rule_win" >"$work/hints-geometry"
+	if [ -z "$hints_override" ]; then
+		if grep -qx 'WIDTH=320' "$work/hints-geometry" && grep -qx 'HEIGHT=180' "$work/hints-geometry"; then
+			printf '%s\n' 'ignoresizehints did not release fixed window dimensions' >&2
+			exit 1
+		fi
+	else
+		grep -qx 'WIDTH=320' "$work/hints-geometry"
+		grep -qx 'HEIGHT=180' "$work/hints-geometry"
+	fi
+	wait_for_window_state_absent "$rule_win" _NET_WM_STATE_FULLSCREEN
+	kill "$fullscreen_client_pid"
+	wait "$fullscreen_client_pid" 2>/dev/null || true
+	fullscreen_client_pid=
+done
 # Borderless windowed rules fill the monitor without advertising fullscreen.
-for windowed_case in startup late both zero omitted invalid; do
+for windowed_case in startup late both ignore-hints zero omitted invalid; do
 	cp "$work/fullscreen-rules-backup" "$home/.config/dwm-titus/window-rules.toml"
 	case $windowed_case in
 	late) windowed_fields='title="DC Universe Online [DCUOT.", fakefullscreen=1' ;;
+	ignore-hints) windowed_fields='fakefullscreen=1, ignoresizehints=1' ;;
 	both) windowed_fields='fullscreen=1, fakefullscreen=1' ;;
 	*) windowed_fields='fakefullscreen=1' ;;
 	esac
@@ -1396,8 +1452,10 @@ for windowed_case in startup late both zero omitted invalid; do
 		wait_for_fullscreen_monitors ''
 		wait_for_window_state_absent "$rule_win" _NET_WM_STATE_FULLSCREEN
 		DISPLAY=$display xdotool getwindowgeometry --shell "$rule_win" >"$work/windowed-restored"
-		grep -qx 'WIDTH=320' "$work/windowed-restored"
-		grep -qx 'HEIGHT=180' "$work/windowed-restored"
+		if [ "$windowed_case" != ignore-hints ]; then
+			grep -qx 'WIDTH=320' "$work/windowed-restored"
+			grep -qx 'HEIGHT=180' "$work/windowed-restored"
+		fi
 		DISPLAY=$display xdotool set_window --name 'DC Universe Online [DCUOT.620000]' "$rule_win"
 		sleep 0.2
 	fi

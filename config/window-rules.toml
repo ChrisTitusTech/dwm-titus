@@ -17,6 +17,7 @@
 #   isfloating  1=float  0=tile             isterminal  1=terminal (swallowing)
 #   fullscreen  1=open true fullscreen (entire monitor, no bar or borders)
 #   fakefullscreen 1=borderless monitor-sized window, no EWMH fullscreen request
+#   ignoresizehints 1=ignore app min/max/base/increment/aspect size hints
 #   alwaysontop 1=raise above normal clients  noswallow 1=never swallow this window
 #   For unmanaged overlays, alwaysontop=1 also raises above real fullscreen.
 #
@@ -54,7 +55,7 @@ rules = [
   { title="dwm update center", class="DwmUpdateCenter", instance="dwm-update-center", isfloating=1, noswallow=1 },
   { title="dwm update center tiled", class="DwmUpdateCenter", instance="dwm-update-center", isfloating=0, noswallow=1 },
   # { class="YourApp",        fullscreen=1, noswallow=1, tags=5 },
-  # { class="steam_app_24200", title="DC Universe Online [DCUOT.", fakefullscreen=1 },
+  # { class="steam_app_24200", title="DC Universe Online [DCUOT.", fakefullscreen=1, ignoresizehints=1 },
   # { class="Gimp",           isfloating=1 },
   # { class="pavucontrol",    isfloating=1 },
 
