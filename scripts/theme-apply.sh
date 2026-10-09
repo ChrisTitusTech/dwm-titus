@@ -556,10 +556,18 @@ color14 $TERM_C14
 color15 $TERM_C15
 EOF
 
-	# Ensure kitty.conf has 'include active-theme.conf' at the top
-	if [[ -f "$KITTY_DIR/kitty.conf" ]]; then
-		if ! grep -q "include active-theme.conf" "$KITTY_DIR/kitty.conf"; then
-			sed -i '1s|^|include active-theme.conf\n|' "$KITTY_DIR/kitty.conf"
+	# Kitty keeps the last value it reads for each color and ignores a file
+	# included twice, so 'include active-theme.conf' must be the last setting in
+	# kitty.conf. Move it there once, keeping the rest of the file and a backup.
+	KITTY_CONF="$KITTY_DIR/kitty.conf"
+	KITTY_INCLUDE_RE='^[[:space:]]*include[[:space:]]+active-theme[.]conf[[:space:]]*$'
+	if [[ -f "$KITTY_CONF" ]]; then
+		kitty_last=$(awk '!/^[[:space:]]*(#|$)/ { line = $0 } END { print line }' "$KITTY_CONF")
+		if [[ ! $kitty_last =~ $KITTY_INCLUDE_RE ]]; then
+			[[ -e "$KITTY_CONF.dwm-titus.bak" ]] || cat "$KITTY_CONF" >"$KITTY_CONF.dwm-titus.bak"
+			kitty_rest=$(awk -v re="$KITTY_INCLUDE_RE" '$0 !~ re' "$KITTY_CONF")
+			printf '%s\n\n# Active theme, managed by theme-apply.sh. Keep this include last.\ninclude active-theme.conf\n' \
+				"$kitty_rest" >"$KITTY_CONF"
 		fi
 	fi
 

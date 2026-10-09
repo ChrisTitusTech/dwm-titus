@@ -1696,6 +1696,29 @@ wait "$concurrent_b"
 [[ $(grep -Fc 'active-theme.toml' "$concurrent_config/alacritty/alacritty.toml") == 1 ]]
 [[ $(grep -Fxc 'include active-theme.conf' "$concurrent_config/kitty/kitty.conf") == 1 ]]
 
+# A v0.7.2 kitty.conf imported the theme first and then overrode it with its own
+# palette and nord.conf. Theme apply moves the include last and keeps the rest.
+legacy_kitty=$concurrent_config/kitty/kitty.conf
+rm -f "$legacy_kitty.dwm-titus.bak"
+printf '%s\n' '# Active theme' 'include active-theme.conf' '' 'font_size 16.0' \
+	'color1 #d75f5f' 'include ./nord.conf' >"$legacy_kitty"
+chmod 640 "$legacy_kitty"
+cp "$legacy_kitty" "$work/legacy-kitty.conf"
+PATH=$theme_path HOME=$concurrent_home XDG_CONFIG_HOME=$concurrent_config \
+	XDG_RUNTIME_DIR=$concurrent_runtime DWM_APPEARANCE_THEMES_FILE=$managed_file \
+	"$repo/scripts/theme-apply.sh" >"$work/legacy-kitty.out" 2>"$work/legacy-kitty.err"
+[[ $(grep -Fxc 'include active-theme.conf' "$legacy_kitty") == 1 ]]
+[[ $(grep -v -e '^[[:space:]]*#' -e '^[[:space:]]*$' "$legacy_kitty" | tail -n 1) == 'include active-theme.conf' ]]
+grep -Fqx 'font_size 16.0' "$legacy_kitty"
+grep -Fqx 'include ./nord.conf' "$legacy_kitty"
+[[ $(stat -c %a "$legacy_kitty") == 640 ]]
+cmp -s "$work/legacy-kitty.conf" "$legacy_kitty.dwm-titus.bak"
+cp "$legacy_kitty" "$work/migrated-kitty.conf"
+PATH=$theme_path HOME=$concurrent_home XDG_CONFIG_HOME=$concurrent_config \
+	XDG_RUNTIME_DIR=$concurrent_runtime DWM_APPEARANCE_THEMES_FILE=$managed_file \
+	"$repo/scripts/theme-apply.sh" >"$work/legacy-kitty-again.out" 2>"$work/legacy-kitty-again.err"
+cmp -s "$work/migrated-kitty.conf" "$legacy_kitty"
+
 reset_fixture
 mkdir -p "$config_home/gtk-3.0"
 printf 'External XFCE GTK\n' >"$work/xfconf/theme-name"
