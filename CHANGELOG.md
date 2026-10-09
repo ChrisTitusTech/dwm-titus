@@ -8,6 +8,9 @@ versions from `config.mk`.
 
 ### Added
 
+- Add `fullscreen=1` window rules to open matching applications across the
+  entire monitor without a top bar, gaps, or window borders.
+
 - Keep Update Center floating and apply its saved Float update terminal toggle
   to the next update or recovery terminal, which defaults to tiled.
 

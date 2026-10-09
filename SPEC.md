@@ -84,7 +84,10 @@ The installed session must provide:
 - Xinerama multi-monitor support.
 - Window swallowing.
 - Per-client size factors and stack reordering.
-- Real and fake fullscreen behavior.
+- Real and fake fullscreen behavior. A managed window matching a
+  `fullscreen=1` TOML rule opens in true fullscreen on its assigned monitor,
+  with zero borders and no reserved panel area. The rule applies at management
+  time, preserves normal fullscreen exit, and does not change the tag layout.
 - Unmanaged overlays explicitly matched by an `alwaysontop=1` runtime rule
   appear above real fullscreen clients without becoming managed or taking focus.
   Ordinary shell popups and EWMH above hints retain their existing priority.

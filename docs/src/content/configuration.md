@@ -100,6 +100,35 @@ $EDITOR config.h
 
 ### Window Rules
 
+#### Open an application across the entire monitor
+
+Add a rule to `~/.config/dwm-titus/window-rules.toml` (or your
+`XDG_CONFIG_HOME` equivalent), inside its existing `rules = [...]` array:
+
+```toml
+{ class="YourApp", fullscreen=1, noswallow=1, tags=5 },
+```
+
+Use `xprop WM_CLASS` and click the application to find its class (the second
+quoted value). Omit `tags` to use the current tag, or add `monitor` to select a
+monitor using the existing tag/monitor rules. `noswallow=1` keeps the application
+independent of the terminal that launched it.
+
+`fullscreen=1` opens a newly managed window in true fullscreen: it covers the
+entire assigned monitor, including the top-bar area, with no dwm border or gaps.
+The managed top bar hides on that monitor while the fullscreen window is visible.
+Other monitors and the tag's selected layout stay unchanged. This differs from
+monocle, which uses the available work area. Existing explicitly allowed overlays
+can still appear above fullscreen windows.
+
+Rules hot-reload when saved; reopen the application to apply this option. Like
+other scalar rule fields, the last matching rule wins; `fullscreen=0` or an
+omitted field in that rule disables automatic fullscreen. It does not prevent an
+application from requesting fullscreen itself. Existing files need no migration.
+This is an opening preference, not a lock: the application can leave fullscreen
+normally. Transient dialogs keep the existing parent-inheritance behavior, and
+unmanaged overlay windows are not resized by this option.
+
 #### Overlays above other applications
 
 An overlay's application chooses whether its X11 window is managed. This is

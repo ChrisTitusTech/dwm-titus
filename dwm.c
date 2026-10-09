@@ -184,10 +184,11 @@ typedef struct {
 	int isterminal;
 	int noswallow;
 	int monitor;
+	int fullscreen;
 } Rule;
 
 /* core client and layout declarations */
-static void applyrules(Client *c);
+static int applyrules(Client *c);
 static int applytitlerules(Client *c);
 static int applysizehints(Client *c, int *x, int *y, int *w, int *h, int interact);
 static void arrange(Monitor *m);
@@ -529,7 +530,7 @@ pathjoin(char *dst, size_t dstsz, const char *dir, const char *name)
 	return 1;
 }
 
-void
+int
 applyrules(Client *c)
 {
 	const char *class, *instance;
@@ -537,6 +538,7 @@ applyrules(Client *c)
 	const Rule *r;
 	Monitor *m;
 	XClassHint ch = { NULL, NULL };
+	int fullscreen = 0;
 
 	/* rule matching */
 	c->isfloating = 0;
@@ -557,6 +559,7 @@ applyrules(Client *c)
 		&& (!r->class || strstr(class, r->class))
 		&& (!r->instance || strstr(instance, r->instance)))
 		{
+			fullscreen = r->fullscreen;
 			c->isterminal = r->isterminal;
 			c->noswallow  = r->noswallow;
 			c->isfloating = r->isfloating;
@@ -591,6 +594,7 @@ applyrules(Client *c)
 		/* Mask to only valid tags for this monitor */
 		c->tags &= montags;
 	}
+	return fullscreen;
 }
 
 int
@@ -1890,6 +1894,7 @@ manage(Window w, XWindowAttributes *wa)
 	Client *c, *t = NULL, *term = NULL;
 	Window trans = None;
 	XWindowChanges wc;
+	int rulefullscreen = 0;
 
 	c = ecalloc(1, sizeof(Client));
 	c->win = w;
@@ -1911,7 +1916,7 @@ manage(Window w, XWindowAttributes *wa)
 		c->tags = t->tags;
 	} else {
 		c->mon = selmon;
-		applyrules(c);
+		rulefullscreen = applyrules(c);
 		term = termforwin(c);
 	}
 
@@ -1949,8 +1954,18 @@ manage(Window w, XWindowAttributes *wa)
 	c->mon->sel = c;
 	arrange(c->mon);
 	XMapWindow(dpy, c->win);
-	if (term)
-		swallow(term, c);
+	if (term && swallow(term, c))
+		c = term;
+	if (rulefullscreen) {
+		/* Swallowing may inherit state without the child window property. */
+		if (c->isfullscreen)
+			ewmh_set_fullscreen_state(c, 1);
+		if (c->fakefullscreen == 1)
+			c->fakefullscreen = 2; /* A swallowed terminal may use fake fullscreen. */
+		setfullscreen(c, 1);
+		arrange(c->mon); /* Keep rules targeting an inactive tag off screen. */
+		updatefullscreenmonitors();
+	}
 	focus(NULL);
 }
 
@@ -3872,6 +3887,7 @@ load_rules_toml(const char *user_path, const char *default_path)
 		const TomlValue *vi    = toml_table_get(&doc, "rules", i, "instance");
 		const TomlValue *vt    = toml_table_get(&doc, "rules", i, "title");
 		const TomlValue *vtag  = toml_table_get(&doc, "rules", i, "tags");
+		const TomlValue *vfull = toml_table_get(&doc, "rules", i, "fullscreen");
 		const TomlValue *vfl   = toml_table_get(&doc, "rules", i, "isfloating");
 		const TomlValue *vaot  = toml_table_get(&doc, "rules", i, "alwaysontop");
 		const TomlValue *vterm = toml_table_get(&doc, "rules", i, "isterminal");
@@ -3898,6 +3914,7 @@ load_rules_toml(const char *user_path, const char *default_path)
 		}
 		r->tags       = (vtag  && vtag->type  == TOML_INT && vtag->i >= 1 && vtag->i <= 9)
 		                ? (unsigned int)(1 << (vtag->i - 1)) : 0;
+		r->fullscreen = vfull && vfull->type == TOML_INT && vfull->i == 1;
 		r->isfloating = (vfl   && vfl->type   == TOML_INT) ? (int)vfl->i           : 0;
 		r->alwaysontop = (vaot && vaot->type  == TOML_INT) ? (int)vaot->i          : 0;
 		r->isterminal = (vterm && vterm->type == TOML_INT) ? (int)vterm->i         : 0;

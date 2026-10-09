@@ -555,7 +555,11 @@ main(int argc, char **argv)
 		unsigned long pid = (unsigned long)getpid();
 
 		close(ConnectionNumber(dpy));
-		usleep(200000);
+		const char *gate = getenv("DWM_XVFB_CHILD_GATE");
+		while (running && gate && access(gate, F_OK) != 0)
+			usleep(10000);
+		if (!running)
+			_exit(0);
 		child_dpy = XOpenDisplay(NULL);
 		if (!child_dpy)
 			return 3;
@@ -1253,6 +1257,87 @@ kill "$fullscreen_client_pid"
 wait "$fullscreen_client_pid" 2>/dev/null || true
 fullscreen_client_pid=
 wait_for_fullscreen_monitors ''
+# Opening rules use true monitor-sized fullscreen, not the tag layout.
+# A later matching rule may override the request, including by omission.
+cp "$home/.config/dwm-titus/window-rules.toml" "$work/fullscreen-rules-backup"
+for rule_value in 'fullscreen=1' 'fullscreen=0' 'noswallow=1' 'fullscreen="1"' 'fullscreen=2'; do
+	cp "$work/fullscreen-rules-backup" "$home/.config/dwm-titus/window-rules.toml"
+	sed -i '/^rules = \[/a\  { class="DwmXvfbRuntime", fullscreen=1 },\
+  { class="DwmXvfbRuntime", '"$rule_value"' },' \
+		"$home/.config/dwm-titus/window-rules.toml"
+	kill -USR1 "$dwm_pid"
+	sleep 0.2
+	: >"$work/rule-window-id"
+	DISPLAY=$display "$work/xclient" >"$work/rule-window-id" 2>"$work/rule-client.log" &
+	fullscreen_client_pid=$!
+	i=0
+	while [ "$i" -lt 100 ] && [ ! -s "$work/rule-window-id" ]; do
+		i=$((i + 1))
+		sleep 0.05
+	done
+	rule_win=$(cat "$work/rule-window-id")
+	[ -n "$rule_win" ]
+	wait_for_active_window "$rule_win"
+	if [ "$rule_value" = fullscreen=1 ]; then
+		wait_for_window_state "$rule_win" _NET_WM_STATE_FULLSCREEN
+		wait_for_fullscreen_monitors 0
+		DISPLAY=$display xdotool getwindowgeometry --shell "$rule_win" >"$work/rule-geometry"
+		grep -qx 'X=0' "$work/rule-geometry"
+		grep -qx 'Y=0' "$work/rule-geometry"
+		grep -qx 'WIDTH=1024' "$work/rule-geometry"
+		grep -qx 'HEIGHT=768' "$work/rule-geometry"
+		[ "$(DISPLAY=$display "$work/xclient" border "$rule_win")" = border_width=0 ]
+		wait_for_window_above "$rule_win" "$panel_win"
+		DISPLAY=$display xdotool key super+2
+		wait_for_current_desktop 1
+		wait_for_fullscreen_monitors ''
+		DISPLAY=$display xdotool key super+1
+		wait_for_current_desktop 0
+		wait_for_fullscreen_monitors 0
+		DISPLAY=$display "$work/xclient" state "$rule_win" 0 _NET_WM_STATE_FULLSCREEN
+		wait_for_window_state_absent "$rule_win" _NET_WM_STATE_FULLSCREEN
+		wait_for_fullscreen_monitors ''
+	else
+		wait_for_window_state_absent "$rule_win" _NET_WM_STATE_FULLSCREEN
+		wait_for_fullscreen_monitors ''
+	fi
+	kill "$fullscreen_client_pid"
+	wait "$fullscreen_client_pid" 2>/dev/null || true
+	fullscreen_client_pid=
+done
+cp "$work/fullscreen-rules-backup" "$home/.config/dwm-titus/window-rules.toml"
+sed -i '/^rules = \[/a\  { class="DwmXvfbRuntime", fullscreen=1, tags=2 },' \
+	"$home/.config/dwm-titus/window-rules.toml"
+kill -USR1 "$dwm_pid"
+sleep 0.2
+DISPLAY=$display "$work/xclient" >"$work/rule-hidden-id" 2>"$work/rule-hidden.log" &
+fullscreen_client_pid=$!
+i=0
+while [ "$i" -lt 100 ] && [ ! -s "$work/rule-hidden-id" ]; do
+	i=$((i + 1))
+	sleep 0.05
+done
+rule_win=$(cat "$work/rule-hidden-id")
+wait_for_window_state "$rule_win" _NET_WM_STATE_FULLSCREEN
+wait_for_fullscreen_monitors ''
+DISPLAY=$display xdotool getwindowgeometry --shell "$rule_win" | grep -q '^X=-'
+DISPLAY=$display xdotool key super+2
+wait_for_current_desktop 1
+wait_for_fullscreen_monitors 0
+DISPLAY=$display xdotool getwindowgeometry --shell "$rule_win" >"$work/rule-geometry"
+grep -qx 'X=0' "$work/rule-geometry"
+grep -qx 'Y=0' "$work/rule-geometry"
+grep -qx 'WIDTH=1024' "$work/rule-geometry"
+grep -qx 'HEIGHT=768' "$work/rule-geometry"
+kill "$fullscreen_client_pid"
+wait "$fullscreen_client_pid" 2>/dev/null || true
+fullscreen_client_pid=
+DISPLAY=$display xdotool key super+1
+wait_for_current_desktop 0
+cp "$work/fullscreen-rules-backup" "$home/.config/dwm-titus/window-rules.toml"
+kill -USR1 "$dwm_pid"
+sleep 0.2
+
 kill "$panel_pid"
 wait "$panel_pid" 2>/dev/null || true
 panel_pid=
@@ -1303,32 +1388,72 @@ done
 stack_win=$(cat "$work/restore-stack-window-id")
 [ -n "$stack_win" ]
 
-: >"$work/swallow-window-ids"
-DISPLAY=$display "$work/xclient" swallow-terminal >"$work/swallow-window-ids" 2>"$work/swallow-client.log" &
-swallow_client_pid=$!
-i=0
-while [ "$i" -lt 100 ] && [ "$(wc -l <"$work/swallow-window-ids")" -lt 2 ]; do
-	i=$((i + 1))
-	sleep 0.05
+# Preserve swallowing and restore the terminal after a fullscreen child exits.
+for rule_fullscreen in 0 1 fake-parent; do
+	rule_value=$rule_fullscreen
+	[ "$rule_fullscreen" != fake-parent ] || rule_value=1
+	cp "$work/fullscreen-rules-backup" "$home/.config/dwm-titus/window-rules.toml"
+	sed -i '/^rules = \[/a\  { title="dwm-xvfb-swallowed", fullscreen='"$rule_value"' },' \
+		"$home/.config/dwm-titus/window-rules.toml"
+	kill -USR1 "$dwm_pid"
+	sleep 0.2
+	: >"$work/swallow-window-ids"
+	rm -f "$work/swallow-child-gate"
+	DISPLAY=$display DWM_XVFB_CHILD_GATE="$work/swallow-child-gate" \
+		"$work/xclient" swallow-terminal >"$work/swallow-window-ids" 2>"$work/swallow-client.log" &
+	swallow_client_pid=$!
+	i=0
+	while [ "$i" -lt 100 ] && [ ! -s "$work/swallow-window-ids" ]; do
+		i=$((i + 1))
+		sleep 0.05
+	done
+	terminal_win=$(sed -n '1p' "$work/swallow-window-ids")
+	wait_for_active_window "$terminal_win"
+	if [ "$rule_fullscreen" = fake-parent ]; then
+		DISPLAY=$display xdotool key Super+Shift+y
+		wait_for_window_state "$terminal_win" _NET_WM_STATE_FULLSCREEN
+		wait_for_fullscreen_monitors ''
+	fi
+	: >"$work/swallow-child-gate"
+	i=0
+	while [ "$i" -lt 100 ] && [ "$(wc -l <"$work/swallow-window-ids")" -lt 2 ]; do
+		i=$((i + 1))
+		sleep 0.05
+	done
+	terminal_win=$(sed -n '1p' "$work/swallow-window-ids")
+	swallowed_win=$(sed -n '2p' "$work/swallow-window-ids")
+	[ -n "$terminal_win" ]
+	[ -n "$swallowed_win" ]
+	wait_for_active_window "$swallowed_win"
+	if [ "$rule_value" = 1 ]; then
+		wait_for_window_state "$swallowed_win" _NET_WM_STATE_FULLSCREEN
+		wait_for_fullscreen_monitors 0
+		DISPLAY=$display xdotool getwindowgeometry --shell "$swallowed_win" >"$work/swallow-geometry"
+		grep -qx 'X=0' "$work/swallow-geometry"
+		grep -qx 'Y=0' "$work/swallow-geometry"
+		grep -qx 'WIDTH=1024' "$work/swallow-geometry"
+		grep -qx 'HEIGHT=768' "$work/swallow-geometry"
+	fi
+	DISPLAY=$display xdotool windowraise "$stack_win"
+	DISPLAY=$display xdotool key Super+t
+	wait_for_top_window "$swallowed_win"
+
+	DISPLAY=$display xdotool windowkill "$swallowed_win"
+	wait_for_client_window "$terminal_win"
+	if [ "$rule_fullscreen" = fake-parent ]; then
+		wait_for_window_state "$terminal_win" _NET_WM_STATE_FULLSCREEN
+	else
+		wait_for_window_state_absent "$terminal_win" _NET_WM_STATE_FULLSCREEN
+	fi
+	wait_for_fullscreen_monitors ''
+	DISPLAY=$display xdotool windowraise "$stack_win"
+	DISPLAY=$display xdotool key Super+t
+	wait_for_top_window "$stack_win"
+
+	kill "$swallow_client_pid"
+	wait "$swallow_client_pid" 2>/dev/null || true
+	swallow_client_pid=
 done
-terminal_win=$(sed -n '1p' "$work/swallow-window-ids")
-swallowed_win=$(sed -n '2p' "$work/swallow-window-ids")
-[ -n "$terminal_win" ]
-[ -n "$swallowed_win" ]
-wait_for_active_window "$swallowed_win"
-DISPLAY=$display xdotool windowraise "$stack_win"
-DISPLAY=$display xdotool key Super+t
-wait_for_top_window "$swallowed_win"
-
-DISPLAY=$display xdotool windowkill "$swallowed_win"
-wait_for_client_window "$terminal_win"
-DISPLAY=$display xdotool windowraise "$stack_win"
-DISPLAY=$display xdotool key Super+t
-wait_for_top_window "$stack_win"
-
-kill "$swallow_client_pid"
-wait "$swallow_client_pid" 2>/dev/null || true
-swallow_client_pid=
 kill "$stack_client_pid"
 wait "$stack_client_pid" 2>/dev/null || true
 stack_client_pid=
