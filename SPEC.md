@@ -89,7 +89,13 @@ The installed session must provide:
   with zero borders and no reserved panel area. The rule applies at management
   time or once when a title first matches a fullscreen rule. It preserves normal
   fullscreen exit and does not change the tag layout. Late title matching does
-  not reassign tags or monitors.
+  not reassign tags or monitors. A `fakefullscreen=1` rule uses the same
+  monitor-sized borderless geometry and panel hiding without advertising
+  `_NET_WM_STATE_FULLSCREEN`. It takes precedence over `fullscreen=1` in the
+  same rule. While active, application fullscreen requests do not advertise
+  fullscreen or cancel the geometry; `togglefakefullscreen` exits to the saved
+  window state. The existing fake-fullscreen shortcut behavior is otherwise
+  unchanged. Neither rule modifies application settings files.
 - Unmanaged overlays explicitly matched by an `alwaysontop=1` runtime rule
   appear above real fullscreen clients without becoming managed or taking focus.
   Ordinary shell popups and EWMH above hints retain their existing priority.

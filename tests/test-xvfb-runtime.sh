@@ -498,6 +498,11 @@ main(int argc, char **argv)
 			: (swallow_terminal ? "DwmXvfbTerminal" : "DwmXvfbRuntime");
 		XSetClassHint(dpy, win, &classhint);
 	}
+	if (argc == 2 && strcmp(argv[1], "fixed-window") == 0) {
+		XSizeHints hints = { .flags = PMinSize | PMaxSize,
+			.min_width = 320, .max_width = 320, .min_height = 180, .max_height = 180 };
+		XSetWMNormalHints(dpy, win, &hints);
+	}
 	if (rewards_overlay) {
 		XStoreName(dpy, win, "WFHelper Relic Rewards");
 		classhint.res_name = "wfhelper";
@@ -1319,6 +1324,81 @@ for rule_value in 'fullscreen=1' 'fullscreen=0' 'noswallow=1' 'fullscreen="1"' '
 	wait "$fullscreen_client_pid" 2>/dev/null || true
 	fullscreen_client_pid=
 done
+# Borderless windowed rules fill the monitor without advertising fullscreen.
+for windowed_case in startup late both zero omitted invalid; do
+	cp "$work/fullscreen-rules-backup" "$home/.config/dwm-titus/window-rules.toml"
+	case $windowed_case in
+	late) windowed_fields='title="DC Universe Online [DCUOT.", fakefullscreen=1' ;;
+	both) windowed_fields='fullscreen=1, fakefullscreen=1' ;;
+	*) windowed_fields='fakefullscreen=1' ;;
+	esac
+	sed -i '/^rules = \[/a\  { class="DwmXvfbRuntime", '"$windowed_fields"' },' \
+		"$home/.config/dwm-titus/window-rules.toml"
+	case $windowed_case in
+	zero) windowed_override='fakefullscreen=0' ;;
+	omitted) windowed_override='noswallow=1' ;;
+	invalid) windowed_override='fakefullscreen="1"' ;;
+	*) windowed_override= ;;
+	esac
+	if [ -n "$windowed_override" ]; then
+		sed -i '/^]/i\  { class="DwmXvfbRuntime", '"$windowed_override"' },' \
+			"$home/.config/dwm-titus/window-rules.toml"
+	fi
+	reload_rules
+	: >"$work/windowed-id"
+	DISPLAY=$display "$work/xclient" fixed-window >"$work/windowed-id" 2>"$work/windowed.log" &
+	fullscreen_client_pid=$!
+	i=0
+	while [ "$i" -lt 100 ] && [ ! -s "$work/windowed-id" ]; do
+		i=$((i + 1))
+		sleep 0.05
+	done
+	rule_win=$(cat "$work/windowed-id")
+	wait_for_active_window "$rule_win"
+	if [ "$windowed_case" = late ]; then
+		DISPLAY=$display xdotool set_window --name 'DC Universe Online' "$rule_win"
+		sleep 0.2
+		wait_for_fullscreen_monitors ''
+		wait_for_window_state_absent "$rule_win" _NET_WM_STATE_FULLSCREEN
+		DISPLAY=$display xdotool set_window --name 'DC Universe Online [DCUOT.619986]' "$rule_win"
+	fi
+	if [ -z "$windowed_override" ]; then
+		wait_for_fullscreen_monitors 0
+		wait_for_window_state_absent "$rule_win" _NET_WM_STATE_FULLSCREEN
+		DISPLAY=$display xdotool getwindowgeometry --shell "$rule_win" >"$work/windowed-geometry"
+		grep -qx 'X=0' "$work/windowed-geometry"
+		grep -qx 'Y=0' "$work/windowed-geometry"
+		grep -qx 'WIDTH=1024' "$work/windowed-geometry"
+		grep -qx 'HEIGHT=768' "$work/windowed-geometry"
+		[ "$(DISPLAY=$display "$work/xclient" border "$rule_win")" = border_width=0 ]
+		wait_for_window_above "$rule_win" "$panel_win"
+		# Client requests must not advertise exclusive fullscreen while this mode is active.
+		DISPLAY=$display "$work/xclient" state "$rule_win" 1 _NET_WM_STATE_FULLSCREEN
+		DISPLAY=$display "$work/xclient" state "$rule_win" 0 _NET_WM_STATE_FULLSCREEN
+		sleep 0.2
+		wait_for_window_state_absent "$rule_win" _NET_WM_STATE_FULLSCREEN
+		wait_for_fullscreen_monitors 0
+		DISPLAY=$display xdotool key super+2
+		wait_for_current_desktop 1
+		wait_for_fullscreen_monitors ''
+		DISPLAY=$display xdotool key super+1
+		wait_for_current_desktop 0
+		wait_for_fullscreen_monitors 0
+		DISPLAY=$display xdotool key Super+Shift+y
+		wait_for_fullscreen_monitors ''
+		wait_for_window_state_absent "$rule_win" _NET_WM_STATE_FULLSCREEN
+		DISPLAY=$display xdotool getwindowgeometry --shell "$rule_win" >"$work/windowed-restored"
+		grep -qx 'WIDTH=320' "$work/windowed-restored"
+		grep -qx 'HEIGHT=180' "$work/windowed-restored"
+		DISPLAY=$display xdotool set_window --name 'DC Universe Online [DCUOT.620000]' "$rule_win"
+		sleep 0.2
+	fi
+	wait_for_fullscreen_monitors ''
+	wait_for_window_state_absent "$rule_win" _NET_WM_STATE_FULLSCREEN
+	kill "$fullscreen_client_pid"
+	wait "$fullscreen_client_pid" 2>/dev/null || true
+	fullscreen_client_pid=
+done
 # Wine may publish its distinguishing game title only after mapping.
 for late_override in '' 'fullscreen=0' 'noswallow=1'; do
 	cp "$work/fullscreen-rules-backup" "$home/.config/dwm-titus/window-rules.toml"
@@ -1449,11 +1529,16 @@ stack_win=$(cat "$work/restore-stack-window-id")
 [ -n "$stack_win" ]
 
 # Preserve swallowing and restore the terminal after a fullscreen child exits.
-for rule_fullscreen in 0 1 fake-parent; do
+for rule_fullscreen in 0 1 fake-parent windowed windowed-fake-parent; do
 	rule_value=$rule_fullscreen
-	[ "$rule_fullscreen" != fake-parent ] || rule_value=1
+	case $rule_fullscreen in
+	fake-parent) rule_value=1 ;;
+	windowed*) rule_value=1 ;;
+	esac
+	rule_field=fullscreen
+	case $rule_fullscreen in windowed*) rule_field=fakefullscreen ;; esac
 	cp "$work/fullscreen-rules-backup" "$home/.config/dwm-titus/window-rules.toml"
-	sed -i '/^rules = \[/a\  { title="dwm-xvfb-swallowed", fullscreen='"$rule_value"' },' \
+	sed -i '/^rules = \[/a\  { title="dwm-xvfb-swallowed", '"$rule_field"'='"$rule_value"' },' \
 		"$home/.config/dwm-titus/window-rules.toml"
 	reload_rules
 	: >"$work/swallow-window-ids"
@@ -1468,7 +1553,7 @@ for rule_fullscreen in 0 1 fake-parent; do
 	done
 	terminal_win=$(sed -n '1p' "$work/swallow-window-ids")
 	wait_for_active_window "$terminal_win"
-	if [ "$rule_fullscreen" = fake-parent ]; then
+	if [ "$rule_fullscreen" = fake-parent ] || [ "$rule_fullscreen" = windowed-fake-parent ]; then
 		DISPLAY=$display xdotool key Super+Shift+y
 		wait_for_window_state "$terminal_win" _NET_WM_STATE_FULLSCREEN
 		wait_for_fullscreen_monitors ''
@@ -1485,7 +1570,11 @@ for rule_fullscreen in 0 1 fake-parent; do
 	[ -n "$swallowed_win" ]
 	wait_for_active_window "$swallowed_win"
 	if [ "$rule_value" = 1 ]; then
-		wait_for_window_state "$swallowed_win" _NET_WM_STATE_FULLSCREEN
+		if [ "$rule_field" = fakefullscreen ]; then
+			wait_for_window_state_absent "$swallowed_win" _NET_WM_STATE_FULLSCREEN
+		else
+			wait_for_window_state "$swallowed_win" _NET_WM_STATE_FULLSCREEN
+		fi
 		wait_for_fullscreen_monitors 0
 		DISPLAY=$display xdotool getwindowgeometry --shell "$swallowed_win" >"$work/swallow-geometry"
 		grep -qx 'X=0' "$work/swallow-geometry"
@@ -1499,7 +1588,7 @@ for rule_fullscreen in 0 1 fake-parent; do
 
 	DISPLAY=$display xdotool windowkill "$swallowed_win"
 	wait_for_client_window "$terminal_win"
-	if [ "$rule_fullscreen" = fake-parent ]; then
+	if [ "$rule_fullscreen" = fake-parent ] || [ "$rule_fullscreen" = windowed-fake-parent ]; then
 		wait_for_window_state "$terminal_win" _NET_WM_STATE_FULLSCREEN
 	else
 		wait_for_window_state_absent "$terminal_win" _NET_WM_STATE_FULLSCREEN

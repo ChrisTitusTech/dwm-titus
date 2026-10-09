@@ -121,12 +121,28 @@ Other monitors and the tag's selected layout stay unchanged. This differs from
 monocle, which uses the available work area. Existing explicitly allowed overlays
 can still appear above fullscreen windows.
 
+For games that should remain windowed, use `fakefullscreen=1` instead. This
+fills the monitor, hides the panel, and removes dwm borders without advertising
+`_NET_WM_STATE_FULLSCREEN` to Wine or the application. It overrides normal size
+hints while active. Start the game in its own windowed mode; dwm does not edit
+game settings, and a game may independently react to the resized window.
+
+Press `Super+Shift+Y` to exit this rule's mode and restore the previous window
+size and border. While active, client fullscreen requests cannot switch it to
+advertised fullscreen or cancel its screen-filling geometry. Outside this rule's
+mode, that shortcut retains its existing behavior: advertising fullscreen while
+keeping the normal layout. The shortcut and rule intentionally differ.
+
+Use only one mode per rule. If both fields are `1`, `fakefullscreen` wins. Both
+accept only integer `1`; zero, omitted, or invalid values disable that mode in
+the final matching rule.
+
 Rules hot-reload when saved; reopening applies them at startup. A title-based
-fullscreen rule also applies once if the matching title arrives after the window
-opens, as can happen with Wine games. For example:
+rule for either mode also applies once if the matching title arrives after the
+window opens, as can happen with Wine games. For example:
 
 ```toml
-{ class="steam_app_24200", title="DC Universe Online [DCUOT.", fullscreen=1 },
+{ class="steam_app_24200", title="DC Universe Online [DCUOT.", fakefullscreen=1 },
 ```
 
 This excludes the launcher titled only `DC Universe Online`. Matching uses
@@ -134,11 +150,10 @@ case-sensitive substrings. Later title changes do not force fullscreen back on
 after you exit it. Late title matching does not move the window to a different
 tag or monitor, and saving rules alone does not reapply them to existing windows.
 
-Like other scalar rule fields, the last matching rule wins; `fullscreen=0` or an
-omitted field in that rule disables automatic fullscreen. It does not prevent an
-application from requesting fullscreen itself. Existing files need no migration.
-This is an opening preference, not a lock: the application can leave fullscreen
-normally. Transient dialogs keep the existing parent-inheritance behavior, and
+Like other scalar rule fields, the last matching rule wins. Existing files need
+no migration. The `fullscreen=1` mode remains an opening preference: the
+application can leave true fullscreen normally. The `fakefullscreen=1` mode
+stays borderless and windowed until you exit it with `Super+Shift+Y`. Transient dialogs keep the existing parent-inheritance behavior, and
 unmanaged overlay windows are not resized by this option.
 
 #### Overlays above other applications

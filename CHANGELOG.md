@@ -11,6 +11,8 @@ versions from `config.mk`.
 - Add `fullscreen=1` window rules to open matching applications across the
   entire monitor without a top bar, gaps, or window borders. Title-based rules
   also apply once when a matching title arrives after the window opens.
+- Add `fakefullscreen=1` rules for borderless, monitor-sized windowed mode
+  without requesting fullscreen from the application.
 
 - Keep Update Center floating and apply its saved Float update terminal toggle
   to the next update or recovery terminal, which defaults to tiled.

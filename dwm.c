@@ -119,6 +119,7 @@ struct Client {
 	int isfixed, isfloating, isurgent, neverfocus, oldstate, isfullscreen, isterminal, noswallow, alwaysontop, ewmhabove;
 	int issteam;
 	int rulefullscreenapplied;
+	int iswindowedfullscreen; /* Monitor-sized geometry without EWMH fullscreen. */
 	int beingmoved;
 	int fakefullscreen;
 	pid_t pid;
@@ -186,11 +187,15 @@ typedef struct {
 	int noswallow;
 	int monitor;
 	int fullscreen;
+	int fakefullscreen;
 } Rule;
+
+enum { RuleFullscreenNone, RuleFullscreenReal, RuleFullscreenWindowed };
 
 /* core client and layout declarations */
 static int applyrules(Client *c);
 static int applytitlerules(Client *c);
+static void applyfullscreenrule(Client *c, int mode);
 static int applysizehints(Client *c, int *x, int *y, int *w, int *h, int interact);
 static void arrange(Monitor *m);
 static void arrangemon(Monitor *m);
@@ -560,7 +565,8 @@ applyrules(Client *c)
 		&& (!r->class || strstr(class, r->class))
 		&& (!r->instance || strstr(instance, r->instance)))
 		{
-			fullscreen = r->fullscreen;
+			fullscreen = r->fakefullscreen ? RuleFullscreenWindowed
+				: (r->fullscreen ? RuleFullscreenReal : RuleFullscreenNone);
 			c->isterminal = r->isterminal;
 			c->noswallow  = r->noswallow;
 			c->isfloating = r->isfloating;
@@ -620,7 +626,9 @@ applytitlerules(Client *c)
 		&& (!r->class || strstr(class, r->class))
 		&& (!r->instance || strstr(instance, r->instance))) {
 			/* Include class-only overrides in last-matching-rule precedence. */
-			titlefullscreen = r->title && r->fullscreen;
+			titlefullscreen = !r->title ? RuleFullscreenNone
+				: (r->fakefullscreen ? RuleFullscreenWindowed
+				: (r->fullscreen ? RuleFullscreenReal : RuleFullscreenNone));
 			if (!r->title)
 				continue;
 			c->isterminal = r->isterminal;
@@ -644,17 +652,26 @@ applytitlerules(Client *c)
 
 	/* Consume the opening preference once, even across later title changes. */
 	if (titlefullscreen && !c->rulefullscreenapplied) {
-		c->rulefullscreenapplied = 1;
-		if (c->isfullscreen)
-			ewmh_set_fullscreen_state(c, 1);
-		if (c->fakefullscreen == 1)
-			c->fakefullscreen = 2;
-		setfullscreen(c, 1);
-		updatefullscreenmonitors();
+		applyfullscreenrule(c, titlefullscreen);
 		changed = 1;
 	}
 
 	return changed;
+}
+
+/* Both rules share geometry and stacking, but only real mode informs clients. */
+void
+applyfullscreenrule(Client *c, int mode)
+{
+	c->rulefullscreenapplied = 1;
+	c->iswindowedfullscreen = mode == RuleFullscreenWindowed;
+	/* Also synchronize properties after swallowing or an inherited fake mode. */
+	ewmh_set_fullscreen_state(c, !c->iswindowedfullscreen);
+	if (c->fakefullscreen == 1)
+		c->fakefullscreen = 2;
+	setfullscreen(c, 1);
+	arrange(c->mon);
+	updatefullscreenmonitors();
 }
 
 /* core client, layout, and input implementations */
@@ -940,10 +957,15 @@ clientmessage(XEvent *e)
 	if (cme->message_type == netatom[NetWMState]) {
 		if (cme->data.l[1] == netatom[NetWMFullscreen]
 		|| cme->data.l[2] == netatom[NetWMFullscreen]) {
-			if (c->fakefullscreen == 2 && c->isfullscreen)
-				c->fakefullscreen = 3;
-			setfullscreen(c, (cme->data.l[0] == 1 /* _NET_WM_STATE_ADD    */
-				|| (cme->data.l[0] == 2 /* _NET_WM_STATE_TOGGLE */ && !c->isfullscreen)));
+			if (c->iswindowedfullscreen) {
+				/* Keep the rule windowed even if a resize prompts a client request. */
+				ewmh_set_fullscreen_state(c, 0);
+			} else {
+				if (c->fakefullscreen == 2 && c->isfullscreen)
+					c->fakefullscreen = 3;
+				setfullscreen(c, (cme->data.l[0] == 1 /* _NET_WM_STATE_ADD    */
+					|| (cme->data.l[0] == 2 /* _NET_WM_STATE_TOGGLE */ && !c->isfullscreen)));
+			}
 		}
 		nstates = getatomproplist(c, netatom[NetWMState], states, LENGTH(states), &truncated);
 		for (i = 1; i <= 2; i++) {
@@ -1974,15 +1996,7 @@ manage(Window w, XWindowAttributes *wa)
 	if (term && swallow(term, c))
 		c = term;
 	if (rulefullscreen) {
-		c->rulefullscreenapplied = 1;
-		/* Swallowing may inherit state without the child window property. */
-		if (c->isfullscreen)
-			ewmh_set_fullscreen_state(c, 1);
-		if (c->fakefullscreen == 1)
-			c->fakefullscreen = 2; /* A swallowed terminal may use fake fullscreen. */
-		setfullscreen(c, 1);
-		arrange(c->mon); /* Keep rules targeting an inactive tag off screen. */
-		updatefullscreenmonitors();
+		applyfullscreenrule(c, rulefullscreen);
 	}
 	focus(NULL);
 }
@@ -3166,7 +3180,8 @@ ewmh_set_desktop_names(void)
 static void
 ewmh_set_fullscreen_state(Client *c, int fullscreen)
 {
-	setatomprop(c, netatom[NetWMState], netatom[NetWMFullscreen], fullscreen);
+	setatomprop(c, netatom[NetWMState], netatom[NetWMFullscreen],
+		fullscreen && !c->iswindowedfullscreen);
 }
 
 void
@@ -3258,6 +3273,9 @@ setfullscreen(Client *c, int fullscreen)
 	int actualfullscreenchanged, savestate = 0, restorestate = 0;
 	int wasactualfullscreen = c->isfullscreen && c->fakefullscreen != 1;
 
+	if (c->iswindowedfullscreen && !fullscreen)
+		c->fakefullscreen = 0; /* Exit windowed geometry without entering legacy fake mode. */
+
 	if ((c->fakefullscreen == 0 && fullscreen && !c->isfullscreen) // normal fullscreen
 			|| (c->fakefullscreen == 2 && fullscreen)) // fake fullscreen --> actual fullscreen
 		savestate = 1; // go actual fullscreen
@@ -3277,11 +3295,13 @@ setfullscreen(Client *c, int fullscreen)
 	} else if (c->fakefullscreen == 3) // client exiting actual fullscreen
 		c->fakefullscreen = 1;
 
-	if (fullscreen != c->isfullscreen) { // only send property change if necessary
+	if (fullscreen != c->isfullscreen || c->iswindowedfullscreen) {
 		ewmh_set_fullscreen_state(c, fullscreen);
 	}
 
 	c->isfullscreen = fullscreen;
+	if (!fullscreen)
+		c->iswindowedfullscreen = 0;
 	actualfullscreenchanged = wasactualfullscreen
 		!= (c->isfullscreen && c->fakefullscreen != 1);
 
@@ -3906,6 +3926,7 @@ load_rules_toml(const char *user_path, const char *default_path)
 		const TomlValue *vt    = toml_table_get(&doc, "rules", i, "title");
 		const TomlValue *vtag  = toml_table_get(&doc, "rules", i, "tags");
 		const TomlValue *vfull = toml_table_get(&doc, "rules", i, "fullscreen");
+		const TomlValue *vfake = toml_table_get(&doc, "rules", i, "fakefullscreen");
 		const TomlValue *vfl   = toml_table_get(&doc, "rules", i, "isfloating");
 		const TomlValue *vaot  = toml_table_get(&doc, "rules", i, "alwaysontop");
 		const TomlValue *vterm = toml_table_get(&doc, "rules", i, "isterminal");
@@ -3933,6 +3954,7 @@ load_rules_toml(const char *user_path, const char *default_path)
 		r->tags       = (vtag  && vtag->type  == TOML_INT && vtag->i >= 1 && vtag->i <= 9)
 		                ? (unsigned int)(1 << (vtag->i - 1)) : 0;
 		r->fullscreen = vfull && vfull->type == TOML_INT && vfull->i == 1;
+		r->fakefullscreen = vfake && vfake->type == TOML_INT && vfake->i == 1;
 		r->isfloating = (vfl   && vfl->type   == TOML_INT) ? (int)vfl->i           : 0;
 		r->alwaysontop = (vaot && vaot->type  == TOML_INT) ? (int)vaot->i          : 0;
 		r->isterminal = (vterm && vterm->type == TOML_INT) ? (int)vterm->i         : 0;
@@ -4355,6 +4377,8 @@ swallow(Client *p, Client *c)
 	int ewmhabove = p->ewmhabove;
 	p->ewmhabove = c->ewmhabove;
 	c->ewmhabove = ewmhabove;
+	/* The child inherits the visible geometry; retain the parent mode for restore. */
+	c->iswindowedfullscreen = p->iswindowedfullscreen;
 	int rulefullscreenapplied = p->rulefullscreenapplied;
 	p->rulefullscreenapplied = c->rulefullscreenapplied;
 	c->rulefullscreenapplied = rulefullscreenapplied;
@@ -4613,7 +4637,10 @@ togglefakefullscreen(const Arg *arg)
 	if (!c)
 		return;
 
-	if (c->fakefullscreen != 1 && c->isfullscreen) { // exit fullscreen --> fake fullscreen
+	if (c->iswindowedfullscreen) {
+		setfullscreen(c, 0);
+		arrange(c->mon);
+	} else if (c->fakefullscreen != 1 && c->isfullscreen) { // exit fullscreen --> fake fullscreen
 		c->fakefullscreen = 2;
 		setfullscreen(c, 0);
 	} else if (c->fakefullscreen == 1) {
@@ -4894,6 +4921,7 @@ unswallow(Client *c)
 {
 	c->win = c->swallowing->win;
 	c->ewmhabove = c->swallowing->ewmhabove;
+	c->iswindowedfullscreen = c->swallowing->iswindowedfullscreen;
 	c->rulefullscreenapplied = c->swallowing->rulefullscreenapplied;
 
 	#if SHOWWINICON
