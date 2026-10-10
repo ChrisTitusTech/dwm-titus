@@ -100,6 +100,75 @@ $EDITOR config.h
 
 ### Window Rules
 
+#### Open an application across the entire monitor
+
+Add a rule to `~/.config/dwm-titus/window-rules.toml` (or your
+`XDG_CONFIG_HOME` equivalent), inside its existing `rules = [...]` array:
+
+```toml
+{ class="YourApp", fullscreen=1, noswallow=1, tags=5 },
+```
+
+Use `xprop WM_CLASS` and click the application to find its class (the second
+quoted value). Omit `tags` to use the current tag, or add `monitor` to select a
+monitor using the existing tag/monitor rules. `noswallow=1` keeps the application
+independent of the terminal that launched it.
+
+`fullscreen=1` opens a newly managed window in true fullscreen: it covers the
+entire assigned monitor, including the top-bar area, with no dwm border or gaps.
+The managed top bar hides on that monitor while the fullscreen window is visible.
+Other monitors and the tag's selected layout stay unchanged. This differs from
+monocle, which uses the available work area. Existing explicitly allowed overlays
+can still appear above fullscreen windows.
+
+For games that should remain windowed, use `fakefullscreen=1` instead. This
+fills the monitor, hides the panel, and removes dwm borders without advertising
+`_NET_WM_STATE_FULLSCREEN` to Wine or the application. It overrides normal size
+hints while active. Start the game in its own windowed mode; dwm does not edit
+game settings, and a game may independently react to the resized window.
+
+Add `ignoresizehints=1` to bypass application minimum, maximum, base-size,
+resize-increment, and aspect-ratio hints during normal tiling and resizing.
+Fixed-size hints then also stop forcing the window to float. This is useful
+for Wine windows and can be combined with `fakefullscreen=1`; fake fullscreen
+already uses a direct monitor-sized resize, while `ignoresizehints` also covers
+normal layout and resize paths. It does not change the game's rendering resolution
+or stretch pixels inside a window that the application refuses to redraw.
+
+Only integer `1` enables it; the last matching rule wins, including zero or an
+omitted field. A late title change recalculates this option and the fixed-size
+status. A window that was already floating stays floating until you toggle it
+back to tiled mode. Existing rules keep their size-hint behavior by default.
+
+Press `Super+Shift+Y` to exit this rule's mode and restore the previous window
+size and border. While active, client fullscreen requests cannot switch it to
+advertised fullscreen or cancel its screen-filling geometry. Outside this rule's
+mode, that shortcut retains its existing behavior: advertising fullscreen while
+keeping the normal layout. The shortcut and rule intentionally differ.
+
+Use only one mode per rule. If both fields are `1`, `fakefullscreen` wins. Both
+accept only integer `1`; zero, omitted, or invalid values disable that mode in
+the final matching rule.
+
+Rules hot-reload when saved; reopening applies them at startup. A title-based
+rule for either mode also applies once if the matching title arrives after the
+window opens, as can happen with Wine games. For example:
+
+```toml
+{ class="steam_app_24200", title="DC Universe Online [DCUOT.", fakefullscreen=1, ignoresizehints=1 },
+```
+
+This excludes the launcher titled only `DC Universe Online`. Matching uses
+case-sensitive substrings. Later title changes do not force fullscreen back on
+after you exit it. Late title matching does not move the window to a different
+tag or monitor, and saving rules alone does not reapply them to existing windows.
+
+Like other scalar rule fields, the last matching rule wins. Existing files need
+no migration. The `fullscreen=1` mode remains an opening preference: the
+application can leave true fullscreen normally. The `fakefullscreen=1` mode
+stays borderless and windowed until you exit it with `Super+Shift+Y`. Transient dialogs keep the existing parent-inheritance behavior, and
+unmanaged overlay windows are not resized by this option.
+
 #### Overlays above other applications
 
 An overlay's application chooses whether its X11 window is managed. This is
