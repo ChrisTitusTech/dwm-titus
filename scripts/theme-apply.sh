@@ -564,7 +564,8 @@ EOF
 	KITTY_CONF="$KITTY_DIR/kitty.conf"
 	KITTY_TAIL='# Active theme, managed by theme-apply.sh. Keep this include last.'
 	if [[ -f "$KITTY_CONF" ]]; then
-		kitty_rest=$(awk -v tail="$KITTY_TAIL" -v kitty_dir="$KITTY_DIR" '
+		kitty_rest=$(awk -v tail="$KITTY_TAIL" -v kitty_dir="$KITTY_DIR" \
+			-v home_kitty_dir="$THEME_DISCOVERY_HOME/.config/kitty" '
 			BEGIN {
 				n = split("active_border_color #ffffff inactive_border_color #cccccc " \
 					"active_tab_foreground #000 active_tab_background #eee " \
@@ -576,12 +577,18 @@ EOF
 				for (i = 1; i < n; i += 2) legacy[f[i] " " f[i + 1]] = 1
 			}
 			# Kitty also skips the same file included under another spelling,
-			# such as ./active-theme.conf or an absolute path.
+			# such as ./active-theme.conf or an absolute path to this kitty
+			# directory. Includes from any other directory stay.
 			$1 == "include" && NF == 2 {
 				path = $2
 				while (sub(/^\.\//, "", path)) {}
-				sub(/^.*\/\.config\/kitty\//, "", path)
-				if (index(path, kitty_dir "/") == 1) path = substr(path, length(kitty_dir) + 2)
+				if (index(path, kitty_dir "/") == 1) {
+					path = substr(path, length(kitty_dir) + 2)
+				} else if (index(path, home_kitty_dir "/") == 1) {
+					path = substr(path, length(home_kitty_dir) + 2)
+				} else if (index(path, "~/.config/kitty/") == 1) {
+					path = substr(path, length("~/.config/kitty/") + 1)
+				}
 				if (path == "active-theme.conf" || path == "nord.conf") next
 			}
 			$0 == tail { next }
