@@ -613,6 +613,7 @@ integration_path_list_for() {
 		"$integration_config_home/qt6ct/qt6ct.conf"
 		"$integration_config_home/dwm-titus/personalization.conf"
 		"$integration_config_home/dwm-titus/xsettingsd.conf"
+		"$integration_config_home/kitty/kitty.conf.dwm-titus.bak"
 	)
 }
 
@@ -626,13 +627,20 @@ integration_path_list_for_count() {
 		# upgrade so an active preview or interrupted transaction can recover.
 		unset 'integration_paths[11]'
 		unset 'integration_paths[12]'
+		unset 'integration_paths[13]'
 		;;
 	12)
 		# Personalization transactions created before managed XSETTINGS
 		# support did not journal the final xsettingsd configuration path.
 		unset 'integration_paths[12]'
+		unset 'integration_paths[13]'
 		;;
-	13) ;;
+	13)
+		# Transactions created before the Kitty migration did not journal its
+		# one-time kitty.conf backup.
+		unset 'integration_paths[13]'
+		;;
+	14) ;;
 	*) return 1 ;;
 	esac
 }
