@@ -1738,6 +1738,15 @@ PATH=$theme_path HOME=$concurrent_home XDG_CONFIG_HOME=$concurrent_config \
 	"$repo/scripts/theme-apply.sh" >"$work/duplicate-kitty.out" 2>"$work/duplicate-kitty.err"
 [[ $(grep -Fxc 'include active-theme.conf' "$legacy_kitty") == 1 ]]
 [[ $(grep -v -e '^[[:space:]]*#' -e '^[[:space:]]*$' "$legacy_kitty" | tail -n 1) == 'include active-theme.conf' ]]
+# Other spellings of the same include are also replaced.
+printf '%s\n' 'include ./active-theme.conf' 'color2 #123456' \
+	"include $concurrent_config/kitty/active-theme.conf" 'include ~/.config/kitty/nord.conf' >"$legacy_kitty"
+PATH=$theme_path HOME=$concurrent_home XDG_CONFIG_HOME=$concurrent_config \
+	XDG_RUNTIME_DIR=$concurrent_runtime DWM_APPEARANCE_THEMES_FILE=$managed_file \
+	"$repo/scripts/theme-apply.sh" >"$work/spelling-kitty.out" 2>"$work/spelling-kitty.err"
+[[ $(grep -Ec '^include' "$legacy_kitty") == 1 ]]
+[[ $(grep -v -e '^[[:space:]]*#' -e '^[[:space:]]*$' "$legacy_kitty" | tail -n 1) == 'include active-theme.conf' ]]
+grep -Fqx 'color2 #123456' "$legacy_kitty"
 # The shipped kitty.conf is already in its final form.
 cp "$repo/config/kitty/kitty.conf" "$legacy_kitty"
 PATH=$theme_path HOME=$concurrent_home XDG_CONFIG_HOME=$concurrent_config \
