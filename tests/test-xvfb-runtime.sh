@@ -1366,7 +1366,7 @@ for hints_case in enabled late zero omitted invalid; do
 	sleep 0.2
 	DISPLAY=$display xdotool getwindowgeometry --shell "$rule_win" >"$work/hints-geometry"
 	if [ -z "$hints_override" ]; then
-		if grep -qx 'WIDTH=320' "$work/hints-geometry" && grep -qx 'HEIGHT=180' "$work/hints-geometry"; then
+		if grep -qx 'WIDTH=320' "$work/hints-geometry" || grep -qx 'HEIGHT=180' "$work/hints-geometry"; then
 			printf '%s\n' 'ignoresizehints did not release fixed window dimensions' >&2
 			exit 1
 		fi
