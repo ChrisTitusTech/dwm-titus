@@ -32,6 +32,14 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Make Kitty follow the selected theme instead of Nord. The shipped
+  `kitty.conf` no longer sets its own palette or includes `nord.conf`. Theme
+  apply, including from Settings, updates an existing `kitty.conf` once: it
+  removes unchanged palette, border and tab lines shipped up to v0.7.2 and the
+  `nord.conf` include, makes `include active-theme.conf` the last and only
+  copy, keeps every other line, and saves the original as
+  `kitty.conf.dwm-titus.bak` with the same permissions.
+
 - Require GNOME Keyring and its separate PAM module in every install profile,
   detect missing keyring packages in dependency checks and System Health, and
   repair them during source and desktop updates. This prevents repeated unlock

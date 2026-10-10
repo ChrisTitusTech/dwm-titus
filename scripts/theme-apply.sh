@@ -556,13 +556,56 @@ color14 $TERM_C14
 color15 $TERM_C15
 EOF
 
-	# Ensure kitty.conf has 'include active-theme.conf' at the top
-	if [[ -f "$KITTY_DIR/kitty.conf" ]]; then
-		if ! grep -q "include active-theme.conf" "$KITTY_DIR/kitty.conf"; then
-			sed -i '1s|^|include active-theme.conf\n|' "$KITTY_DIR/kitty.conf"
+	# Kitty keeps the last value it reads for each color and ignores a file
+	# included twice, so 'include active-theme.conf' must be the only include of
+	# it and the last setting in kitty.conf. Drop the palette lines and the
+	# nord.conf include shipped up to v0.7.2 (exact copies only, so changed
+	# values stay), keep everything else, and back up the original once.
+	KITTY_CONF="$KITTY_DIR/kitty.conf"
+	KITTY_TAIL='# Active theme, managed by theme-apply.sh. Keep this include last.'
+	if [[ -f "$KITTY_CONF" ]]; then
+		kitty_rest=$(awk -v tail="$KITTY_TAIL" -v kitty_dir="$KITTY_DIR" \
+			-v home_kitty_dir="$THEME_DISCOVERY_HOME/.config/kitty" '
+			BEGIN {
+				n = split("active_border_color #ffffff inactive_border_color #cccccc " \
+					"active_tab_foreground #000 active_tab_background #eee " \
+					"inactive_tab_foreground #444 inactive_tab_background #999 " \
+					"color0 #2f2f2f color8 #656565 color1 #d75f5f color9 #d75f5f " \
+					"color2 #d4d232 color10 #8fee96 color3 #af865a color11 #cd950c " \
+					"color4 #22c3a1 color12 #22c3a1 color5 #775759 color13 #775759 " \
+					"color6 #84edb9 color14 #84edb9 color7 #c0b18b color15 #d8d8d8", f, " ")
+				for (i = 1; i < n; i += 2) legacy[f[i] " " f[i + 1]] = 1
+			}
+			# Kitty also skips the same file included under another spelling,
+			# such as ./active-theme.conf or an absolute path to this kitty
+			# directory. Includes from any other directory stay.
+			$1 == "include" && NF == 2 {
+				path = $2
+				while (sub(/^\.\//, "", path)) {}
+				if (index(path, kitty_dir "/") == 1) {
+					path = substr(path, length(kitty_dir) + 2)
+				} else if (index(path, home_kitty_dir "/") == 1) {
+					path = substr(path, length(home_kitty_dir) + 2)
+				} else if (index(path, "~/.config/kitty/") == 1) {
+					path = substr(path, length("~/.config/kitty/") + 1)
+				}
+				if (path == "active-theme.conf" || path == "nord.conf") next
+			}
+			$0 == tail { next }
+			$0 == "# Active theme \342\200\224 managed by theme-apply.sh, do not edit manually." { next }
+			$0 == "# Change the theme in ~/.config/dwm-titus/themes.toml instead." { next }
+			NF == 2 && (($1 " " $2) in legacy) { next }
+			{ print }
+		' "$KITTY_CONF")
+		kitty_new=$(printf '%s\n\n%s\ninclude active-theme.conf' "$kitty_rest" "$KITTY_TAIL")
+		if [[ $(cat "$KITTY_CONF") != "$kitty_new" ]]; then
+			if [[ ! -e "$KITTY_CONF.dwm-titus.bak" ]]; then
+				(umask 077 && cat "$KITTY_CONF" >"$KITTY_CONF.dwm-titus.bak")
+				chmod --reference="$KITTY_CONF" "$KITTY_CONF.dwm-titus.bak"
+			fi
+			printf '%s\n' "$kitty_new" >"$KITTY_CONF"
 		fi
 	fi
-
 fi
 # Signal kitty after normal writes or after a transaction restored the exact
 # pre-preview files. No restart is needed.
