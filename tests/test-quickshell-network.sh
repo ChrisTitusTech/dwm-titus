@@ -67,6 +67,18 @@ case "$*" in
 	service-fail)
 		exit 10
 		;;
+	two-wifi)
+		printf 'wlan0:wifi:disconnected:--\n'
+		printf 'wlan1:wifi:disconnected:--\n'
+		;;
+	no-wifi)
+		printf 'enp6s0:ethernet:connected:Wired connection 1\n'
+		;;
+	unmanaged-wifi)
+		printf 'wlan1:wifi:unmanaged:--\n'
+		printf 'wlan2:wifi:unavailable:--\n'
+		printf 'wlan0:wifi:disconnected:--\n'
+		;;
 	esac
 	;;
 "connection show --active")
@@ -79,6 +91,9 @@ case "$*" in
 	printf 'Work VPN:uuid-vpn:vpn\n'
 	printf 'lo:uuid-lo-name:802-3-ethernet\n'
 	printf 'Loopback profile:uuid-loopback:loopback\n'
+	if [ -n "${DWM_TEST_NMCLI_EXTRA_PROFILE:-}" ]; then
+		printf '%s:uuid-extra:802-11-wireless\n' "$DWM_TEST_NMCLI_EXTRA_PROFILE"
+	fi
 	;;
 "device wifi list --rescan no")
 	printf '*:AA\\:BB\\:CC\\:DD\\:EE\\:01:Cafe\\:WiFi:83:WPA2:6:wlan0\n'
@@ -154,6 +169,66 @@ case "$*" in
 	printf '%s\n' "$*" >>"$DWM_TEST_NMCLI_ARGV_LOG"
 	printf 'password-file %s\n' "$password_file" >>"$DWM_TEST_NMCLI_LOG"
 	printf 'wifi-wpa3\n' >>"$DWM_TEST_NMCLI_LOG"
+	;;
+"connection add type wifi con-name "*" 802-11-wireless.hidden yes connection.uuid "*)
+	case " $* " in
+	*" ifname "* | *" 802-11-wireless.bssid "*)
+		printf 'hidden profile bound to a device or BSSID: %s\n' "$*" >&2
+		exit 1
+		;;
+	esac
+	printf '%s\n' "$*" >>"$DWM_TEST_NMCLI_ARGV_LOG"
+	printf 'profile-add\n' >>"$DWM_TEST_NMCLI_LOG"
+	;;
+"device monitor "*)
+	if [ "${DWM_TEST_HIDDEN_MODE:-}" = auth ]; then
+		printf '%s: connecting (need authentication)\n' "$3"
+		sleep 0.2
+		printf '%s: connecting (need authentication)\n' "$3"
+	fi
+	exec sleep 30
+	;;
+"connection up uuid "*" ifname "*)
+	printf '%s\n' "$*" >>"$DWM_TEST_NMCLI_ARGV_LOG"
+	password_file=
+	previous=
+	for argument do
+		[ "$previous" != passwd-file ] || password_file=$argument
+		previous=$argument
+	done
+	if [ -n "$password_file" ]; then
+		[ "$(stat -c '%a' "$password_file")" = "600" ]
+		[ "$(cat "$password_file")" = "$DWM_TEST_HIDDEN_SECRET" ]
+		printf 'password-file %s\n' "$password_file" >>"$DWM_TEST_NMCLI_LOG"
+	fi
+	case "${DWM_TEST_HIDDEN_MODE:-}" in
+	fail-53)
+		printf 'Error: Connection activation failed: (53) The Wi-Fi network could not be found.\n' >&2
+		printf "Hint: use 'journalctl -xe NM_CONNECTION=x' to get more details.\n" >&2
+		exit 4
+		;;
+	fail-7)
+		printf 'Error: Connection activation failed: (7) Secrets were required, but not provided.\n' >&2
+		exit 4
+		;;
+	fail-17)
+		printf 'Error: Connection activation failed: (17) DHCP client failed.\n' >&2
+		exit 4
+		;;
+	fail-other)
+		printf 'Error: Connection activation failed: (36) Something else.\n' >&2
+		exit 4
+		;;
+	hold)
+		printf '%s\n' "$$" >"$DWM_TEST_HIDDEN_HOLD"
+		exec sleep 30
+		;;
+	auth)
+		exec sleep 30
+		;;
+	esac
+	printf 'Connection successfully activated\n'
+	printf 'wifi-hidden\n' >>"$DWM_TEST_NMCLI_LOG"
 	;;
 "connection delete uuid "*)
 	printf 'profile-delete %s\n' "$*" >>"$DWM_TEST_NMCLI_LOG"
@@ -343,6 +418,227 @@ grep -Fq "profile-delete connection delete uuid " "$work/nmcli.log"
 password_file=$(sed -n 's/^password-file //p' "$work/nmcli.log")
 [ -n "$password_file" ]
 [ ! -e "$password_file" ]
+
+# hidden_connect [NAME=value...] -- ARGS: run wifi-connect-hidden with
+# $work/hidden.in on stdin and the given stub settings in its environment.
+hidden_connect() {
+	: >"$work/nmcli.log"
+	: >"$work/nmcli-argv.log"
+	hidden_status=0
+	(
+		while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do
+			export "${1?}"
+			shift
+		done
+		shift
+		DWM_TEST_NMCLI_LOG="$work/nmcli.log" \
+			DWM_TEST_NMCLI_ARGV_LOG="$work/nmcli-argv.log" \
+			XDG_RUNTIME_DIR="$work/run" \
+			PATH="$work/bin:$PATH" \
+			exec "$repo/scripts/dwm-quickshell-network" wifi-connect-hidden "$@"
+	) <"$work/hidden.in" >"$work/hidden.out" 2>"$work/hidden.err" || hidden_status=$?
+}
+
+hidden_input() {
+	printf '%s\n' "$1" >"$work/hidden.in"
+}
+
+hidden_uuid='[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+hidden_file="$work/run/dwm-network-hidden[.][A-Za-z0-9]+/password"
+mkdir -m 700 "$work/run"
+
+hidden_password_file_removed() {
+	password_file=$(sed -n 's/^password-file //p' "$work/nmcli.log")
+	[ -n "$password_file" ]
+	[ ! -e "$password_file" ]
+	if find "$work/run" -mindepth 1 | grep -q .; then
+		printf 'Hidden Wi-Fi work files were left behind.\n' >&2
+		exit 1
+	fi
+	if grep -Fq "$1" "$work/nmcli-argv.log"; then
+		printf 'Hidden Wi-Fi secret reached nmcli argv.\n' >&2
+		exit 1
+	fi
+}
+
+hidden_input "correct horse battery staple"
+hidden_connect "DWM_TEST_HIDDEN_SECRET=802-11-wireless-security.psk:correct horse battery staple" -- \
+	wlan0 "Hidden Net" wpa-psk --password-stdin
+[ "$hidden_status" -eq 0 ]
+[ ! -s "$work/hidden.out" ]
+grep -Fqx "wifi-hidden" "$work/nmcli.log"
+grep -Eqx "connection add type wifi con-name Hidden Net ssid Hidden Net 802-11-wireless[.]hidden yes connection[.]uuid $hidden_uuid wifi-sec[.]key-mgmt wpa-psk" "$work/nmcli-argv.log"
+grep -Eqx "connection up uuid $hidden_uuid ifname wlan0 passwd-file $hidden_file" "$work/nmcli-argv.log"
+hidden_password_file_removed "correct horse battery staple"
+if grep -Fq "profile-delete" "$work/nmcli.log"; then
+	exit 1
+fi
+
+# A 64 digit hex PSK, automatic device choice, and name collisions.
+hex_psk=0123456789abcdef0123456789abcdef0123456789ABCDEF0123456789ABCDEF
+hidden_input "$hex_psk"
+hidden_connect "DWM_TEST_HIDDEN_SECRET=802-11-wireless-security.psk:$hex_psk" -- \
+	- "Home WiFi" wpa-psk --password-stdin
+[ "$hidden_status" -eq 0 ]
+grep -Eqx "connection add type wifi con-name Home WiFi [(]hidden[)] ssid Home WiFi 802-11-wireless[.]hidden yes connection[.]uuid $hidden_uuid wifi-sec[.]key-mgmt wpa-psk" "$work/nmcli-argv.log"
+grep -Eqx "connection up uuid $hidden_uuid ifname wlan0 passwd-file $hidden_file" "$work/nmcli-argv.log"
+hidden_password_file_removed "$hex_psk"
+
+hidden_input "correct horse battery staple"
+hidden_connect "DWM_TEST_NMCLI_EXTRA_PROFILE=Home WiFi (hidden)" \
+	"DWM_TEST_HIDDEN_SECRET=802-11-wireless-security.psk:correct horse battery staple" -- \
+	- "Home WiFi" wpa-psk --password-stdin
+[ "$hidden_status" -eq 0 ]
+grep -Eq "^connection add type wifi con-name Home WiFi [(]hidden 2[)] ssid Home WiFi " "$work/nmcli-argv.log"
+
+hidden_input "wpa3 secret"
+hidden_connect DWM_TEST_NMCLI_MODE=unmanaged-wifi \
+	"DWM_TEST_HIDDEN_SECRET=802-11-wireless-security.psk:wpa3 secret" -- \
+	- "-Hidden:Net" sae --password-stdin
+[ "$hidden_status" -eq 0 ]
+grep -Eqx "connection add type wifi con-name -Hidden:Net ssid -Hidden:Net 802-11-wireless[.]hidden yes connection[.]uuid $hidden_uuid wifi-sec[.]key-mgmt sae" "$work/nmcli-argv.log"
+grep -Eqx "connection up uuid $hidden_uuid ifname wlan0 passwd-file $hidden_file" "$work/nmcli-argv.log"
+hidden_password_file_removed "wpa3 secret"
+
+hidden_input "abcde"
+hidden_connect "DWM_TEST_HIDDEN_SECRET=802-11-wireless-security.wep-key0:abcde" -- \
+	wlan0 "Old Net" wep --password-stdin
+[ "$hidden_status" -eq 0 ]
+grep -Eqx "connection add type wifi con-name Old Net ssid Old Net 802-11-wireless[.]hidden yes connection[.]uuid $hidden_uuid wifi-sec[.]key-mgmt none wifi-sec[.]wep-key-type key" "$work/nmcli-argv.log"
+hidden_password_file_removed "abcde"
+
+hidden_input "long wep phrase"
+hidden_connect "DWM_TEST_HIDDEN_SECRET=802-11-wireless-security.wep-key0:long wep phrase" -- \
+	wlan0 "Old Net" wep --password-stdin
+[ "$hidden_status" -eq 0 ]
+grep -Eqx "connection add type wifi con-name Old Net ssid Old Net 802-11-wireless[.]hidden yes connection[.]uuid $hidden_uuid wifi-sec[.]key-mgmt none wifi-sec[.]wep-key-type passphrase" "$work/nmcli-argv.log"
+hidden_password_file_removed "long wep phrase"
+
+: >"$work/hidden.in"
+hidden_connect -- wlan0 "Open Net" none
+[ "$hidden_status" -eq 0 ]
+grep -Eqx "connection add type wifi con-name Open Net ssid Open Net 802-11-wireless[.]hidden yes connection[.]uuid $hidden_uuid" "$work/nmcli-argv.log"
+grep -Eqx "connection up uuid $hidden_uuid ifname wlan0" "$work/nmcli-argv.log"
+grep -Fqx "wifi-hidden" "$work/nmcli.log"
+
+# Device selection fails before any profile is created.
+hidden_device_error() {
+	: >"$work/hidden.in"
+	hidden_connect "DWM_TEST_NMCLI_MODE=$2" -- "$3" "Open Net" none
+	[ "$hidden_status" -eq 3 ]
+	grep -Fqx "$1" "$work/hidden.err"
+	[ ! -s "$work/nmcli-argv.log" ]
+}
+hidden_device_error "several Wi-Fi devices are available; choose one" two-wifi -
+hidden_device_error "no Wi-Fi device is available" no-wifi -
+hidden_device_error "Wi-Fi device wlan9 was not found" wired wlan9
+hidden_device_error "Wi-Fi device enp6s0 was not found" wired enp6s0
+hidden_connect DWM_TEST_NMCLI_MODE=two-wifi -- wlan1 "Open Net" none
+[ "$hidden_status" -eq 0 ]
+grep -Eqx "connection up uuid $hidden_uuid ifname wlan1" "$work/nmcli-argv.log"
+
+# Validation rejects bad input before NetworkManager is touched.
+hidden_rejects() {
+	expected=$1
+	hidden_input "$2"
+	shift 2
+	hidden_connect -- "$@"
+	if [ "$hidden_status" -ne 2 ]; then
+		printf 'Hidden Wi-Fi input was not rejected: %s\n' "$*" >&2
+		exit 1
+	fi
+	grep -Fqx "$expected" "$work/hidden.err"
+	[ ! -s "$work/nmcli-argv.log" ]
+	[ ! -s "$work/nmcli.log" ]
+}
+long_ssid=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+utf8_ssid=$(printf '\303\251\303\251\303\251\303\251\303\251\303\251\303\251\303\251\303\251\303\251\303\251\303\251\303\251\303\251\303\251\303\251\303\251')
+tab_ssid=$(printf 'Hidden\tNet')
+hidden_rejects "network name must be 1 to 32 bytes" unused wlan0 "$long_ssid" none
+hidden_rejects "network name must be 1 to 32 bytes" unused wlan0 "$utf8_ssid" none
+hidden_rejects "network name must be 1 to 32 bytes" unused wlan0 "" none
+hidden_rejects "network name must not contain control characters" unused wlan0 "$tab_ssid" none
+hidden_rejects "WPA password must be 8 to 63 characters or 64 hex digits" "1234567" \
+	wlan0 "Hidden Net" wpa-psk --password-stdin
+hidden_rejects "WPA password must be 8 to 63 characters or 64 hex digits" \
+	"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdeg" \
+	wlan0 "Hidden Net" wpa-psk --password-stdin
+hidden_rejects "WPA password must be 8 to 63 characters or 64 hex digits" \
+	"$(printf 'p\303\244sswort')" wlan0 "Hidden Net" wpa-psk --password-stdin
+hidden_rejects "Wi-Fi password required on stdin" "" wlan0 "Hidden Net" sae --password-stdin
+hidden_rejects "Wi-Fi password required on stdin" unused wlan0 "Hidden Net" sae
+hidden_rejects "open networks do not take a password" unused wlan0 "Hidden Net" none --password-stdin
+hidden_rejects "enterprise Wi-Fi must be configured in the delegated NetworkManager editor" unused \
+	wlan0 "Hidden Net" "WPA2 802.1X" --password-stdin
+hidden_rejects "unknown security type: wpa9" unused wlan0 "Hidden Net" wpa9 --password-stdin
+if grep -Fq "1234567" "$work/hidden.err"; then
+	exit 1
+fi
+
+# Activation failures print one mapped line and remove the new profile.
+hidden_failure() {
+	hidden_input "correct horse battery staple"
+	hidden_connect "DWM_TEST_HIDDEN_MODE=$2" \
+		"DWM_TEST_HIDDEN_SECRET=802-11-wireless-security.psk:correct horse battery staple" -- \
+		wlan0 "Hidden Net" wpa-psk --password-stdin
+	[ "$hidden_status" -eq 4 ]
+	[ "$(cat "$work/hidden.err")" = "$1" ]
+	grep -Fq "profile-delete connection delete uuid " "$work/nmcli.log"
+	hidden_password_file_removed "correct horse battery staple"
+}
+hidden_failure "hidden network Hidden Net was not found; check the name and security type" fail-53
+hidden_failure "authentication to Hidden Net failed; check the password and security type" fail-7
+hidden_failure "joined Hidden Net but no IP address was received" fail-17
+hidden_failure "Connection activation failed: (36) Something else." fail-other
+
+# A rejected secret makes NetworkManager ask again; the helper stops there.
+hidden_input "correct horse battery staple"
+hidden_connect DWM_TEST_HIDDEN_MODE=auth \
+	"DWM_TEST_HIDDEN_SECRET=802-11-wireless-security.psk:correct horse battery staple" -- \
+	wlan0 "Hidden Net" wpa-psk --password-stdin
+[ "$hidden_status" -eq 4 ]
+[ "$(cat "$work/hidden.err")" = "authentication to Hidden Net failed; check the password and security type" ]
+grep -Fq "profile-delete connection delete uuid " "$work/nmcli.log"
+hidden_password_file_removed "correct horse battery staple"
+
+# A terminated helper still removes the profile and the password file.
+: >"$work/nmcli.log"
+: >"$work/nmcli-argv.log"
+rm -f "$work/hidden-hold.pid"
+printf '%s\n' "correct horse battery staple" |
+	DWM_TEST_HIDDEN_MODE=hold \
+		DWM_TEST_HIDDEN_HOLD="$work/hidden-hold.pid" \
+		DWM_TEST_HIDDEN_SECRET="802-11-wireless-security.psk:correct horse battery staple" \
+		DWM_TEST_NMCLI_LOG="$work/nmcli.log" \
+		DWM_TEST_NMCLI_ARGV_LOG="$work/nmcli-argv.log" \
+		XDG_RUNTIME_DIR="$work/run" \
+		PATH="$work/bin:$PATH" \
+		"$repo/scripts/dwm-quickshell-network" wifi-connect-hidden wlan0 "Hidden Net" wpa-psk --password-stdin \
+		2>/dev/null &
+hidden_helper=$!
+i=0
+while [ "$i" -lt 250 ] && [ ! -s "$work/hidden-hold.pid" ]; do
+	i=$((i + 1))
+	sleep 0.02
+done
+[ -s "$work/hidden-hold.pid" ]
+kill -TERM "$hidden_helper"
+hidden_status=0
+wait "$hidden_helper" || hidden_status=$?
+[ "$hidden_status" -ne 0 ]
+grep -Fq "profile-delete connection delete uuid " "$work/nmcli.log"
+hidden_password_file_removed "correct horse battery staple"
+hidden_hold=$(cat "$work/hidden-hold.pid")
+i=0
+while [ "$i" -lt 150 ] && [ -e "/proc/$hidden_hold" ]; do
+	i=$((i + 1))
+	sleep 0.02
+done
+if [ -e "/proc/$hidden_hold" ]; then
+	printf 'Hidden Wi-Fi activation survived the terminated helper.\n' >&2
+	kill -KILL "$hidden_hold" 2>/dev/null || :
+	exit 1
+fi
 
 PATH="$work/bin:$PATH" "$repo/scripts/dwm-quickshell-network" monitor >"$work/monitor.out"
 grep -Fqx "wlan0: connected" "$work/monitor.out"
