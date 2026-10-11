@@ -75,8 +75,14 @@ These controls use the same 15-second preview and reset workflow, but are not
 tied to one physical keyboard. Kept choices are restored at the next login.
 
 To type in more than one language, enter a comma-separated list in Keyboard
-layout, for example `us,gr`, and add a `grp:` switch key to Modifier options,
-for example `grp:alt_shift_toggle` for Alt+Shift. Keep a layout with Latin
+layout, for example `us,gr`, and pick a key under Switch layout with: Alt+Shift,
+Ctrl+Shift, Caps Lock (Shift+Caps Lock is then Caps Lock), Shift+Caps Lock,
+both Shifts, Right Alt, Right Ctrl or Menu. Layout LED lights Caps Lock, Scroll
+Lock or Num Lock while a layout other than the first is active. Both only change
+the `grp:` and `grp_led:` part of Modifier options and use the same preview, so
+any other `grp:` option can still be typed there. Win+Space and the other Space
+chords are not offered because dwm still runs its own binding on them
+(Super+Space toggles floating). Keep a layout with Latin
 letters first, because dwm matches its hotkeys against the first layout. With
 two or more layouts the panel shows a keyboard layout pill with the active
 layout (US, GR, ...): click it or scroll on it to switch, middle-click for the

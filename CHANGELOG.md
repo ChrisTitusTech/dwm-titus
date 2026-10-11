@@ -19,6 +19,10 @@ versions from `config.mk`.
   default; `panel-widgets.conf` files from before it keep their choices. The
   pill is ported from the Keyboard-Layout-for-Omarchy plugin
   (https://github.com/Somnius/Keyboard-Layout-for-Omarchy, MIT).
+- Settings > Input has Switch layout with (Alt+Shift, Ctrl+Shift, Caps Lock,
+  Shift+Caps Lock, both Shifts, Right Alt, Right Ctrl, Menu) and Layout LED
+  (Caps, Scroll or Num Lock) buttons for keyboards. They preview a Modifier
+  options value with only the `grp:` or `grp_led:` part changed.
 - dwm publishes the active keyboard layout group, the group names and the
   keymap symbols name on the root window and switches layouts on a
   `_DWM_KEYBOARD_GROUP_REQUEST` root property or the new `cyclelayout` hotkey
