@@ -137,6 +137,44 @@ count_lines() {
 	grep -c "$1" "$2" || true
 }
 
+# Wait until the watch stream's newest value for key matches.
+wait_watch_value() {
+	i=0
+	while [ "$i" -lt 100 ]; do
+		last=$(sed -n "s/^$1=//p" "$work/watch.out" | tail -n 1)
+		[ "$last" = "$2" ] && return 0
+		i=$((i + 1))
+		sleep 0.05
+	done
+	fail "watch stream last $1 '$last', expected '$2'"
+}
+
+# Appends size MiB to the request property in 1 MiB chunks.
+huge_request() {
+	DISPLAY=$display python3 -I -c '
+import ctypes, sys
+x11 = ctypes.CDLL("libX11.so.6")
+x11.XOpenDisplay.restype = ctypes.c_void_p
+x11.XInternAtom.restype = ctypes.c_ulong
+dpy = ctypes.c_void_p(x11.XOpenDisplay(None))
+if not dpy.value:
+    sys.exit("cannot open display")
+root = x11.XDefaultRootWindow(dpy)
+atom = ctypes.c_ulong(x11.XInternAtom(dpy, b"_DWM_KEYBOARD_GROUP_REQUEST", 0))
+chunk = b"x" * (1 << 20)
+x11.XGrabServer(dpy)
+for i in range(int(sys.argv[1])):
+    x11.XChangeProperty(dpy, ctypes.c_ulong(root), atom, ctypes.c_ulong(31), 8,
+        0 if i == 0 else 2, chunk, len(chunk))
+x11.XUngrabServer(dpy)
+x11.XSync(dpy, 0)
+' "$1"
+}
+
+peak_kib() {
+	sed -n 's/^VmHWM:[[:space:]]*\([0-9]*\).*/\1/p' "/proc/$dwm_pid/status"
+}
+
 # Wait until the watch stream's newest keyboard_group/keyboard_groups pair
 # matches, so the test also proves the stream delivers it.
 wait_watch_group() {
@@ -272,7 +310,18 @@ assert_no_request
 X xprop -root -f _DWM_KEYBOARD_GROUP_REQUEST 8s -set _DWM_KEYBOARD_GROUP_REQUEST \
 	"$(awk 'BEGIN { while (n++ < 600) printf "x" }')"
 assert_no_request
-sleep 0.2
+# 64 MiB: dwm reads only the first bytes, so its peak memory stays put.
+peak_before=$(peak_kib)
+huge_request 64 || fail "could not write the huge request"
+assert_no_request
+# the server deletes the value before dwm has received it; a request dwm
+# answers afterwards means it is done with the huge one
+request 1
+wait_group '1, 3'
+peak_after=$(peak_kib)
+[ $((peak_after - peak_before)) -lt 16384 ] ||
+	fail "dwm peak memory grew from ${peak_before} to ${peak_after} KiB on a huge request"
+request 2
 wait_group '2, 3'
 if request 9 2>/dev/null; then
 	fail "helper accepted group 9"
@@ -418,8 +467,11 @@ X setxkbmap -layout us,gr -option ''
 wait_state_value keyboard_layouts 'us|gr'
 X xprop -root -remove _DWM_KEYBOARD_SYMBOLS
 wait_state_value keyboard_layouts 'us|gr'
+wait_watch_value keyboard_layouts 'us|gr'
 X xprop -root -remove _XKB_RULES_NAMES
 wait_state_value keyboard_layouts '|'
+# the watcher follows the fallback too
+wait_watch_value keyboard_layouts '|'
 wait_state_value keyboard_names 'English (US)|Greek'
 wait_state_value keyboard_groups 2
 
@@ -430,10 +482,20 @@ wait_group '0, 1'
 # step 11 left a lock of 3 behind; start from group 0
 request 0
 assert_no_request
+sleep 0.3
+names_before=$(count_lines '^_DWM_KEYBOARD_GROUP_NAMES' "$work/names.spy")
+symbols_before=$(count_lines '^_DWM_KEYBOARD_SYMBOLS' "$work/names.spy")
 X xmodmap -e 'keycode 38 = a A Greek_alpha Greek_ALPHA'
 wait_group '0, 2'
 X xmodmap -e 'keycode 38 = a A Greek_alpha Greek_ALPHA Cyrillic_ef Cyrillic_EF'
 wait_group '0, 3'
+sleep 0.3
+# a new count rewrites the names, the unchanged symbols name stays
+names_after=$(count_lines '^_DWM_KEYBOARD_GROUP_NAMES' "$work/names.spy")
+symbols_after=$(count_lines '^_DWM_KEYBOARD_SYMBOLS' "$work/names.spy")
+[ "$names_after" -gt "$names_before" ] || fail "names not rewritten for the new count"
+[ "$symbols_before" = "$symbols_after" ] ||
+	fail "unchanged symbols rewritten ($symbols_before -> $symbols_after)"
 
 step=15
 # 15. Selecting XkbMapNotify must not cost dwm the core MappingNotify it regrabs
@@ -449,7 +511,31 @@ sleep 0.3
 wait_group '1, 3'
 
 step=16
-# 16. dwm survived all of it.
+# 16. An options change renames the symbols but not the groups: only the
+# symbols property is rewritten.
+X setxkbmap -layout us,gr -option ''
+# step 15 left group 1 locked
+request 0
+wait_group '0, 2'
+sleep 0.3
+names_before=$(count_lines '^_DWM_KEYBOARD_GROUP_NAMES' "$work/names.spy")
+symbols_before=$(count_lines '^_DWM_KEYBOARD_SYMBOLS' "$work/names.spy")
+X setxkbmap -layout us,gr -option grp:alt_shift_toggle
+i=0
+while [ "$i" -lt 100 ] && [ "$(count_lines '^_DWM_KEYBOARD_SYMBOLS' "$work/names.spy")" = "$symbols_before" ]; do
+	i=$((i + 1))
+	sleep 0.05
+done
+sleep 0.3
+symbols_after=$(count_lines '^_DWM_KEYBOARD_SYMBOLS' "$work/names.spy")
+names_after=$(count_lines '^_DWM_KEYBOARD_GROUP_NAMES' "$work/names.spy")
+[ "$symbols_after" -gt "$symbols_before" ] || fail "symbols name not republished"
+root_value _DWM_KEYBOARD_SYMBOLS | grep -q 'alt_shift_toggle' || fail "symbols name lacks the option"
+[ "$names_before" = "$names_after" ] ||
+	fail "unchanged names rewritten ($names_before -> $names_after)"
+
+step=17
+# 17. dwm survived all of it.
 kill -0 "$dwm_pid" 2>/dev/null || fail "dwm exited"
 
 printf '%s\n' "Keyboard layout Xvfb test: PASS"

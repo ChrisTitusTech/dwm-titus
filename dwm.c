@@ -442,8 +442,10 @@ static int xkbeventbase = -1;  /* -1: no usable XKB extension */
 static long kbpublished[2] = { -1, -1 }; /* group, group count */
 static int kbgroups;            /* group count from the keyboard controls */
 static unsigned char kbwrap;    /* groups_wrap from the keyboard controls */
-static Atom kbnamecache[XkbNumKbdGroups + 2]; /* group names + symbols + count */
+static Atom kbnamecache[XkbNumKbdGroups + 1]; /* group names + count */
 static int kbnamecachevalid;
+static Atom kbsymbolscache;
+static int kbsymbolscachevalid;
 static unsigned long tagupdatesequence;
 
 /* External dock integration */
@@ -5200,7 +5202,7 @@ kbnormalize(int group, int count)
 static void
 kbpublishnames(XkbDescPtr xkb)
 {
-	Atom names[XkbNumKbdGroups + 2] = { 0 };
+	Atom names[XkbNumKbdGroups + 1] = { 0 }, symbols = None;
 	char *buf = NULL, *name, *tmp;
 	size_t len = 0, n;
 	int i;
@@ -5208,10 +5210,22 @@ kbpublishnames(XkbDescPtr xkb)
 	if (xkb->names) {
 		for (i = 0; i < kbgroups; i++)
 			names[i] = xkb->names->groups[i];
-		names[XkbNumKbdGroups] = xkb->names->symbols;
+		symbols = xkb->names->symbols;
+	}
+	/* Each property is rewritten only when its own value changed. */
+	if (!kbsymbolscachevalid || symbols != kbsymbolscache) {
+		kbsymbolscache = symbols;
+		kbsymbolscachevalid = 1;
+		name = symbols ? XGetAtomName(dpy, symbols) : NULL;
+		if (name)
+			XChangeProperty(dpy, root, kbsymbolsatom, XA_STRING, 8,
+				PropModeReplace, (unsigned char *)name, (int)strlen(name));
+		else
+			XDeleteProperty(dpy, root, kbsymbolsatom);
+		XFree(name);
 	}
 	/* the names property has one entry per group, so a new count rewrites it */
-	names[XkbNumKbdGroups + 1] = (Atom)kbgroups;
+	names[XkbNumKbdGroups] = (Atom)kbgroups;
 	if (kbnamecachevalid && !memcmp(names, kbnamecache, sizeof(names)))
 		return;
 	memcpy(kbnamecache, names, sizeof(names));
@@ -5240,14 +5254,6 @@ kbpublishnames(XkbDescPtr xkb)
 	else
 		XDeleteProperty(dpy, root, kbnamesatom);
 	free(buf);
-
-	name = names[XkbNumKbdGroups] ? XGetAtomName(dpy, names[XkbNumKbdGroups]) : NULL;
-	if (name)
-		XChangeProperty(dpy, root, kbsymbolsatom, XA_STRING, 8,
-			PropModeReplace, (unsigned char *)name, (int)strlen(name));
-	else
-		XDeleteProperty(dpy, root, kbsymbolsatom);
-	XFree(name);
 }
 
 /* Group switches come with the group in the event, so they need no round trip. */
@@ -5319,8 +5325,7 @@ cyclelayout(const Arg *arg)
 }
 
 /* _DWM_KEYBOARD_GROUP_REQUEST: "next", "prev" or a zero-based group index.
- * Read and deleted in one request, so a newer request is never lost to the
- * delete; requests set before dwm reads the previous one coalesce (last wins). */
+ * Requests set before dwm reads the previous one coalesce (last wins). */
 void
 keyboardrequest(void)
 {
@@ -5332,11 +5337,18 @@ keyboardrequest(void)
 	char *end;
 	long n;
 
-	/* The whole value in one read, so the read itself deletes it whatever its
-	 * size; a second delete could remove a newer request. */
-	if (XGetWindowProperty(dpy, root, kbrequestatom, 0L, 0x1fffffffL, True, AnyPropertyType,
-	    &type, &format, &nitems, &after, &data) != Success)
+	/* Only a few bytes are read, so a huge value cannot stall dwm. The read
+	 * deletes only a value that fits; a longer one is deleted under the same
+	 * server grab, so a newer request cannot slip in between and be lost. */
+	XGrabServer(dpy);
+	if (XGetWindowProperty(dpy, root, kbrequestatom, 0L, sizeof(req) / 4, True,
+	    AnyPropertyType, &type, &format, &nitems, &after, &data) != Success) {
+		XUngrabServer(dpy);
 		return;
+	}
+	if (after)
+		XDeleteProperty(dpy, root, kbrequestatom);
+	XUngrabServer(dpy);
 	if (!data)
 		return;
 	if (format != 8 || after || nitems == 0 || nitems >= sizeof(req)) {
