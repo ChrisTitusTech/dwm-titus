@@ -78,6 +78,9 @@ home="$work/home"
 runtime="$work/runtime"
 cleanup() {
 	set +e
+	# A test interrupted while dwm is stopped must resume it first, or the
+	# pending SIGTERM never lands and wait blocks forever.
+	[ -n "${dwm_pid:-}" ] && kill -CONT "$dwm_pid" 2>/dev/null
 	for pid in ${quickshell_pid:-} ${dwm_pid:-} ${xvfb_pid:-}; do
 		kill "$pid" 2>/dev/null
 	done
