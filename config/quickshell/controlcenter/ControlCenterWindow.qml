@@ -322,7 +322,7 @@ ClickAwayPopup {
                     spacing: 2
 
                     Repeater {
-                        model: ["Volume", "Bluetooth", "Network", "Power", "Workspaces"]
+                        model: ["Volume", "Bluetooth", "Network", "Power", "Keyboard layout", "Workspaces"]
 
                         delegate: MenuRow {
                             required property string modelData

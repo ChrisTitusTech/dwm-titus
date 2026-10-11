@@ -27,10 +27,10 @@ run_helper() {
 status=$(run_helper status)
 printf '%s\n' "$status" | grep -Fqx 'panel-settings-protocol	1	1'
 printf '%s\n' "$status" | grep -Fqx 'option	clock-seconds	disabled'
-test "$(printf '%s\n' "$status" | wc -l)" -eq 9
+test "$(printf '%s\n' "$status" | wc -l)" -eq 10
 printf '%s\n' "$status" | grep -Fqx \
 	'state	defaults	Using safe all-on defaults; the first change creates persistent state'
-for widget in workspaces volume bluetooth network power; do
+for widget in workspaces volume bluetooth network power keyboard-layout; do
 	printf '%s\n' "$status" | grep -Fqx "widget	$widget	enabled"
 done
 printf '%s\n' "$status" | grep -Fqx 'complete	status'
@@ -115,6 +115,65 @@ grep -Fqx 'volume	disabled' "$state_file"
 run_helper set clock-seconds disabled >/dev/null
 run_helper set bluetooth enabled >/dev/null
 
+# keyboard-layout: the sixth widget. Files from before it list exactly the five
+# legacy widgets; it is then on, and other choices and options are kept.
+printf 'panel-settings-protocol\t1\t1\nworkspaces\tenabled\nvolume\tdisabled\nbluetooth\tenabled\nnetwork\tenabled\npower\tenabled\noption\tclock-seconds\tenabled\n' \
+	>"$state_file"
+legacy_kbd=$(run_helper status)
+printf '%s\n' "$legacy_kbd" | grep -Fqx \
+	'state	available	Persistent panel visibility is active for every monitor'
+printf '%s\n' "$legacy_kbd" | grep -Fqx 'widget	keyboard-layout	enabled'
+printf '%s\n' "$legacy_kbd" | grep -Fqx 'widget	volume	disabled'
+printf '%s\n' "$legacy_kbd" | grep -Fqx 'option	clock-seconds	enabled'
+run_helper set keyboard-layout disabled | grep -Fqx 'result	set	keyboard-layout	disabled'
+grep -Fqx 'keyboard-layout	disabled' "$state_file"
+grep -Fqx 'option	clock-seconds	enabled' "$state_file"
+grep -Fqx 'volume	disabled' "$state_file"
+test "$(wc -l <"$state_file")" -eq 8
+kbd_off=$(run_helper status)
+printf '%s\n' "$kbd_off" | grep -Fqx 'widget	keyboard-layout	disabled'
+printf '%s\n' "$kbd_off" | grep -Fqx 'option	clock-seconds	enabled'
+printf '%s\n' "$kbd_off" | grep -Fqx \
+	'state	available	Persistent panel visibility is active for every monitor'
+# Reset turns it back on and keeps the seconds option.
+run_helper reset >/dev/null
+if grep -Fq 'keyboard-layout' "$state_file"; then
+	printf 'An enabled keyboard-layout was written to the file\n' >&2
+	exit 1
+fi
+grep -Fqx 'option	clock-seconds	enabled' "$state_file"
+run_helper status | grep -Fqx 'widget	keyboard-layout	enabled'
+# Enabled again is not written, so older helpers still read the file.
+run_helper set clock-seconds disabled >/dev/null
+run_helper set keyboard-layout disabled >/dev/null
+grep -Fqx 'panel-settings-protocol	1	0' "$state_file"
+grep -Fqx 'keyboard-layout	disabled' "$state_file"
+run_helper set keyboard-layout enabled >/dev/null
+test "$(wc -l <"$state_file")" -eq 6
+if grep -Fq 'keyboard-layout' "$state_file"; then
+	printf 'An enabled keyboard-layout was written to the file\n' >&2
+	exit 1
+fi
+# Exactly the five legacy widgets are required; keyboard-layout cannot stand
+# in for a missing one, and duplicates are rejected.
+for broken_widgets in \
+	'workspaces	enabled\nvolume	enabled\nbluetooth	enabled\nnetwork	enabled\nkeyboard-layout	enabled' \
+	'workspaces	enabled\nvolume	enabled\nbluetooth	enabled\nnetwork	enabled' \
+	'workspaces	enabled\nvolume	enabled\nbluetooth	enabled\nnetwork	enabled\npower	enabled\nkeyboard-layout	enabled\nkeyboard-layout	disabled' \
+	'workspaces	enabled\nvolume	enabled\nbluetooth	enabled\nnetwork	enabled\npower	enabled\nkeyboard	disabled'; do
+	# shellcheck disable=SC2059
+	printf "panel-settings-protocol\t1\t0\n$broken_widgets\n" >"$state_file"
+	broken=$(run_helper status)
+	printf '%s\n' "$broken" | grep -Fq 'state	partial	'
+	printf '%s\n' "$broken" | grep -Fqx 'widget	keyboard-layout	enabled'
+done
+printf 'panel-settings-protocol\t1\t0\nworkspaces\tenabled\nvolume\tenabled\nbluetooth\tenabled\nnetwork\tenabled\npower\tenabled\n' \
+	>"$state_file"
+if run_helper set keyboard maybe >/dev/null 2>&1; then
+	printf 'Panel settings accepted an unknown widget\n' >&2
+	exit 1
+fi
+
 # Option lines are only valid in 1.1 files; malformed option lines fall back.
 printf 'panel-settings-protocol\t1\t0\nworkspaces\tenabled\nvolume\tdisabled\nbluetooth\tenabled\nnetwork\tenabled\npower\tenabled\noption\tclock-seconds\tenabled\n' \
 	>"$state_file"
@@ -158,7 +217,7 @@ printf 'panel-settings-protocol\t2\t0\nvolume\tdisabled\n' >"$state_file"
 future=$(run_helper status)
 printf '%s\n' "$future" | grep -Fqx \
 	'state	partial	Unsupported panel settings version was preserved; using all-on defaults'
-for widget in workspaces volume bluetooth network power; do
+for widget in workspaces volume bluetooth network power keyboard-layout; do
 	printf '%s\n' "$future" | grep -Fqx "widget	$widget	enabled"
 done
 grep -Fqx 'panel-settings-protocol	2	0' "$state_file"
@@ -216,7 +275,7 @@ run_helper reset >/dev/null
 reset_status=$(run_helper status)
 printf '%s\n' "$reset_status" | grep -Fqx 'option	clock-seconds	enabled'
 run_helper set clock-seconds disabled >/dev/null
-for widget in workspaces volume bluetooth network power; do
+for widget in workspaces volume bluetooth network power keyboard-layout; do
 	printf '%s\n' "$reset_status" | grep -Fqx "widget	$widget	enabled"
 done
 
@@ -390,7 +449,7 @@ grep -Fq 'panelSettingsModel: panelSettingsModel' "$shell"
 grep -Fq 'function panelWidgetEnabled(widget: string): bool' "$shell"
 grep -Fq 'function panelWidgetSet(widget: string, enabled: bool): void' "$shell"
 grep -Fq 'required property var panelSettingsModel' "$panel"
-for widget in workspaces volume bluetooth network power; do
+for widget in workspaces volume bluetooth network power keyboard-layout; do
 	grep -Fq "root.panelSettingsModel.widgetEnabled(\"$widget\")" "$panel"
 done
 grep -Fq 'property var panelSettingsModel: null' "$control_model"
@@ -417,3 +476,7 @@ grep -Fq 'onToggled: root.panelSettingsModel.toggleWidget(panelWidgetRow.modelDa
 	"$appearance_pane"
 
 printf 'Quickshell panel settings persistence: PASS\n'
+grep -Fq '"Keyboard layout": "keyboard-layout"' "$control_model"
+grep -Fq 'model: ["Volume", "Bluetooth", "Network", "Power", "Keyboard layout", "Workspaces"]' "$control_window"
+grep -Fq '{ "id": "keyboard-layout", "label": "Keyboard layout" }' "$model"
+grep -Fq 'onSettingsSectionRequested: (panel, section) => root.runCommandMenuAction("settings", "select", section, panel.screen)' "$shell"

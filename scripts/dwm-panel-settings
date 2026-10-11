@@ -18,7 +18,13 @@ readonly max_restore_attempts=8
 # widget records) are still read so existing choices survive.
 readonly protocol_header=$'panel-settings-protocol\t1\t1'
 readonly legacy_protocol_header=$'panel-settings-protocol\t1\t0'
-readonly widget_ids='workspaces volume bluetooth network power'
+readonly widget_ids='workspaces volume bluetooth network power keyboard-layout'
+# Files written before keyboard-layout existed list exactly these five widgets;
+# keyboard-layout is optional when reading and defaults to enabled. It is only
+# written while disabled, so a file with the default still loads in an older
+# helper (an older helper rejects the unknown widget line and falls back to
+# all-on defaults).
+readonly legacy_widget_ids='workspaces volume bluetooth network power'
 readonly option_ids='clock-seconds'
 
 declare -A widget_values=()
@@ -51,7 +57,7 @@ set_defaults() {
 
 valid_widget() {
 	case $1 in
-	workspaces | volume | bluetooth | network | power) return 0 ;;
+	workspaces | volume | bluetooth | network | power | keyboard-layout) return 0 ;;
 	*) return 1 ;;
 	esac
 }
@@ -151,7 +157,10 @@ load_config() {
 		widget_values[$widget]=$value
 		((count += 1))
 	done <"$config_file"
-	if [[ $first == true || $count -ne 5 ]]; then
+	for widget in $legacy_widget_ids; do
+		[[ -n ${seen[$widget]+x} ]] || count=-1
+	done
+	if [[ $first == true || $count -lt 5 || $count -gt 6 ]]; then
 		config_state=partial
 		config_detail='Incomplete panel settings were preserved; using all-on defaults'
 		set_defaults
@@ -376,9 +385,12 @@ write_config() {
 	done
 	{
 		printf '%s\n' "$header"
-		for widget in $widget_ids; do
+		for widget in $legacy_widget_ids; do
 			printf '%s\t%s\n' "$widget" "${widget_values[$widget]}"
 		done
+		widget=keyboard-layout
+		[[ ${widget_values[$widget]} == enabled ]] ||
+			printf '%s\tdisabled\n' "$widget"
 		if [[ $header == "$protocol_header" ]]; then
 			for option in $option_ids; do
 				printf 'option\t%s\t%s\n' "$option" "${option_values[$option]}"
