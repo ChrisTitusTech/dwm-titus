@@ -321,6 +321,7 @@ watch_state() {
 			_DWM_KEYBOARD_GROUP \
 			_DWM_KEYBOARD_GROUP_NAMES \
 			_DWM_KEYBOARD_SYMBOLS \
+			_XKB_RULES_NAMES \
 			WM_NAME 2>/dev/null
 	else
 		xprop -root -spy \
@@ -334,6 +335,7 @@ watch_state() {
 			_DWM_KEYBOARD_GROUP \
 			_DWM_KEYBOARD_GROUP_NAMES \
 			_DWM_KEYBOARD_SYMBOLS \
+			_XKB_RULES_NAMES \
 			WM_NAME 2>/dev/null
 	fi |
 		while IFS= read -r _event; do
@@ -343,7 +345,8 @@ watch_state() {
 			_DWM_KEYBOARD_GROUP\(* | _DWM_KEYBOARD_GROUP:*)
 				keyboard_group_event "$_event"
 				;;
-			_DWM_KEYBOARD_GROUP_NAMES* | _DWM_KEYBOARD_SYMBOLS*)
+			# _XKB_RULES_NAMES is the layout fallback without the symbols name
+			_DWM_KEYBOARD_GROUP_NAMES* | _DWM_KEYBOARD_SYMBOLS* | _XKB_RULES_NAMES*)
 				keyboard_state
 				;;
 			*)
