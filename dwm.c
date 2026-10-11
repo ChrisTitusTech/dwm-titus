@@ -300,7 +300,8 @@ static void updatewindowtype(Client *c);
 static void updatewmhints(Client *c);
 static void keyboardrequest(void);
 static void keyboardsetup(void);
-static void updatekeyboard(int full);
+static void updatekeyboard(void);
+static void kbpublishgroup(int group);
 static void xkbevent(XEvent *e);
 static void view(const Arg *arg);
 static pid_t winpid(Window w);
@@ -5249,44 +5250,45 @@ kbpublishnames(XkbDescPtr xkb)
 	XFree(name);
 }
 
-/* full: also re-read the group count, wrap mode and names (keymap changed) */
+/* Group switches come with the group in the event, so they need no round trip. */
 void
-updatekeyboard(int full)
+kbpublishgroup(int group)
 {
-	XkbDescPtr xkb = NULL;
-	XkbStateRec st;
 	long data[2];
 
-	if (xkbeventbase < 0)
+	data[0] = kbnormalize(group, kbgroups);
+	data[1] = kbgroups;
+	if (data[0] == kbpublished[0] && data[1] == kbpublished[1])
 		return;
-	if (full || kbgroups < 1) {
-		if (!(xkb = XkbAllocKeyboard()))
-			return;
-		kbgroups = 1;
-		kbwrap = XkbWrapIntoRange;
-		if (XkbGetControls(dpy, XkbAllControlsMask, xkb) == Success && xkb->ctrls) {
-			kbgroups = xkb->ctrls->num_groups;
-			kbwrap = xkb->ctrls->groups_wrap;
-		}
-		if (kbgroups < 1 || kbgroups > XkbNumKbdGroups)
-			kbgroups = kbgroups < 1 ? 1 : XkbNumKbdGroups;
-		if (XkbGetNames(dpy, XkbGroupNamesMask|XkbSymbolsNameMask, xkb) != Success)
-			XkbFreeNames(xkb, XkbAllNamesMask, True);
+	ewmh_replace_root_cardinal(kbgroupatom, data, 2);
+	kbpublished[0] = data[0];
+	kbpublished[1] = data[1];
+}
+
+/* The keymap changed: re-read the group count, wrap mode, names and group. */
+void
+updatekeyboard(void)
+{
+	XkbDescPtr xkb;
+	XkbStateRec st;
+
+	if (xkbeventbase < 0 || !(xkb = XkbAllocKeyboard()))
+		return;
+	kbgroups = 1;
+	kbwrap = XkbWrapIntoRange;
+	if (XkbGetControls(dpy, XkbAllControlsMask, xkb) == Success && xkb->ctrls) {
+		kbgroups = xkb->ctrls->num_groups;
+		kbwrap = xkb->ctrls->groups_wrap;
 	}
+	if (kbgroups < 1 || kbgroups > XkbNumKbdGroups)
+		kbgroups = kbgroups < 1 ? 1 : XkbNumKbdGroups;
+	if (XkbGetNames(dpy, XkbGroupNamesMask|XkbSymbolsNameMask, xkb) != Success)
+		XkbFreeNames(xkb, XkbAllNamesMask, True);
 	/* group and count first, so a reader of the names already sees the new count */
-	if (XkbGetState(dpy, XkbUseCoreKbd, &st) == Success) {
-		data[0] = kbnormalize(st.group, kbgroups);
-		data[1] = kbgroups;
-		if (data[0] != kbpublished[0] || data[1] != kbpublished[1]) {
-			ewmh_replace_root_cardinal(kbgroupatom, data, 2);
-			kbpublished[0] = data[0];
-			kbpublished[1] = data[1];
-		}
-	}
-	if (xkb) {
-		kbpublishnames(xkb);
-		XkbFreeKeyboard(xkb, 0, True);
-	}
+	if (XkbGetState(dpy, XkbUseCoreKbd, &st) == Success)
+		kbpublishgroup(st.group);
+	kbpublishnames(xkb);
+	XkbFreeKeyboard(xkb, 0, True);
 }
 
 /* Moves the locked group; the effective group follows it, plus any group a
@@ -5301,7 +5303,9 @@ kblock(int group, int relative)
 	if (relative) {
 		if (XkbGetState(dpy, XkbUseCoreKbd, &st) != Success)
 			return;
-		group = ((st.locked_group + group) % kbgroups + kbgroups) % kbgroups;
+		/* from the group the panel shows, also when a stale lock is out of range */
+		group += kbnormalize(st.locked_group, kbgroups);
+		group = (group % kbgroups + kbgroups) % kbgroups;
 	} else if (group < 0 || group >= kbgroups) {
 		return;
 	}
@@ -5328,18 +5332,15 @@ keyboardrequest(void)
 	char *end;
 	long n;
 
-	/* 64 longs covers any sane value, so the read itself deletes it */
-	if (XGetWindowProperty(dpy, root, kbrequestatom, 0L, 64L, True, AnyPropertyType,
+	/* The whole value in one read, so the read itself deletes it whatever its
+	 * size; a second delete could remove a newer request. */
+	if (XGetWindowProperty(dpy, root, kbrequestatom, 0L, 0x1fffffffL, True, AnyPropertyType,
 	    &type, &format, &nitems, &after, &data) != Success)
 		return;
 	if (!data)
 		return;
 	if (format != 8 || after || nitems == 0 || nitems >= sizeof(req)) {
 		XFree(data);
-		/* only an oversized value is still there; anything shorter was
-		 * already deleted by the read and a newer request must stay */
-		if (after)
-			XDeleteProperty(dpy, root, kbrequestatom);
 		return;
 	}
 	memcpy(req, data, nitems);
@@ -5360,7 +5361,8 @@ void
 keyboardsetup(void)
 {
 	int opcode, error, major = XkbMajorVersion, minor = XkbMinorVersion;
-	unsigned long mask = XkbNewKeyboardNotifyMask|XkbNamesNotifyMask|XkbControlsNotifyMask;
+	unsigned long mask = XkbNewKeyboardNotifyMask|XkbMapNotifyMask
+		|XkbNamesNotifyMask|XkbControlsNotifyMask;
 
 	kbgroupatom = XInternAtom(dpy, "_DWM_KEYBOARD_GROUP", False);
 	kbnamesatom = XInternAtom(dpy, "_DWM_KEYBOARD_GROUP_NAMES", False);
@@ -5379,7 +5381,7 @@ keyboardsetup(void)
 	XkbSelectEventDetails(dpy, XkbUseCoreKbd, XkbStateNotify,
 		XkbGroupStateMask, XkbGroupStateMask);
 	XkbSelectEvents(dpy, XkbUseCoreKbd, mask, mask);
-	updatekeyboard(1);
+	updatekeyboard();
 }
 
 void
@@ -5387,12 +5389,16 @@ xkbevent(XEvent *e)
 {
 	switch (((XkbEvent *)e)->any.xkb_type) {
 	case XkbStateNotify:
-		updatekeyboard(0);
+		if (kbgroups < 1)
+			updatekeyboard();
+		else
+			kbpublishgroup(((XkbEvent *)e)->state.group);
 		break;
+	case XkbMapNotify: /* xmodmap can add or drop groups */
 	case XkbNewKeyboardNotify:
 	case XkbNamesNotify:
 	case XkbControlsNotify:
-		updatekeyboard(1);
+		updatekeyboard();
 		break;
 	}
 }

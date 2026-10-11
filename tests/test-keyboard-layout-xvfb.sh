@@ -79,7 +79,8 @@ wait_state_value() {
 	fail "state $key is '$(state_value "$key")', expected '$expected'"
 }
 
-# Press the keysyms in order and release them in reverse with raw XTest events.
+# Press the keysyms (or #keycodes) in order and release them in reverse with
+# raw XTest events.
 # xdotool cannot be used for this: after typing it locks the group it started
 # with again, which undoes a grp: toggle or a cyclelayout switch.
 press_keys() {
@@ -94,6 +95,9 @@ if not dpy.value:
     sys.exit("cannot open display")
 codes = []
 for name in sys.argv[1:]:
+    if name.startswith("#"):
+        codes.append(int(name[1:]))
+        continue
     code = x11.XKeysymToKeycode(dpy, ctypes.c_ulong(x11.XStringToKeysym(name.encode())))
     if not code:
         sys.exit("no keycode for " + name)
@@ -104,6 +108,29 @@ for code in reversed(codes):
     xtst.XTestFakeKeyEvent(dpy, code, 0, 0)
 x11.XSync(dpy, 0)
 ' "$@"
+}
+
+# Sets the server's out-of-range group handling: wrap, clamp or redirect.
+# XkbDescRec.ctrls is the pointer after dpy, flags, device_spec and the two
+# keycodes (offset 16 on LP64); groups_wrap is byte 2 of XkbControlsRec.
+set_groups_wrap() {
+	DISPLAY=$display python3 -I -c '
+import ctypes, sys
+x11 = ctypes.CDLL("libX11.so.6")
+x11.XOpenDisplay.restype = ctypes.c_void_p
+x11.XkbAllocKeyboard.restype = ctypes.c_void_p
+dpy = ctypes.c_void_p(x11.XOpenDisplay(None))
+xkb = ctypes.c_void_p(x11.XkbAllocKeyboard())
+if not dpy.value or not xkb.value:
+    sys.exit("cannot open display")
+if x11.XkbGetControls(dpy, ctypes.c_ulong(0xF8001FFF), xkb) != 0:
+    sys.exit("XkbGetControls failed")
+ctrls = ctypes.c_void_p.from_address(xkb.value + 16).value
+ctypes.c_ubyte.from_address(ctrls + 2).value = {"wrap": 0x00, "clamp": 0x40, "redirect": 0x80}[sys.argv[1]]
+if not x11.XkbSetControls(dpy, ctypes.c_ulong(1 << 27), xkb):
+    sys.exit("XkbSetControls failed")
+x11.XSync(dpy, 0)
+' "$1"
 }
 
 count_lines() {
@@ -126,7 +153,7 @@ wait_watch_group() {
 	fail "watch stream last keyboard group '$last', expected '$1'"
 }
 
-require_cmd Xvfb xprop setxkbmap xkbcomp python3 awk sed grep
+require_cmd Xvfb xprop setxkbmap xkbcomp xmodmap python3 awk sed grep
 [ -x "$repo_dir/dwm" ] || fail "build dwm first (make)"
 
 tmp_root=${DWM_TEST_TMP_ROOT:-$HOME/tmp}
@@ -241,6 +268,10 @@ for bad in 3 7 foo; do
 done
 X xprop -root -f _DWM_KEYBOARD_GROUP_REQUEST 32c -set _DWM_KEYBOARD_GROUP_REQUEST 1
 assert_no_request
+# Larger than any read window dwm used before: still taken in one read.
+X xprop -root -f _DWM_KEYBOARD_GROUP_REQUEST 8s -set _DWM_KEYBOARD_GROUP_REQUEST \
+	"$(awk 'BEGIN { while (n++ < 600) printf "x" }')"
+assert_no_request
 sleep 0.2
 wait_group '2, 3'
 if request 9 2>/dev/null; then
@@ -345,6 +376,21 @@ request next
 assert_no_request
 wait_group '0, 1'
 
+# With clamp wrapping a stale lock of 3 on three groups shows as group 2, and
+# a relative switch starts from there, not from the raw lock. The server sends
+# no event for a wrap change alone, so it is set before the keymap shrinks
+# (it survives setxkbmap).
+X setxkbmap -layout us,gr,de,ru -option ''
+wait_group '0, 4'
+request 3
+wait_group '3, 4'
+set_groups_wrap clamp
+X setxkbmap -layout us,gr,de -option ''
+wait_group '2, 3'
+request next
+wait_group '0, 3'
+set_groups_wrap wrap
+
 step=11
 # 11. Five layouts: X has four groups; the count follows the keyboard, not
 # _XKB_RULES_NAMES.
@@ -378,7 +424,32 @@ wait_state_value keyboard_names 'English (US)|Greek'
 wait_state_value keyboard_groups 2
 
 step=14
-# 14. dwm survived all of it.
+# 14. xmodmap adds groups without a new keyboard; only XkbMapNotify reports it.
+X setxkbmap -layout us -option ''
+wait_group '0, 1'
+# step 11 left a lock of 3 behind; start from group 0
+request 0
+assert_no_request
+X xmodmap -e 'keycode 38 = a A Greek_alpha Greek_ALPHA'
+wait_group '0, 2'
+X xmodmap -e 'keycode 38 = a A Greek_alpha Greek_ALPHA Cyrillic_ef Cyrillic_EF'
+wait_group '0, 3'
+
+step=15
+# 15. Selecting XkbMapNotify must not cost dwm the core MappingNotify it regrabs
+# hotkeys on: after xmodmap moves k to another keycode, Super+k follows it.
+X xmodmap -e 'keycode 45 = a A Greek_alpha Greek_ALPHA Cyrillic_ef Cyrillic_EF' \
+	-e 'keycode 38 = k K Greek_kappa Greek_KAPPA Cyrillic_ka Cyrillic_KA'
+sleep 0.5
+wait_group '0, 3'
+press_keys Super_L '#38'
+wait_group '1, 3'
+press_keys Super_L '#45'
+sleep 0.3
+wait_group '1, 3'
+
+step=16
+# 16. dwm survived all of it.
 kill -0 "$dwm_pid" 2>/dev/null || fail "dwm exited"
 
 printf '%s\n' "Keyboard layout Xvfb test: PASS"
