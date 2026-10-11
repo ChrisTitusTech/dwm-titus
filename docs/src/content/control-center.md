@@ -33,8 +33,15 @@ NetworkManager connections, scans visible Wi-Fi networks, and connects to open
 or WPA personal networks directly. Successful Wi-Fi connections are saved as
 NetworkManager profiles, so they reconnect normally in later sessions.
 
-Hidden SSIDs and enterprise Wi-Fi are handled through the optional
-`nm-connection-editor` fallback when it is installed.
+To join a network that does not broadcast its name, use **Hidden network...**
+at the end of the Wi-Fi list. Enter the network name, pick WPA2 Personal, WPA3
+Personal, WEP, or Open, choose the Wi-Fi device when there is more than one,
+and enter the password. The new profile is saved with hidden-network probing
+enabled, so it reconnects like any other saved network. A wrong password or
+name removes the new profile again and reopens the form with the reason.
+
+Enterprise (802.1X) Wi-Fi and advanced settings open `nm-connection-editor`
+(Edit Connections).
 
 ## Bluetooth Popover
 

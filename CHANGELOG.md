@@ -16,6 +16,13 @@ versions from `config.mk`.
 - Add `fakefullscreen=1` rules for borderless, monitor-sized windowed mode
   without requesting fullscreen from the application.
 
+- Join hidden Wi-Fi networks from the panel network popover (#375). A
+  "Hidden network..." row at the end of the Wi-Fi list asks for the name,
+  security type (WPA2/WPA3 Personal, WEP, or open), device, and password, and
+  saves a normal NetworkManager profile with hidden-network probing. A wrong
+  password or name is reported in the form and leaves no profile behind.
+  `quickshell ipc call network openHiddenPrompt` opens the form directly.
+
 - Keep Update Center floating and apply its saved Float update terminal toggle
   to the next update or recovery terminal, which defaults to tiled.
 
