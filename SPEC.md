@@ -106,6 +106,21 @@ The installed session must provide:
   appear above real fullscreen clients without becoming managed or taking focus.
   Ordinary shell popups and EWMH above hints retain their existing priority.
 - Window icons from `_NET_WM_ICON`.
+- Keyboard layout group state for the panel, when the X server has XKB. dwm
+  selects `XkbStateNotify` for group changes and keymap, names and controls
+  notifications, and publishes on the root window only values that changed:
+  `_DWM_KEYBOARD_GROUP` (CARDINAL: effective group wrapped into range, group
+  count from the keyboard controls), `_DWM_KEYBOARD_GROUP_NAMES` (UTF8_STRING,
+  one NUL-terminated name per group) and `_DWM_KEYBOARD_SYMBOLS` (the loaded
+  keymap's symbols name). `_XKB_RULES_NAMES` is only a hint and never sets the
+  group count. A client switches by setting the 8-bit root property
+  `_DWM_KEYBOARD_GROUP_REQUEST` to `next`, `prev` or a zero-based group index;
+  dwm reads and deletes it in one request, ignores invalid or out-of-range
+  values, and requests set before dwm reads the previous one coalesce. Switches
+  change the locked group, so a held group-shift key or latch still adds to the
+  effective group until released. The `cyclelayout` func (`i=1` or `i=-1`)
+  cycles the same way. Without XKB the properties are removed and requests are
+  ignored.
 - Configured border suppression and cursor-warp behavior.
 - Stable handling of applications that omit optional X properties.
 
