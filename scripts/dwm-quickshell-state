@@ -70,7 +70,7 @@ quoted_list() {
 }
 
 desktop_names() {
-	names=$(root_property_value _NET_DESKTOP_NAMES | quoted_list)
+	names=$(root_property_value _NET_DESKTOP_NAMES | quoted_list 1)
 	if [ -n "$names" ]; then
 		printf '%s' "$names"
 	else

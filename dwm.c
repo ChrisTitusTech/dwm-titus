@@ -441,7 +441,7 @@ static int xkbeventbase = -1;  /* -1: no usable XKB extension */
 static long kbpublished[2] = { -1, -1 }; /* group, group count */
 static int kbgroups;            /* group count from the keyboard controls */
 static unsigned char kbwrap;    /* groups_wrap from the keyboard controls */
-static Atom kbnamecache[XkbNumKbdGroups + 1]; /* group names + symbols */
+static Atom kbnamecache[XkbNumKbdGroups + 2]; /* group names + symbols + count */
 static int kbnamecachevalid;
 static unsigned long tagupdatesequence;
 
@@ -5199,7 +5199,7 @@ kbnormalize(int group, int count)
 static void
 kbpublishnames(XkbDescPtr xkb)
 {
-	Atom names[XkbNumKbdGroups + 1] = { 0 };
+	Atom names[XkbNumKbdGroups + 2] = { 0 };
 	char *buf = NULL, *name, *tmp;
 	size_t len = 0, n;
 	int i;
@@ -5209,6 +5209,8 @@ kbpublishnames(XkbDescPtr xkb)
 			names[i] = xkb->names->groups[i];
 		names[XkbNumKbdGroups] = xkb->names->symbols;
 	}
+	/* the names property has one entry per group, so a new count rewrites it */
+	names[XkbNumKbdGroups + 1] = (Atom)kbgroups;
 	if (kbnamecachevalid && !memcmp(names, kbnamecache, sizeof(names)))
 		return;
 	memcpy(kbnamecache, names, sizeof(names));
@@ -5251,7 +5253,7 @@ kbpublishnames(XkbDescPtr xkb)
 void
 updatekeyboard(int full)
 {
-	XkbDescPtr xkb;
+	XkbDescPtr xkb = NULL;
 	XkbStateRec st;
 	long data[2];
 
@@ -5270,18 +5272,21 @@ updatekeyboard(int full)
 			kbgroups = kbgroups < 1 ? 1 : XkbNumKbdGroups;
 		if (XkbGetNames(dpy, XkbGroupNamesMask|XkbSymbolsNameMask, xkb) != Success)
 			XkbFreeNames(xkb, XkbAllNamesMask, True);
+	}
+	/* group and count first, so a reader of the names already sees the new count */
+	if (XkbGetState(dpy, XkbUseCoreKbd, &st) == Success) {
+		data[0] = kbnormalize(st.group, kbgroups);
+		data[1] = kbgroups;
+		if (data[0] != kbpublished[0] || data[1] != kbpublished[1]) {
+			ewmh_replace_root_cardinal(kbgroupatom, data, 2);
+			kbpublished[0] = data[0];
+			kbpublished[1] = data[1];
+		}
+	}
+	if (xkb) {
 		kbpublishnames(xkb);
 		XkbFreeKeyboard(xkb, 0, True);
 	}
-	if (XkbGetState(dpy, XkbUseCoreKbd, &st) != Success)
-		return;
-	data[0] = kbnormalize(st.group, kbgroups);
-	data[1] = kbgroups;
-	if (data[0] == kbpublished[0] && data[1] == kbpublished[1])
-		return;
-	ewmh_replace_root_cardinal(kbgroupatom, data, 2);
-	kbpublished[0] = data[0];
-	kbpublished[1] = data[1];
 }
 
 /* Moves the locked group; the effective group follows it, plus any group a
@@ -5323,14 +5328,18 @@ keyboardrequest(void)
 	char *end;
 	long n;
 
-	if (XGetWindowProperty(dpy, root, kbrequestatom, 0L, 4L, True, AnyPropertyType,
+	/* 64 longs covers any sane value, so the read itself deletes it */
+	if (XGetWindowProperty(dpy, root, kbrequestatom, 0L, 64L, True, AnyPropertyType,
 	    &type, &format, &nitems, &after, &data) != Success)
 		return;
 	if (!data)
 		return;
 	if (format != 8 || after || nitems == 0 || nitems >= sizeof(req)) {
 		XFree(data);
-		XDeleteProperty(dpy, root, kbrequestatom);
+		/* only an oversized value is still there; anything shorter was
+		 * already deleted by the read and a newer request must stay */
+		if (after)
+			XDeleteProperty(dpy, root, kbrequestatom);
 		return;
 	}
 	memcpy(req, data, nitems);
