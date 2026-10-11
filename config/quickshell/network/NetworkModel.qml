@@ -342,8 +342,10 @@ Scope {
             root.hiddenPromptPendingOrigin = origin || "panel";
             return;
         }
-        root.hiddenPromptPendingOrigin = "";
+        // Keep a pending request when the snapshot failed, so the next good
+        // snapshot can still open the form; close() clears it.
         if (!root.actionsAvailable || root.wifiDevices.length === 0) return;
+        root.hiddenPromptPendingOrigin = "";
         root.wifiPasswordPromptVisible = false;
         root.wifiPasswordPromptOrigin = "";
         root.selectedWifiIndex = -1;
