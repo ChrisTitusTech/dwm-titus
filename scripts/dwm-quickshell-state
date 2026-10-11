@@ -364,7 +364,19 @@ request_keyboard_group() {
 		;;
 	esac
 	xprop -root -f _DWM_KEYBOARD_GROUP_REQUEST 8s \
-		-set _DWM_KEYBOARD_GROUP_REQUEST "$target"
+		-set _DWM_KEYBOARD_GROUP_REQUEST "$target" || return 1
+	# dwm deletes the property when it takes the request. Wait for that
+	# (up to about a second) so a caller that sends one request after the
+	# other never overwrites one dwm has not read yet.
+	tries=0
+	while xprop -root _DWM_KEYBOARD_GROUP_REQUEST 2>/dev/null | grep -q ' = '; do
+		tries=$((tries + 1))
+		if [ "$tries" -ge 50 ]; then
+			printf 'dwm did not take the keyboard layout request; is dwm running?\n' >&2
+			return 75
+		fi
+		sleep 0.02
+	done
 }
 
 switch_workspace() {

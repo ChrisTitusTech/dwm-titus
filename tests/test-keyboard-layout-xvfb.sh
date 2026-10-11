@@ -264,20 +264,52 @@ awk -v RS='' '/^keyboard_group=2\nkeyboard_groups=3$/ { found = 1 } END { exit !
 	"$work/watch.out" || fail "watch stream has no keyboard-only block"
 
 step=7
-# 7. Rapid requests, each helper run waiting for the previous one: every
-# relative step lands and absolute requests end on the last one.
+# 7. Back-to-back helper requests: the helper returns only after dwm took the
+# request, so every relative step lands.
 request 0
 wait_group '0, 3'
-request next
-request next
-request next
-request next
-wait_group '1, 3'
-request 1
-request 2
-request 0
-wait_group '0, 3'
+for expected in 1 2 0 1; do
+	request next
+	wait_group "$expected, 3"
+done
+for target in 1 2 0; do
+	request "$target"
+	wait_group "$target, 3"
+done
 assert_no_request
+
+# 7b. Raw writes without waiting may coalesce (documented: last one wins
+# among those dwm had not read yet). Only check what the protocol promises:
+# the request is consumed, the group is in range and dwm is still there.
+for _ in 1 2 3 4 5; do
+	X xprop -root -f _DWM_KEYBOARD_GROUP_REQUEST 8s -set _DWM_KEYBOARD_GROUP_REQUEST next
+done
+assert_no_request
+case $(root_value _DWM_KEYBOARD_GROUP) in
+'0, 3' | '1, 3' | '2, 3') ;;
+*) fail "group out of range after raw writes: $(root_value _DWM_KEYBOARD_GROUP)" ;;
+esac
+kill -0 "$dwm_pid" 2>/dev/null || fail "dwm exited after raw writes"
+
+# 7c. dwm not reading (stopped): the helper gives up after about a second
+# with exit 75. Once dwm runs again it takes the pending request.
+request 0
+wait_group '0, 3'
+kill -STOP "$dwm_pid"
+start=$(date +%s)
+set +e
+request next 2>"$work/timeout.err"
+status=$?
+set -e
+kill -CONT "$dwm_pid"
+elapsed=$(($(date +%s) - start))
+[ "$status" -eq 75 ] || fail "helper exit $status while dwm was stopped, expected 75"
+grep -q 'is dwm running' "$work/timeout.err" || fail "no timeout message"
+[ "$elapsed" -le 3 ] || fail "helper took ${elapsed}s to give up"
+wait_group '1, 3'
+assert_no_request
+request 0
+wait_group '0, 3'
 
 step=8
 # 8. The server-side grp:alt_shift_toggle chord, from group 0 and group 1.
