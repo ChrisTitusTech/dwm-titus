@@ -84,7 +84,24 @@ The installed session must provide:
 - Xinerama multi-monitor support.
 - Window swallowing.
 - Per-client size factors and stack reordering.
-- Real and fake fullscreen behavior.
+- Real and fake fullscreen behavior. A managed window matching a
+  `fullscreen=1` TOML rule opens in true fullscreen on its assigned monitor,
+  with zero borders and no reserved panel area. The rule applies at management
+  time or once when a title first matches a fullscreen rule. It preserves normal
+  fullscreen exit and does not change the tag layout. Late title matching does
+  not reassign tags or monitors. A `fakefullscreen=1` rule uses the same
+  monitor-sized borderless geometry and panel hiding without advertising
+  `_NET_WM_STATE_FULLSCREEN`. It takes precedence over `fullscreen=1` in the
+  same rule. While active, application fullscreen requests do not advertise
+  fullscreen or cancel the geometry; `togglefakefullscreen` exits to the saved
+  window state. The existing fake-fullscreen shortcut behavior is otherwise
+  unchanged. Neither rule modifies application settings files.
+- A managed window rule with `ignoresizehints=1` bypasses ICCCM min/max/base,
+  increment, and aspect size constraints and disables fixed-hint auto-floating.
+  Last matching rule wins; only integer `1` enables it. Reevaluate on title
+  changes, retain the setting with its window across swallowing, and preserve
+  existing size-hint behavior when disabled. It does not change application
+  rendering resolution.
 - Unmanaged overlays explicitly matched by an `alwaysontop=1` runtime rule
   appear above real fullscreen clients without becoming managed or taking focus.
   Ordinary shell popups and EWMH above hints retain their existing priority.

@@ -8,6 +8,14 @@ versions from `config.mk`.
 
 ### Added
 
+- Add `fullscreen=1` window rules to open matching applications across the
+  entire monitor without a top bar, gaps, or window borders. Title-based rules
+  also apply once when a matching title arrives after the window opens.
+- Add `ignoresizehints=1` window rules to bypass application size constraints
+  and fixed-size auto-floating, including late title matches.
+- Add `fakefullscreen=1` rules for borderless, monitor-sized windowed mode
+  without requesting fullscreen from the application.
+
 - Keep Update Center floating and apply its saved Float update terminal toggle
   to the next update or recovery terminal, which defaults to tiled.
 
@@ -23,6 +31,14 @@ versions from `config.mk`.
   authorization policy are not stored or changed by the updater.
 
 ### Fixed
+
+- Make Kitty follow the selected theme instead of Nord. The shipped
+  `kitty.conf` no longer sets its own palette or includes `nord.conf`. Theme
+  apply, including from Settings, updates an existing `kitty.conf` once: it
+  removes unchanged palette, border and tab lines shipped up to v0.7.2 and the
+  `nord.conf` include, makes `include active-theme.conf` the last and only
+  copy, keeps every other line, and saves the original as
+  `kitty.conf.dwm-titus.bak` with the same permissions.
 
 - Require GNOME Keyring and its separate PAM module in every install profile,
   detect missing keyring packages in dependency checks and System Health, and

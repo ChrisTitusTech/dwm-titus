@@ -1225,7 +1225,10 @@ rm -f -- "$state_home/dwm-titus/appearance/transaction.integration.11.before" \
 	"$state_home/dwm-titus/appearance/transaction.integration.11.meta" \
 	"$state_home/dwm-titus/appearance/transaction.integration.12.before" \
 	"$state_home/dwm-titus/appearance/transaction.integration.12.after" \
-	"$state_home/dwm-titus/appearance/transaction.integration.12.meta"
+	"$state_home/dwm-titus/appearance/transaction.integration.12.meta" \
+	"$state_home/dwm-titus/appearance/transaction.integration.13.before" \
+	"$state_home/dwm-titus/appearance/transaction.integration.13.after" \
+	"$state_home/dwm-titus/appearance/transaction.integration.13.meta"
 printf '11\n' >"$state_home/dwm-titus/appearance/transaction.integration.count"
 run_theme recover >/dev/null
 [[ $(active_theme) == nord ]]
@@ -1695,6 +1698,80 @@ wait "$concurrent_a"
 wait "$concurrent_b"
 [[ $(grep -Fc 'active-theme.toml' "$concurrent_config/alacritty/alacritty.toml") == 1 ]]
 [[ $(grep -Fxc 'include active-theme.conf' "$concurrent_config/kitty/kitty.conf") == 1 ]]
+
+# A v0.7.2 kitty.conf imported the theme first and then overrode it with its own
+# palette and nord.conf. Theme apply drops those shipped lines, moves the include
+# last, keeps the user's own lines, and backs the original up with its mode.
+legacy_kitty=$concurrent_config/kitty/kitty.conf
+write_legacy_kitty() {
+	printf '%s\n' $'# Active theme \342\200\224 managed by theme-apply.sh, do not edit manually.' \
+		'include active-theme.conf' '' 'font_size 16.0' 'active_tab_background #eee' \
+		'color1 #d75f5f' 'color2 #123456' 'include ./nord.conf' >"$1"
+}
+rm -f "$legacy_kitty.dwm-titus.bak"
+write_legacy_kitty "$legacy_kitty"
+chmod 600 "$legacy_kitty"
+cp "$legacy_kitty" "$work/legacy-kitty.conf"
+(
+	umask 022
+	PATH=$theme_path HOME=$concurrent_home XDG_CONFIG_HOME=$concurrent_config \
+		XDG_RUNTIME_DIR=$concurrent_runtime DWM_APPEARANCE_THEMES_FILE=$managed_file \
+		"$repo/scripts/theme-apply.sh" >"$work/legacy-kitty.out" 2>"$work/legacy-kitty.err"
+)
+[[ $(grep -Fxc 'include active-theme.conf' "$legacy_kitty") == 1 ]]
+[[ $(grep -v -e '^[[:space:]]*#' -e '^[[:space:]]*$' "$legacy_kitty" | tail -n 1) == 'include active-theme.conf' ]]
+grep -Fqx 'font_size 16.0' "$legacy_kitty"
+grep -Fqx 'color2 #123456' "$legacy_kitty"
+[[ $(grep -Ec 'nord|#eee|#d75f5f|do not edit manually' "$legacy_kitty" || :) == 0 ]]
+[[ $(stat -c %a "$legacy_kitty") == 600 ]]
+[[ $(stat -c %a "$legacy_kitty.dwm-titus.bak") == 600 ]]
+cmp -s "$work/legacy-kitty.conf" "$legacy_kitty.dwm-titus.bak"
+cp "$legacy_kitty" "$work/migrated-kitty.conf"
+PATH=$theme_path HOME=$concurrent_home XDG_CONFIG_HOME=$concurrent_config \
+	XDG_RUNTIME_DIR=$concurrent_runtime DWM_APPEARANCE_THEMES_FILE=$managed_file \
+	"$repo/scripts/theme-apply.sh" >"$work/legacy-kitty-again.out" 2>"$work/legacy-kitty-again.err"
+cmp -s "$work/migrated-kitty.conf" "$legacy_kitty"
+# An include at the top and at the end still loses: Kitty skips the second one.
+printf '%s\n' 'include active-theme.conf' 'color2 #123456' 'include active-theme.conf' >"$legacy_kitty"
+PATH=$theme_path HOME=$concurrent_home XDG_CONFIG_HOME=$concurrent_config \
+	XDG_RUNTIME_DIR=$concurrent_runtime DWM_APPEARANCE_THEMES_FILE=$managed_file \
+	"$repo/scripts/theme-apply.sh" >"$work/duplicate-kitty.out" 2>"$work/duplicate-kitty.err"
+[[ $(grep -Fxc 'include active-theme.conf' "$legacy_kitty") == 1 ]]
+[[ $(grep -v -e '^[[:space:]]*#' -e '^[[:space:]]*$' "$legacy_kitty" | tail -n 1) == 'include active-theme.conf' ]]
+# Other spellings of the same include are also replaced.
+# Includes of the same names from another directory are left alone.
+printf '%s\n' 'include ./active-theme.conf' 'color2 #123456' \
+	"include $concurrent_config/kitty/active-theme.conf" 'include ~/.config/kitty/nord.conf' \
+	"include $concurrent_home/.config/kitty/active-theme.conf" \
+	'include /home/other/.config/kitty/active-theme.conf' >"$legacy_kitty"
+PATH=$theme_path HOME=$concurrent_home XDG_CONFIG_HOME=$concurrent_config \
+	XDG_RUNTIME_DIR=$concurrent_runtime DWM_APPEARANCE_THEMES_FILE=$managed_file \
+	"$repo/scripts/theme-apply.sh" >"$work/spelling-kitty.out" 2>"$work/spelling-kitty.err"
+[[ $(grep -Ec '^include' "$legacy_kitty") == 2 ]]
+grep -Fqx 'include /home/other/.config/kitty/active-theme.conf' "$legacy_kitty"
+[[ $(grep -v -e '^[[:space:]]*#' -e '^[[:space:]]*$' "$legacy_kitty" | tail -n 1) == 'include active-theme.conf' ]]
+grep -Fqx 'color2 #123456' "$legacy_kitty"
+# The shipped kitty.conf is already in its final form.
+cp "$repo/config/kitty/kitty.conf" "$legacy_kitty"
+PATH=$theme_path HOME=$concurrent_home XDG_CONFIG_HOME=$concurrent_config \
+	XDG_RUNTIME_DIR=$concurrent_runtime DWM_APPEARANCE_THEMES_FILE=$managed_file \
+	"$repo/scripts/theme-apply.sh" >"$work/shipped-kitty.out" 2>"$work/shipped-kitty.err"
+cmp -s "$repo/config/kitty/kitty.conf" "$legacy_kitty"
+
+# A Settings apply stages theme-apply's output and publishes it, including the
+# one-time kitty.conf backup.
+reset_fixture
+mkdir -p "$config_home/kitty"
+write_legacy_kitty "$config_home/kitty/kitty.conf"
+printf '%s\n' "include $home_dir/.config/kitty/active-theme.conf" 'color2 #654321' \
+	>>"$config_home/kitty/kitty.conf"
+chmod 600 "$config_home/kitty/kitty.conf"
+cp "$config_home/kitty/kitty.conf" "$work/settings-legacy-kitty.conf"
+run_theme_real_apply apply dracula >/dev/null 2>"$work/settings-kitty.err"
+[[ $(grep -Ec '^include' "$config_home/kitty/kitty.conf") == 1 ]]
+[[ $(grep -v -e '^[[:space:]]*#' -e '^[[:space:]]*$' "$config_home/kitty/kitty.conf" | tail -n 1) == 'include active-theme.conf' ]]
+[[ $(stat -c %a "$config_home/kitty/kitty.conf.dwm-titus.bak") == 600 ]]
+cmp -s "$work/settings-legacy-kitty.conf" "$config_home/kitty/kitty.conf.dwm-titus.bak"
 
 reset_fixture
 mkdir -p "$config_home/gtk-3.0"
