@@ -209,9 +209,13 @@ fi
 grep -Fq 'panel state changed during the transaction' "$work/race.err"
 grep -Fqx 'external edit' "$state_file"
 
+# "Show all widgets" (reset) brings every widget back but keeps the seconds option.
+run_helper set clock-seconds enabled >/dev/null
+run_helper set network disabled >/dev/null
 run_helper reset >/dev/null
 reset_status=$(run_helper status)
-printf '%s\n' "$reset_status" | grep -Fqx 'option	clock-seconds	disabled'
+printf '%s\n' "$reset_status" | grep -Fqx 'option	clock-seconds	enabled'
+run_helper set clock-seconds disabled >/dev/null
 for widget in workspaces volume bluetooth network power; do
 	printf '%s\n' "$reset_status" | grep -Fqx "widget	$widget	enabled"
 done

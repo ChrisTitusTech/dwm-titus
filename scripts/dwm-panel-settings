@@ -430,7 +430,14 @@ reset_settings() {
 	capture_mutation_baseline
 	wait_for_baseline_test_release
 	mutation_baseline_unchanged || die_mutation_baseline_changed
-	set_defaults
+	# Reset is the "Show all widgets" action: it turns every widget back on and
+	# leaves options such as clock-seconds as the user set them. A file that
+	# cannot be read is repaired to the full defaults, as before.
+	local widget
+	load_config || set_defaults
+	for widget in $widget_ids; do
+		widget_values[$widget]=enabled
+	done
 	write_config
 	printf 'panel-settings-action-protocol\t1\t0\nresult\treset\tall\tenabled\n'
 }

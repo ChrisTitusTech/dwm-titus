@@ -2077,10 +2077,18 @@ done
 [ "$panel_seconds" = true ]
 expected=$(printf 'option\tclock-seconds\tenabled')
 grep -Fqx "$expected" "$config_home/dwm-titus/panel-widgets.conf"
+# "Show all widgets" (reset) must leave the seconds option alone.
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings panelWidgetsReset >/dev/null 2>&1 || true
+sleep 0.5
+panel_seconds=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings panelOptionEnabled clock-seconds 2>/dev/null || true)
+[ "$panel_seconds" = true ]
+grep -Fqx "$expected" "$config_home/dwm-titus/panel-widgets.conf"
 i=0
 while [ "$i" -lt 100 ]; do
 	DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings panelWidgetsReset >/dev/null 2>&1 || true
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings panelOptionSet clock-seconds false >/dev/null 2>&1 || true
 	panel_seconds=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings panelOptionEnabled clock-seconds 2>/dev/null || true)
 	[ "$panel_seconds" = false ] && break
