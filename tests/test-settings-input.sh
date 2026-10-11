@@ -145,7 +145,7 @@ Device 'Twin PS/2 Mouse':
 	Device Product ID (101): 2, 19
 	Device Node (102): "/dev/input/event14"
 	libinput Natural Scrolling Enabled (302): 1
-	libinput Natural Scrolling Enabled Default (303): 0
+	libinput Natural Scrolling Enabled Default (303): 1
 PROPS
 		;;
 	19 | 20) cat <<PROPS
@@ -864,6 +864,12 @@ env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" "$helper" reset "$twi
 	>"$work/twin-reset.out"
 grep -Fqx $'result\treset\tpointer-speed' "$work/twin-reset.out"
 
+# Reset sets each part to its own driver default (17 has 0, 18 has 1).
+rm -f "$work/actions.log"
+env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" "$helper" reset "$twin_key" natural-scroll \
+	>/dev/null
+[[ $(cat "$work/actions.log") == $'xinput set-prop 17 libinput Natural Scrolling Enabled 0\nxinput set-prop 18 libinput Natural Scrolling Enabled 1' ]]
+
 # Revert puts each member back to its own value (17 had 0, 18 had 1).
 rm -f "$work/actions.log"
 env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" "$helper" preview twin-revert 5 \
@@ -885,16 +891,15 @@ test ! -e "$work/runtime/dwm-settings-input/twin-partial.state"
 test ! -e "$work/runtime/dwm-settings-input/twin-partial.members"
 env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" "$helper" preview-status | grep -Fqx $'result\tnone'
 
-# The first set-prop works, the second and the undo fail: the preview reports
-# the failure, keeps its recovery state, and a later Revert restores both.
+# The first set-prop works, the second and the undo fail: the preview prints
+# a preview-failed record (Settings needs the token for Revert), keeps its
+# recovery state, and a later Revert restores both.
 rm -f "$work/actions.log" "$work/set.count"
-if env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" TEST_FAIL_SET_FROM=2 \
+env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" TEST_FAIL_SET_FROM=2 \
 	TEST_SET_COUNTER="$work/set.count" "$helper" preview twin-stuck 5 "$twin_key" natural-scroll 1 \
-	>/dev/null 2>"$work/twin-stuck.err"; then
-	printf 'a merged preview whose undo failed reported success\n' >&2
-	exit 1
-fi
-grep -Fq 'recovery state was retained for rollback retry' "$work/twin-stuck.err"
+	>"$work/twin-stuck.out" 2>"$work/twin-stuck.err"
+grep -Fqx $'preview-failed\ttwin-stuck\tInput preview failed part-way and could not be undone; the captured values are retained for retry.' \
+	"$work/twin-stuck.out"
 test -f "$work/runtime/dwm-settings-input/twin-stuck.state"
 env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" "$helper" preview-status twin-stuck |
 	grep -Fq $'preview-failed\ttwin-stuck'

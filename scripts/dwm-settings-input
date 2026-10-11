@@ -395,6 +395,27 @@ undo_written_members() {
 	return "$failed"
 }
 
+# Sets every member that has the setting to its own driver default.
+apply_member_defaults() {
+	local setting=$1 default_name=$2 property id properties value applied=0
+	property=$(setting_property "$setting") || return 1
+	properties=$(mktemp)
+	for id in "${member_ids[@]}"; do
+		xinput list-props "$id" >"$properties" 2>/dev/null || continue
+		[[ -n $(property_value "$properties" "$property") ]] || continue
+		value=$(property_value "$properties" "$default_name")
+		[[ -n $value ]] || continue
+		validate_value "$setting" "$value" || continue
+		xinput set-prop "$id" "$property" "$value" || {
+			rm -f "$properties"
+			return 1
+		}
+		applied=1
+	done
+	rm -f "$properties"
+	((applied))
+}
+
 # Prints the first member's value of an XInput property, or fails.
 member_property() {
 	local property=$1 id properties value
@@ -743,7 +764,9 @@ preview_value() {
 		printf 'Input preview failed part-way and could not be undone; the captured values are retained for retry.\n' \
 			>"$(token_file "$token" failed)"
 		chmod 600 "$(token_file "$token" failed)"
-		die "input preview failed part-way; recovery state was retained for rollback retry"
+		# Settings learns the token from this record and offers Revert.
+		printf 'preview-failed\t%s\t%s\n' "$token" "$(clean_field "$(<"$(token_file "$token" failed)")")"
+		return 0
 	fi
 	(
 		exec 7>&-
@@ -847,10 +870,12 @@ reset_setting() {
 	*) die "unsupported setting: $setting" ;;
 	esac
 	if [[ -z ${default+x} ]]; then
-		resolve_devices "$key"
-		default=$(member_property "$default_name") || die "default is unavailable for $setting"
+		# Parts of a merged device can have different driver defaults.
+		resolve_devices "$key" || die "input device $key is not available"
+		apply_member_defaults "$setting" "$default_name" || die "default is unavailable for $setting"
+	else
+		apply_value "$key" "$setting" "$default"
 	fi
-	apply_value "$key" "$setting" "$default"
 	remove_persisted_value "$key" "$setting"
 	printf 'result\treset\t%s\n' "$setting"
 }
