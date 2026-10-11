@@ -40,6 +40,7 @@
 #          togglebar         → show/hide the status bar
 #          focusmon          → focus next/prev monitor           (i=1 or i=-1)
 #          tagmon            → send window to next/prev monitor  (i=1 or i=-1)
+#          cyclelayout       → next/prev keyboard layout        (i=1 or i=-1)
 #          view              → switch to a tag  (ui=-1 = show all)
 #          tag               → send window to a tag
 #          toggleview / toggletag → also show/tag alongside current
@@ -163,6 +164,7 @@ tag_keys = [
 # { mod="SUPER SHIFT",  key="c",  desc="VS Code",   func="spawn",  exec=["code"] },
 # { mod="SUPER SHIFT",  key="d",  desc="Discord",   func="spawn",  exec=["discord"] },
 # { mod="SUPER SHIFT",  key="s",  desc="Screenshot",func="spawn",  cmd="scrot -s ~/Pictures/screenshot.png" },
+# { mod="SUPER ALT",    key="k",  desc="Next keyboard layout", func="cyclelayout", i=1 },
 
 
 # ── MOUSE BUTTON BINDINGS ─────────────────────────────────────────────────────

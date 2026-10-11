@@ -37,7 +37,7 @@ submitting a pull request.
 | --- | --- |
 | C or build configuration | `scripts/run-tests make clean all`, then `scripts/run-tests` |
 | Shell or installer | `scripts/run-tests make check-shell check-format` and focused tests |
-| X11 behavior | `scripts/run-tests make check-xvfb-runtime check-monitor-tags` |
+| X11 behavior | `scripts/run-tests make check-xvfb-runtime check-monitor-tags check-keyboard-layout` |
 | Settings loading, search, and section navigation | `scripts/run-tests make check-quickshell-settings-responsiveness-xvfb` plus the full Settings runtime gate |
 | Quickshell QML | `scripts/run-tests make check-quickshell-qml` plus real or nested X11 runtime validation |
 | System update UI | `scripts/run-tests tests/test-quickshell-update-ui-xvfb.sh` for the focused native fixture, plus configured QML lint |
