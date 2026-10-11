@@ -10,6 +10,7 @@ PanelWindow {
     id: root
 
     signal popupRequested(var panelWindow, string popupId)
+    signal settingsSectionRequested(var panelWindow, string section)
     function updateCenterAnchorX() {
         const point = updateCenterIndicator.mapToGlobal(updateCenterIndicator.width / 2, 0);
         const screenX = root.screen && root.screen.x !== undefined ? root.screen.x : 0;
@@ -217,6 +218,44 @@ PanelWindow {
                     }
 
                     PanelPill {
+                        id: keyboardPill
+                        visible: root.panelSettingsModel.widgetEnabled("keyboard-layout")
+                            && root.state.keyboardGroupCount > 1
+                        Layout.preferredWidth: keyboardLabel.implicitWidth + Theme.compactWidgetHorizontalPadding * 2
+                        Layout.preferredHeight: Theme.compactWidgetSize
+                        hovered: keyboardMouse.containsMouse
+
+                        UiText {
+                            id: keyboardLabel
+                            anchors.centerIn: parent
+                            text: root.state.keyboardLabel(root.state.keyboardGroup)
+                            color: Theme.textStrong
+                            font.pixelSize: Theme.panelFontSize
+                        }
+
+                        MouseArea {
+                            id: keyboardMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
+                            onClicked: function(mouse) {
+                                if (mouse.button === Qt.RightButton) {
+                                    root.settingsSectionRequested(root, "input");
+                                } else if (mouse.button === Qt.MiddleButton) {
+                                    root.state.setKeyboardLayout(0);
+                                } else {
+                                    root.state.cycleKeyboardLayout(1);
+                                }
+                            }
+                            onWheel: function(wheel) {
+                                root.state.wheelKeyboardLayout(wheel.angleDelta.y);
+                                wheel.accepted = true;
+                            }
+                        }
+                    }
+
+                    PanelPill {
                         id: batteryPill
                         visible: root.powerModel.batteryAvailable
                         Layout.preferredWidth: batteryRow.implicitWidth + Theme.compactWidgetHorizontalPadding * 2
@@ -400,6 +439,15 @@ PanelWindow {
         anchorWindow: root
         anchorItem: batteryPill
         label: root.powerModel.batteryPercent.toString() + "% - " + root.powerModel.batteryStatus
+        anchorY: Theme.panelHeight
+        rightAligned: true
+    }
+
+    PanelTooltip {
+        visible: keyboardPill.visible && keyboardMouse.containsMouse
+        anchorWindow: root
+        anchorItem: keyboardMouse
+        label: root.state.keyboardSummary() + " - click: next layout, right-click: input settings"
         anchorY: Theme.panelHeight
         rightAligned: true
     }

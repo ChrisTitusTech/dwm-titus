@@ -1195,6 +1195,7 @@ ShellRoot {
             updateCenterModel: updateCenterModel
             primaryPanel: modelData === Quickshell.screens[0]
             onPopupRequested: (panel, popupId) => root.requestPanelPopup(panel, popupId)
+            onSettingsSectionRequested: (panel, section) => root.runCommandMenuAction("settings", "select", section, panel.screen)
         }
     }
 
