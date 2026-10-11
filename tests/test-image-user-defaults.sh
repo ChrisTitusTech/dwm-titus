@@ -132,6 +132,26 @@ if grep -q 'image/webp=' "$XDG_CONFIG_HOME/mimeapps.list"; then exit 1; fi
 cp "$XDG_CONFIG_HOME/mimeapps.list" "$work/seeded-mimes"
 bash "$repo/scripts/image/seed-apps.sh"
 cmp "$XDG_CONFIG_HOME/mimeapps.list" "$work/seeded-mimes"
+# When Path is installed alongside Thunar, Path is preferred as default.
+cat >"$XDG_DATA_DIRS/applications/pathfm.desktop" <<'APP'
+[Desktop Entry]
+Type=Application
+Name=Path
+Exec=pathfm %U
+MimeType=inode/directory;x-scheme-handler/sftp;x-scheme-handler/ftps;
+APP
+printf '#!/bin/sh\nexit 0\n' >"$work/bin/pathfm"
+chmod +x "$work/bin/pathfm"
+rm "$XDG_CONFIG_HOME/mimeapps.list"
+bash "$repo/scripts/image/seed-apps.sh"
+[[ $(xdg-mime query default inode/directory) == pathfm.desktop ]]
+# Ensure no duplicate keys exist in mimeapps.list
+[[ $(grep -c '^inode/directory=' "$XDG_CONFIG_HOME/mimeapps.list") == 1 ]]
+# Removing Path falls back to Thunar seamlessly
+rm "$XDG_DATA_DIRS/applications/pathfm.desktop" "$work/bin/pathfm"
+rm "$XDG_CONFIG_HOME/mimeapps.list"
+bash "$repo/scripts/image/seed-apps.sh"
+[[ $(xdg-mime query default inode/directory) == thunar.desktop ]]
 # Missing required desktop entries must fail without leaving a partial seed.
 rm "$XDG_CONFIG_HOME/mimeapps.list"
 mv "$XDG_DATA_DIRS/applications/sxiv.desktop" "$work/sxiv.desktop"

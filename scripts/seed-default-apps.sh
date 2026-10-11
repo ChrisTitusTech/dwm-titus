@@ -28,6 +28,8 @@ import sys
 roots = [Path(os.environ.get('XDG_DATA_HOME', str(Path.home() / '.local/share')))]
 roots += [Path(p) for p in os.environ.get('XDG_DATA_DIRS', '/usr/local/share:/usr/share').split(':') if p]
 
+seen = set()
+
 def entry(desktop, command, prefixes, required=True):
     path = next((root / 'applications' / desktop for root in roots
                  if (root / 'applications' / desktop).is_file()), None)
@@ -40,15 +42,19 @@ def entry(desktop, command, prefixes, required=True):
     app = parser['Desktop Entry']
     if app.get('Hidden', 'false').lower() == 'true' or app.get('Type') != 'Application':
         sys.exit(f'Unusable default application: {desktop}')
-    mimes = [m for m in app.get('MimeType', '').split(';') if m.startswith(prefixes)]
+    mimes = [m for m in app.get('MimeType', '').split(';') if m.startswith(prefixes) and m not in seen]
     if not mimes:
-        sys.exit(f'No supported MIME types advertised by {desktop}')
+        if required:
+            sys.exit(f'No supported MIME types advertised by {desktop}')
+        return
     for mime in mimes:
+        seen.add(mime)
         print(f'{mime}={desktop};')
 
 entry('io.github.celluloid_player.Celluloid.desktop', 'celluloid', ('audio/', 'video/', 'application/'))
 entry('sxiv.desktop', 'sxiv', ('image/',))
 entry('brave-origin.desktop', 'brave-origin', ('text/html', 'x-scheme-handler/http', 'application/xhtml', 'application/pdf'), required=sys.argv[1] == '--image')
+entry('pathfm.desktop', 'pathfm', ('inode/directory',), required=False)
 entry('thunar.desktop', 'thunar', ('inode/directory',), required=False)
 PY
 )

@@ -73,7 +73,7 @@ dwm_packages() {
 		;;
 	fedora:desktop-optional)
 		printf '%s\n' \
-			Thunar gvfs gvfs-smb tumbler thunar-archive-plugin file-roller \
+			path Thunar gvfs gvfs-smb tumbler thunar-archive-plugin file-roller \
 			xdg-user-dirs NetworkManager \
 			NetworkManager-wifi rsync
 		;;
