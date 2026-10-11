@@ -32,6 +32,11 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Install `nm-connection-editor` with the recommended profile and both Fedora
+  images. The network popover already sends Edit Connections and enterprise
+  (802.1X) Wi-Fi to it, but stock installs did not have it, so those paths were
+  hidden or failed.
+
 - Make Kitty follow the selected theme instead of Nord. The shipped
   `kitty.conf` no longer sets its own palette or includes `nord.conf`. Theme
   apply, including from Settings, updates an existing `kitty.conf` once: it
