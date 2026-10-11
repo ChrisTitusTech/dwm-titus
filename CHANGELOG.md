@@ -24,7 +24,8 @@ versions from `config.mk`.
   `_DWM_KEYBOARD_GROUP_REQUEST` root property or the new `cyclelayout` hotkey
   func. `dwm-quickshell-state` reports them as `keyboard_*` fields, streams
   layout switches as small keyboard-only updates, and gains
-  `keyboard-group <next|prev|N>`. Workspace names containing commas are no
+  `keyboard-group <next|prev|N>`, which returns once dwm has taken the
+  request (exit 75 after about a second if it does not). Workspace names containing commas are no
   longer split. The design follows the Keyboard-Layout-for-Omarchy plugin
   (https://github.com/Somnius/Keyboard-Layout-for-Omarchy, MIT).
 - Add `fullscreen=1` window rules to open matching applications across the
