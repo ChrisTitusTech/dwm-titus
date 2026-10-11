@@ -39,6 +39,11 @@ grep -Fq 'property string hiddenPromptOrigin: ""' "$network_model"
 grep -Fq 'function openHiddenPrompt(origin)' "$network_model"
 grep -Fq 'function cancelHiddenPrompt()' "$network_model"
 grep -Fq 'function connectHidden(origin)' "$network_model"
+# IPC can open the form while open() is still loading the first snapshot.
+grep -Fq 'root.hiddenPromptPendingOrigin = origin || "panel";' "$network_model"
+grep -Fq 'if (root.hiddenPromptPendingOrigin.length > 0) root.openHiddenPrompt(root.hiddenPromptPendingOrigin);' "$network_model"
+test "$(grep -Fc 'root.openPendingHiddenPrompt();' "$network_model")" -eq 2
+grep -Fq 'root.hiddenPromptPendingOrigin = "";' "$network_model"
 grep -Fq 'readonly property var wifiDevices' "$network_model"
 grep -Fq 'Commands.networkHelperCommand("wifi-connect-hidden", args)' "$network_model"
 grep -Fq 'root.actionUsesPasswordStdin = secured;' "$network_model"

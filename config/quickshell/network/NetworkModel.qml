@@ -22,6 +22,7 @@ Scope {
     property string hiddenDevice: ""
     property string hiddenError: ""
     property bool hiddenConnectPending: false
+    property string hiddenPromptPendingOrigin: ""
     property int selectedIndex: 0
     property int selectedWifiIndex: -1
     property string statusText: "NET offline"
@@ -108,7 +109,7 @@ Scope {
         root.wifiPasswordPromptOrigin = "";
         root.message = "";
         root.wifiPassword = "";
-        if (root.hiddenPromptOrigin === "panel") root.resetHiddenPrompt();
+        if (root.hiddenPromptOrigin === "panel" || root.hiddenPromptPendingOrigin === "panel") root.resetHiddenPrompt();
         root.stopUnownedWork("panel");
     }
 
@@ -123,7 +124,7 @@ Scope {
         root.wifiPasswordPromptVisible = false;
         root.wifiPasswordPromptOrigin = "";
         root.wifiPassword = "";
-        if (root.hiddenPromptOrigin === "settings") root.resetHiddenPrompt();
+        if (root.hiddenPromptOrigin === "settings" || root.hiddenPromptPendingOrigin === "settings") root.resetHiddenPrompt();
         root.stopUnownedWork("settings");
     }
 
@@ -211,6 +212,7 @@ Scope {
         else if (!root.actionFailed && !root.busy) root.message = "";
         if (root.selectedIndex >= connections.length) root.selectedIndex = Math.max(0, connections.length - 1);
         if (root.selectedWifiIndex >= wifiNetworks.length) root.selectedWifiIndex = -1;
+        root.openPendingHiddenPrompt();
     }
 
     function parseDevices(text) {
@@ -334,7 +336,14 @@ Scope {
     }
 
     function openHiddenPrompt(origin) {
-        if (!root.actionsAvailable || root.busy || root.wifiDevices.length === 0) return;
+        if (root.busy) return;
+        if (snapshotProcess.running || root.providerState === "loading") {
+            // Opened together with the popover: wait for the snapshot that open() started.
+            root.hiddenPromptPendingOrigin = origin || "panel";
+            return;
+        }
+        root.hiddenPromptPendingOrigin = "";
+        if (!root.actionsAvailable || root.wifiDevices.length === 0) return;
         root.wifiPasswordPromptVisible = false;
         root.wifiPasswordPromptOrigin = "";
         root.selectedWifiIndex = -1;
@@ -351,7 +360,12 @@ Scope {
         root.message = "";
     }
 
+    function openPendingHiddenPrompt() {
+        if (root.hiddenPromptPendingOrigin.length > 0) root.openHiddenPrompt(root.hiddenPromptPendingOrigin);
+    }
+
     function resetHiddenPrompt() {
+        root.hiddenPromptPendingOrigin = "";
         root.hiddenPromptVisible = false;
         root.hiddenPromptOrigin = "";
         root.hiddenSsid = "";
@@ -516,7 +530,11 @@ Scope {
                 }
             }
         }
-        onRunningChanged: if (!running) root.snapshotOrigin = ""
+        onRunningChanged: {
+            if (running) return;
+            root.snapshotOrigin = "";
+            root.openPendingHiddenPrompt();
+        }
     }
 
     Process {
