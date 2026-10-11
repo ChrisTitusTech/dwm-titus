@@ -100,7 +100,8 @@ A sent change cannot be canceled; Cancel only dismisses the preview. Uncertain
 results require fresh status and a new confirmation, never automatic retry or
 rollback. Locale changes apply to new sessions without automatic logout. NTP
 synchronization is explicitly labeled as last-read status.
-The local date and time readout shares the panel's minute-level clock. A newly
+The local date and time readout shares the panel's clock and stays minute-level
+even when **Clock: show seconds** is on for the panel. A newly
 reported timezone refreshes both displays without restarting the shell. This
 does not add background timezone discovery while System Settings is closed.
 

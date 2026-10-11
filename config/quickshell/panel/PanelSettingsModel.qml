@@ -25,6 +25,9 @@ Scope {
         "network": true,
         "power": true
     })
+    property var optionValues: ({
+        "clock-seconds": false
+    })
     readonly property string homeDir: Quickshell.env("HOME") || ""
     readonly property string configuredConfigHome: Quickshell.env("XDG_CONFIG_HOME")
     readonly property string configHome: root.configuredConfigHome.startsWith("/")
@@ -38,6 +41,9 @@ Scope {
         { "id": "network", "label": "Network" },
         { "id": "power", "label": "Power" }
     ]
+    readonly property var options: [
+        { "id": "clock-seconds", "label": "Clock: show seconds" }
+    ]
 
     function validWidget(id) {
         return id === "workspaces" || id === "volume" || id === "bluetooth"
@@ -48,6 +54,14 @@ Scope {
         return root.validWidget(id) ? root.values[id] !== false : true;
     }
 
+    function validOption(id) {
+        return id === "clock-seconds";
+    }
+
+    function optionEnabled(id) {
+        return root.validOption(id) && root.optionValues[id] === true;
+    }
+
     function useDefaults() {
         root.values = ({
             "workspaces": true,
@@ -55,6 +69,9 @@ Scope {
             "bluetooth": true,
             "network": true,
             "power": true
+        });
+        root.optionValues = ({
+            "clock-seconds": false
         });
     }
 
@@ -70,8 +87,11 @@ Scope {
 
     function parseStatus(text) {
         const lines = text.trim().split("\n");
-        if (lines.length !== 8 || lines[0] !== "panel-settings-protocol\t1\t0"
-                || lines[7] !== "complete\tstatus") return;
+        // 1.1 adds one option line before "complete"; 1.0 has none.
+        const optionCount = lines[0] === "panel-settings-protocol\t1\t1" ? root.options.length
+            : lines[0] === "panel-settings-protocol\t1\t0" ? 0 : -1;
+        if (optionCount < 0 || lines.length !== 8 + optionCount
+                || lines[lines.length - 1] !== "complete\tstatus") return;
         const state = lines[1].split("\t");
         if (state.length !== 3 || state[0] !== "state"
                 || ["available", "defaults", "partial", "unavailable"].indexOf(state[1]) < 0)
@@ -87,14 +107,25 @@ Scope {
         for (const widget of root.widgets) {
             if (parsed[widget.id] === undefined) return;
         }
+        const parsedOptions = { "clock-seconds": false };
+        const seenOptions = {};
+        for (let index = 7; index < 7 + optionCount; index++) {
+            const fields = lines[index].split("\t");
+            if (fields.length !== 3 || fields[0] !== "option" || !root.validOption(fields[1])
+                    || (fields[2] !== "enabled" && fields[2] !== "disabled")
+                    || seenOptions[fields[1]] !== undefined) return;
+            seenOptions[fields[1]] = true;
+            parsedOptions[fields[1]] = fields[2] === "enabled";
+        }
         root.values = parsed;
+        root.optionValues = parsedOptions;
         root.providerState = state[1];
         root.providerDetail = state[2];
         root.statusParsed = true;
     }
 
     function setWidget(id, enabled) {
-        if (!root.validWidget(id) || root.busy || !root.mutationReady) return;
+        if ((!root.validWidget(id) && !root.validOption(id)) || root.busy || !root.mutationReady) return;
         root.busy = true;
         root.pendingWidget = id;
         root.pendingValue = enabled ? "enabled" : "disabled";
@@ -106,6 +137,10 @@ Scope {
 
     function toggleWidget(id) {
         root.setWidget(id, !root.widgetEnabled(id));
+    }
+
+    function toggleOption(id) {
+        if (root.validOption(id)) root.setWidget(id, !root.optionEnabled(id));
     }
 
     function reset() {

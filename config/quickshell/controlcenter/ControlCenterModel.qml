@@ -99,6 +99,14 @@ Scope {
         root.panelSettingsModel.toggleWidget(id);
     }
 
+    function optionEnabled(id) {
+        return !!root.panelSettingsModel && root.panelSettingsModel.optionEnabled(id);
+    }
+
+    function toggleOption(id) {
+        if (root.panelSettingsModel) root.panelSettingsModel.toggleOption(id);
+    }
+
     function toggle() {
         if (root.visible) {
             root.close();

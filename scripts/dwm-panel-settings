@@ -14,10 +14,15 @@ runtime_base=${XDG_RUNTIME_DIR:-/tmp/dwm-titus-$UID}
 lock_file=$runtime_base/dwm-panel-settings.lock
 readonly max_config_size=4096
 readonly max_restore_attempts=8
-readonly protocol_header=$'panel-settings-protocol\t1\t0'
+# 1.1 adds option lines after the widget lines. 1.0 files (header plus five
+# widget records) are still read so existing choices survive.
+readonly protocol_header=$'panel-settings-protocol\t1\t1'
+readonly legacy_protocol_header=$'panel-settings-protocol\t1\t0'
 readonly widget_ids='workspaces volume bluetooth network power'
+readonly option_ids='clock-seconds'
 
 declare -A widget_values=()
+declare -A option_values=()
 config_state=defaults
 config_detail='Using safe all-on defaults; the first change creates persistent state'
 mutation_baseline_kind=absent
@@ -26,7 +31,7 @@ mutation_baseline_mode=600
 mutation_baseline_fingerprint=''
 
 usage() {
-	printf 'usage: %s status | set WIDGET enabled|disabled | reset\n' "${0##*/}" >&2
+	printf 'usage: %s status | set WIDGET|OPTION enabled|disabled | reset\n' "${0##*/}" >&2
 }
 
 die() {
@@ -35,15 +40,25 @@ die() {
 }
 
 set_defaults() {
-	local widget
+	local widget option
 	for widget in $widget_ids; do
 		widget_values[$widget]=enabled
+	done
+	for option in $option_ids; do
+		option_values[$option]=disabled
 	done
 }
 
 valid_widget() {
 	case $1 in
 	workspaces | volume | bluetooth | network | power) return 0 ;;
+	*) return 1 ;;
+	esac
+}
+
+valid_option() {
+	case $1 in
+	clock-seconds) return 0 ;;
 	*) return 1 ;;
 	esac
 }
@@ -70,8 +85,8 @@ config_dir_safe() {
 }
 
 load_config() {
-	local line first=true widget value count=0
-	local -A seen=()
+	local line first=true widget value option count=0 options_allowed=false
+	local -A seen=() seen_options=()
 	set_defaults
 	if [[ -e $config_dir || -L $config_dir ]] && ! config_dir_safe; then
 		config_state=unavailable
@@ -88,7 +103,9 @@ load_config() {
 	fi
 	while IFS= read -r line || [[ -n $line ]]; do
 		if [[ $first == true ]]; then
-			if [[ $line != "$protocol_header" ]]; then
+			if [[ $line == "$protocol_header" ]]; then
+				options_allowed=true
+			elif [[ $line != "$legacy_protocol_header" ]]; then
 				config_state=partial
 				if [[ $line == panel-settings-protocol$'\t'* ]]; then
 					config_detail='Unsupported panel settings version was preserved; using all-on defaults'
@@ -98,6 +115,21 @@ load_config() {
 				return 1
 			fi
 			first=false
+			continue
+		fi
+		if [[ $options_allowed == true && $line == option$'\t'* ]]; then
+			option=${line#option$'\t'}
+			value=${option#*$'\t'}
+			option=${option%%$'\t'*}
+			if [[ $line != option$'\t'*$'\t'* || $value == *$'\t'* ]] || ! valid_option "$option" ||
+				[[ $value != enabled && $value != disabled ]] || [[ -n ${seen_options[$option]+x} ]]; then
+				config_state=partial
+				config_detail='Malformed panel settings were preserved; using all-on defaults'
+				set_defaults
+				return 1
+			fi
+			seen_options[$option]=1
+			option_values[$option]=$value
 			continue
 		fi
 		if [[ $line != *$'\t'* || ${line#*$'\t'} == *$'\t'* ]]; then
@@ -130,12 +162,15 @@ load_config() {
 }
 
 emit_status() {
-	local widget
+	local widget option
 	load_config || true
 	printf '%s\n' "$protocol_header"
 	printf 'state\t%s\t%s\n' "$config_state" "$config_detail"
 	for widget in $widget_ids; do
 		printf 'widget\t%s\t%s\n' "$widget" "${widget_values[$widget]}"
+	done
+	for option in $option_ids; do
+		printf 'option\t%s\t%s\n' "$option" "${option_values[$option]}"
 	done
 	printf 'complete\tstatus\n'
 }
@@ -330,14 +365,25 @@ publish_config() {
 }
 
 write_config() {
-	local temporary widget
+	local temporary widget option header
 	temporary=$(umask 077 && mktemp "$config_dir/.panel-widgets.conf.XXXXXX") ||
 		die 'cannot create temporary panel state'
+	# Options at their defaults are written as a 1.0 file, so an older helper
+	# (downgrade) still reads the widget choices instead of resetting them.
+	header=$legacy_protocol_header
+	for option in $option_ids; do
+		[[ ${option_values[$option]} == disabled ]] || header=$protocol_header
+	done
 	{
-		printf '%s\n' "$protocol_header"
+		printf '%s\n' "$header"
 		for widget in $widget_ids; do
 			printf '%s\t%s\n' "$widget" "${widget_values[$widget]}"
 		done
+		if [[ $header == "$protocol_header" ]]; then
+			for option in $option_ids; do
+				printf 'option\t%s\t%s\n' "$option" "${option_values[$option]}"
+			done
+		fi
 	} >"$temporary"
 	chmod "$mutation_baseline_mode" -- "$temporary"
 	if [[ -n ${DWM_TEST_PANEL_PUBLISH_READY:-} ]]; then
@@ -361,7 +407,7 @@ write_config() {
 
 set_widget() {
 	local widget=$1 value=$2
-	valid_widget "$widget" || die "unsupported widget: $widget"
+	valid_widget "$widget" || valid_option "$widget" || die "unsupported widget: $widget"
 	[[ $value == enabled || $value == disabled ]] || die 'widget state must be enabled or disabled'
 	ensure_mutation_paths
 	capture_mutation_baseline
@@ -370,7 +416,11 @@ set_widget() {
 		[[ $config_state == partial ]] || die 'persistent panel state is unsafe'
 	}
 	mutation_baseline_unchanged || die_mutation_baseline_changed
-	widget_values[$widget]=$value
+	if valid_option "$widget"; then
+		option_values[$widget]=$value
+	else
+		widget_values[$widget]=$value
+	fi
 	write_config
 	printf 'panel-settings-action-protocol\t1\t0\nresult\tset\t%s\t%s\n' "$widget" "$value"
 }

@@ -338,6 +338,18 @@ ClickAwayPopup {
                             onActivated: root.controlCenterModel.toggleWidget(modelData)
                         }
                     }
+
+                    MenuRow {
+                        Layout.fillWidth: true
+                        implicitHeight: root.compactRowHeight
+                        label: "Clock seconds"
+                        detail: root.controlCenterModel.optionEnabled("clock-seconds") ? "On" : "Off"
+                        active: root.controlCenterModel.optionEnabled("clock-seconds")
+                        enabled: !!root.controlCenterModel.panelSettingsModel
+                            && root.controlCenterModel.panelSettingsModel.mutationReady
+                            && !root.controlCenterModel.panelSettingsModel.busy
+                        onActivated: root.controlCenterModel.toggleOption("clock-seconds")
+                    }
                 }
 
                 ColumnLayout {

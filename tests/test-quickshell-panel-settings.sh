@@ -25,7 +25,9 @@ run_helper() {
 }
 
 status=$(run_helper status)
-printf '%s\n' "$status" | grep -Fqx 'panel-settings-protocol	1	0'
+printf '%s\n' "$status" | grep -Fqx 'panel-settings-protocol	1	1'
+printf '%s\n' "$status" | grep -Fqx 'option	clock-seconds	disabled'
+test "$(printf '%s\n' "$status" | wc -l)" -eq 9
 printf '%s\n' "$status" | grep -Fqx \
 	'state	defaults	Using safe all-on defaults; the first change creates persistent state'
 for widget in workspaces volume bluetooth network power; do
@@ -68,6 +70,72 @@ persisted=$(run_helper status)
 printf '%s\n' "$persisted" | grep -Fqx 'widget	volume	disabled'
 printf '%s\n' "$persisted" | grep -Fqx \
 	'state	available	Persistent panel visibility is active for every monitor'
+
+# Options at their defaults keep the 1.0 file format for older helpers.
+test "$(wc -l <"$state_file")" -eq 6
+run_helper set clock-seconds enabled | grep -Fqx 'result	set	clock-seconds	enabled'
+grep -Fqx 'panel-settings-protocol	1	1' "$state_file"
+grep -Fqx 'option	clock-seconds	enabled' "$state_file"
+grep -Fqx 'volume	disabled' "$state_file"
+seconds_status=$(run_helper status)
+printf '%s\n' "$seconds_status" | grep -Fqx 'option	clock-seconds	enabled'
+printf '%s\n' "$seconds_status" | grep -Fqx 'widget	volume	disabled'
+printf '%s\n' "$seconds_status" | grep -Fqx \
+	'state	available	Persistent panel visibility is active for every monitor'
+run_helper set volume enabled >/dev/null
+grep -Fqx 'option	clock-seconds	enabled' "$state_file"
+run_helper set volume disabled >/dev/null
+run_helper set clock-seconds disabled | grep -Fqx 'result	set	clock-seconds	disabled'
+grep -Fqx 'panel-settings-protocol	1	0' "$state_file"
+if grep -Fq 'option' "$state_file"; then
+	printf 'Default options were not written as a 1.0 file\n' >&2
+	exit 1
+fi
+if run_helper set clock-seconds maybe >/dev/null 2>&1; then
+	printf 'Panel settings accepted an invalid option value\n' >&2
+	exit 1
+fi
+if run_helper set clock-minutes enabled >/dev/null 2>&1; then
+	printf 'Panel settings accepted an unknown option\n' >&2
+	exit 1
+fi
+
+# A legacy 1.0 file (header plus five records) keeps its widget choices.
+printf 'panel-settings-protocol\t1\t0\nworkspaces\tenabled\nvolume\tdisabled\nbluetooth\tdisabled\nnetwork\tenabled\npower\tenabled\n' \
+	>"$state_file"
+legacy=$(run_helper status)
+printf '%s\n' "$legacy" | grep -Fqx \
+	'state	available	Persistent panel visibility is active for every monitor'
+printf '%s\n' "$legacy" | grep -Fqx 'widget	volume	disabled'
+printf '%s\n' "$legacy" | grep -Fqx 'widget	bluetooth	disabled'
+printf '%s\n' "$legacy" | grep -Fqx 'option	clock-seconds	disabled'
+run_helper set clock-seconds enabled >/dev/null
+grep -Fqx 'bluetooth	disabled' "$state_file"
+grep -Fqx 'volume	disabled' "$state_file"
+run_helper set clock-seconds disabled >/dev/null
+run_helper set bluetooth enabled >/dev/null
+
+# Option lines are only valid in 1.1 files; malformed option lines fall back.
+printf 'panel-settings-protocol\t1\t0\nworkspaces\tenabled\nvolume\tdisabled\nbluetooth\tenabled\nnetwork\tenabled\npower\tenabled\noption\tclock-seconds\tenabled\n' \
+	>"$state_file"
+run_helper status | grep -Fqx \
+	'state	partial	Malformed panel settings were preserved; using all-on defaults'
+for bad_option in "option	clock-seconds	on" "option	clock-minutes	enabled" "option	clock-seconds" \
+	"option	clock-seconds	enabled	x"; do
+	printf 'panel-settings-protocol\t1\t1\nworkspaces\tenabled\nvolume\tdisabled\nbluetooth\tenabled\nnetwork\tenabled\npower\tenabled\n%s\n' \
+		"$bad_option" >"$state_file"
+	bad=$(run_helper status)
+	printf '%s\n' "$bad" | grep -Fqx \
+		'state	partial	Malformed panel settings were preserved; using all-on defaults'
+	printf '%s\n' "$bad" | grep -Fqx 'option	clock-seconds	disabled'
+done
+printf 'panel-settings-protocol\t1\t1\nworkspaces\tenabled\nvolume\tdisabled\nbluetooth\tenabled\nnetwork\tenabled\npower\tenabled\noption\tclock-seconds\tenabled\noption\tclock-seconds\tenabled\n' \
+	>"$state_file"
+run_helper status | grep -Fqx \
+	'state	partial	Malformed panel settings were preserved; using all-on defaults'
+printf 'panel-settings-protocol\t1\t1\nworkspaces\tenabled\nvolume\tdisabled\nbluetooth\tenabled\nnetwork\tenabled\npower\tenabled\n' \
+	>"$state_file"
+run_helper status | grep -Fqx 'widget	volume	disabled'
 
 chmod 640 "$state_file"
 run_helper set network disabled >/dev/null
@@ -143,6 +211,7 @@ grep -Fqx 'external edit' "$state_file"
 
 run_helper reset >/dev/null
 reset_status=$(run_helper status)
+printf '%s\n' "$reset_status" | grep -Fqx 'option	clock-seconds	disabled'
 for widget in workspaces volume bluetooth network power; do
 	printf '%s\n' "$reset_status" | grep -Fqx "widget	$widget	enabled"
 done
@@ -288,6 +357,19 @@ grep -Fq 'while ((attempt < max_restore_attempts)); do' "$helper"
 grep -Fq 'Give that edit one final guarded' "$helper"
 grep -Fq "current_fingerprint == \"\$expected_fingerprint\"" "$helper"
 grep -Fq 'panel-settings-protocol\t1\t0' "$model"
+grep -Fq 'panel-settings-protocol\t1\t1' "$model"
+grep -Fq 'function optionEnabled(id)' "$model"
+grep -Fq 'function toggleOption(id)' "$model"
+grep -Fq '{ "id": "clock-seconds", "label": "Clock: show seconds" }' "$model"
+grep -Fq 'showSeconds: panelSettingsModel.optionEnabled("clock-seconds")' "$shell"
+grep -Fq 'function panelOptionEnabled(option: string): bool' "$shell"
+grep -Fq 'function panelOptionSet(option: string, enabled: bool): void' "$shell"
+grep -Fq 'label: "Clock seconds"' "$control_window"
+grep -Fq 'root.controlCenterModel.toggleOption("clock-seconds")' "$control_window"
+grep -Fq 'root.panelSettingsModel.toggleOption(id)' "$control_model"
+grep -Fq 'model: root.panelSettingsModel.options' "$appearance_pane"
+grep -Fq 'onToggled: root.panelSettingsModel.toggleOption(panelOptionRow.modelData.id)' \
+	"$appearance_pane"
 grep -Fq 'Component.onCompleted: root.refresh()' "$model"
 grep -Fq 'watchChanges: true' "$model"
 grep -Fq 'property bool refreshPending: false' "$model"

@@ -248,7 +248,9 @@ cannot be canceled. Cancel only dismisses the preview, and closing Settings does
 not undo an action. An uncertain result requires fresh status and new confirmation,
 not automatic retry. Locale changes apply to new sessions; log out manually when
 ready. Synchronization status is labeled as the last read.
-The panel and System Settings share one minute-level local clock. A newly
+The panel and System Settings share one local clock. It is minute-level unless
+seconds are turned on for the panel (Settings > Appearance or Control Center >
+Bar Widgets); the Settings readout stays minute-level. A newly
 reported timezone refreshes both displays without restarting Quickshell.
 
 Start with the built-in diagnostic report:
