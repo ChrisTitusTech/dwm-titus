@@ -155,7 +155,8 @@ ${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/
 
 Hotkeys, themes, and window rules reload when their TOML files are saved.
 Advanced compile-time preferences live in the user-owned `config.h`, which the
-installer and future upgrades preserve.
+installer and future upgrades preserve. `~/.config/quickshell/` is managed
+by dwm-titus and replaced on every update, so don't keep local edits there.
 
 The installer also provides `dwm-settings-display` and its root-owned
 `libexec/dwm-titus/dwm-settings-display-root` persistence helper. Live display

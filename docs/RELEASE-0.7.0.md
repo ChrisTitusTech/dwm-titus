@@ -14,8 +14,10 @@ This release completes the planned desktop and image qualification phases.
 - Standard and NVIDIA Fedora 44 installers with dark Anaconda branding,
   corrected BIOS/UEFI Kickstart boot menus and verified embedded media checksums.
 - Recommended image provisioning includes Meslo icons and Gear Lever.
-  Existing-system updates preserve user configuration; backup, retry and
-  restoration procedures cover custom XDG locations and symlink targets.
+  Existing-system updates preserve user-owned configuration
+  (`~/.config/dwm-titus`, application configs, `.xinitrc`, `config.h`); the
+  managed Quickshell tree is replaced. Backup, retry and restoration
+  procedures cover custom XDG locations and symlinked user paths.
 - Small-display Settings sizing and stale user-autostart recovery fixes found
   during clean-install and upgrade qualification.
 
