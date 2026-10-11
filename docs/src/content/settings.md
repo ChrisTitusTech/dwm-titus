@@ -74,6 +74,16 @@ slow keys, bounce keys, and mouse keys when `xkbset` can reach the X11 session.
 These controls use the same 15-second preview and reset workflow, but are not
 tied to one physical keyboard. Kept choices are restored at the next login.
 
+To type in more than one language, enter a comma-separated list in Keyboard
+layout, for example `us,gr`, and add a `grp:` switch key to Modifier options,
+for example `grp:alt_shift_toggle` for Alt+Shift. Keep a layout with Latin
+letters first, because dwm matches its hotkeys against the first layout. With
+two or more layouts the panel shows a keyboard layout pill with the active
+layout (US, GR, ...): click it or scroll on it to switch, middle-click for the
+first layout, right-click to open this section. The pill reads the layout from
+the running keymap, so layouts set with `setxkbmap` by hand show up too. It can
+be hidden like the other panel widgets.
+
 The Appearance section also manages notification behavior. **Do Not Disturb**
 suppresses low and normal urgency popups without discarding their history;
 critical notifications remain visible. Choose a four-, six-, or ten-second

@@ -12,6 +12,13 @@ versions from `config.mk`.
   it in Settings > Appearance > Panel widgets or the Control Center Bar Widgets
   page; it is stored in `panel-widgets.conf` and older files keep their widget
   choices.
+- Add a keyboard layout pill to the panel. With two or more layouts (Settings >
+  Input) it shows the active one (US, GR, ...); click or scroll to switch,
+  middle-click for the first layout, right-click for Settings > Input. It is a
+  sixth panel widget (Control Center Bar Widgets, Settings Appearance), on by
+  default; `panel-widgets.conf` files from before it keep their choices. The
+  pill is ported from the Keyboard-Layout-for-Omarchy plugin
+  (https://github.com/Somnius/Keyboard-Layout-for-Omarchy, MIT).
 - dwm publishes the active keyboard layout group, the group names and the
   keymap symbols name on the root window and switches layouts on a
   `_DWM_KEYBOARD_GROUP_REQUEST` root property or the new `cyclelayout` hotkey
