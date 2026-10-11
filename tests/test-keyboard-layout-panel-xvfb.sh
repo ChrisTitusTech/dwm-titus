@@ -33,6 +33,14 @@ session() {
 		PATH="$work/bin:$repo_dir/scripts:$PATH" QT_QPA_PLATFORMTHEME='' "$@"
 }
 
+# For background processes: exec, so $! is the program itself (the test
+# stops and resumes dwm by PID).
+spawn() {
+	exec env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$home/.config" \
+		XDG_DATA_HOME="$home/.local/share" XDG_RUNTIME_DIR="$runtime" \
+		PATH="$work/bin:$repo_dir/scripts:$PATH" QT_QPA_PLATFORMTHEME='' "$@"
+}
+
 ipc() {
 	session quickshell ipc --path "$work/shell/shell.qml" call kbdtest "$@" 2>/dev/null || true
 }
@@ -89,6 +97,13 @@ mkdir -p "$work/bin" "$home/.config/dwm-titus" "$home/.local/share/dwm-titus/con
 chmod 700 "$runtime"
 printf '#!/bin/sh\nexit 0\n' >"$work/bin/notify-send"
 chmod 755 "$work/bin/notify-send"
+# Count the layout requests the panel sends.
+cat >"$work/bin/dwm-quickshell-state" <<EOF
+#!/bin/sh
+[ "\${1:-}" = keyboard-group ] && printf '%s\n' "\${2:-}" >>"$work/requests.log"
+exec "$repo_dir/scripts/dwm-quickshell-state" "\$@"
+EOF
+chmod 755 "$work/bin/dwm-quickshell-state"
 cp "$repo_dir/config/"*.toml "$home/.local/share/dwm-titus/config/"
 cp "$repo_dir/config/themes.toml" "$repo_dir/config/window-rules.toml" "$home/.config/dwm-titus/"
 printf 'keys = [\n]\n' >"$home/.config/dwm-titus/hotkeys.toml"
@@ -111,11 +126,11 @@ case $display in
 esac
 
 X setxkbmap -layout us,gr -option ''
-session "$repo_dir/dwm" >"$work/dwm.log" 2>&1 &
+spawn "$repo_dir/dwm" >"$work/dwm.log" 2>&1 &
 dwm_pid=$!
 wait_group '0, 2'
 
-session quickshell --no-duplicate --path "$work/shell/shell.qml" >"$work/quickshell.log" 2>&1 &
+spawn quickshell --no-duplicate --path "$work/shell/shell.qml" >"$work/quickshell.log" 2>&1 &
 quickshell_pid=$!
 
 step=parser
@@ -133,13 +148,30 @@ wait_ipc '2:GR' label
 # Clicks while a request is still running are queued, not dropped: three
 # steps from group 1 of 2 end on group 0.
 step=burst
-ipc cycle 1 >/dev/null
-ipc cycle 1 >/dev/null
-ipc cycle 1 >/dev/null
+ipc burst 3 >/dev/null
 wait_group '0, 2'
 wait_ipc '2:US' label
 sleep 0.5
 wait_group '0, 2'
+
+# dwm not taking requests (stopped): the running helper gives up after about
+# a second and the two queued clicks are dropped, not sent. When dwm runs
+# again it takes the one request that was written: exactly one step.
+step=timeout
+X "$repo_dir/scripts/dwm-quickshell-state" keyboard-group 0
+wait_ipc '2:US' label
+: >"$work/requests.log"
+kill -STOP "$dwm_pid"
+ipc burst 3 >/dev/null
+sleep 4
+sent=$(wc -l <"$work/requests.log")
+kill -CONT "$dwm_pid"
+[ "$sent" -eq 1 ] || fail "panel sent $sent requests while dwm was stopped, expected 1"
+wait_group '1, 2'
+sleep 1.5
+wait_group '1, 2'
+wait_ipc '2:GR' label
+[ "$(wc -l <"$work/requests.log")" -eq 1 ] || fail "panel retried after the timeout"
 
 step=select
 ipc select 1 >/dev/null

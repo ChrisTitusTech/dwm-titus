@@ -284,8 +284,10 @@ Scope {
     }
 
     // dwm cycles from the server's current group, so clicks send "next" or
-    // "prev" rather than an index computed here. One helper runs at a time;
-    // clicks during a run are counted and sent after it.
+    // "prev" rather than an index computed here. One helper runs at a time and
+    // only exits once dwm took the request; clicks during a run are counted
+    // and sent after it. If the helper fails (dwm did not take the request
+    // within about a second), the queued clicks are dropped, not retried.
     function cycleKeyboardLayout(step) {
         if (root.keyboardGroupCount < 2 || step === 0) {
             return;
@@ -330,7 +332,13 @@ Scope {
         keyboardRequestProcess.running = true;
     }
 
-    function keyboardRequestFinished() {
+    function keyboardRequestFinished(exitCode) {
+        if (exitCode !== 0) {
+            root.keyboardPendingTarget = "";
+            root.keyboardPendingSteps = 0;
+            return;
+        }
+
         if (root.keyboardPendingTarget.length > 0) {
             const target = root.keyboardPendingTarget;
 
@@ -378,7 +386,9 @@ Scope {
 
         command: ["dwm-quickshell-state", "keyboard-group", "next"]
         running: false
-        onRunningChanged: if (!running) Qt.callLater(root.keyboardRequestFinished)
+        onExited: (exitCode, exitStatus) => { // qmllint disable signal-handler-parameters
+            Qt.callLater(root.keyboardRequestFinished, exitStatus === 0 ? exitCode : -1);
+        }
     }
 
     Process {

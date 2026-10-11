@@ -130,6 +130,11 @@ ShellRoot {
             dwmState.cycleKeyboardLayout(step);
         }
 
+        // Several clicks in one event-loop turn: all but the first queue.
+        function burst(count: int): void {
+            for (let index = 0; index < count; index++) dwmState.cycleKeyboardLayout(1);
+        }
+
         function select(index: int): void {
             dwmState.setKeyboardLayout(index);
         }
