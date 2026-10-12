@@ -171,6 +171,24 @@ x11.XSync(dpy, 0)
 ' "$1"
 }
 
+# Writes the request with raw bytes (Python escapes), so it can hold a NUL.
+raw_request() {
+	DISPLAY=$display python3 -I -c '
+import ctypes, sys
+x11 = ctypes.CDLL("libX11.so.6")
+x11.XOpenDisplay.restype = ctypes.c_void_p
+x11.XInternAtom.restype = ctypes.c_ulong
+dpy = ctypes.c_void_p(x11.XOpenDisplay(None))
+if not dpy.value:
+    sys.exit("cannot open display")
+root = ctypes.c_ulong(x11.XDefaultRootWindow(dpy))
+atom = ctypes.c_ulong(x11.XInternAtom(dpy, b"_DWM_KEYBOARD_GROUP_REQUEST", 0))
+value = sys.argv[1].encode().decode("unicode_escape").encode("latin-1")
+x11.XChangeProperty(dpy, root, atom, ctypes.c_ulong(31), 8, 0, value, len(value))
+x11.XSync(dpy, 0)
+' "$1"
+}
+
 peak_kib() {
 	sed -n 's/^VmHWM:[[:space:]]*\([0-9]*\).*/\1/p' "/proc/$dwm_pid/status"
 }
@@ -191,7 +209,7 @@ wait_watch_group() {
 	fail "watch stream last keyboard group '$last', expected '$1'"
 }
 
-require_cmd Xvfb xprop setxkbmap xkbcomp xmodmap python3 awk sed grep
+require_cmd Xvfb xprop xinput setxkbmap xkbcomp xmodmap python3 awk sed grep
 [ -x "$repo_dir/dwm" ] || fail "build dwm first (make)"
 
 tmp_root=${DWM_TEST_TMP_ROOT:-$HOME/tmp}
@@ -306,7 +324,14 @@ for bad in 3 7 foo; do
 done
 X xprop -root -f _DWM_KEYBOARD_GROUP_REQUEST 32c -set _DWM_KEYBOARD_GROUP_REQUEST 1
 assert_no_request
-# Larger than any read window dwm used before: still taken in one read.
+# A NUL inside the value makes it invalid, even with a valid prefix.
+for bad in 'next\0junk' '1\0'; do
+	raw_request "$bad"
+	assert_no_request
+	sleep 0.2
+	wait_group '2, 3'
+done
+# Longer than the 16 bytes dwm reads: still consumed.
 X xprop -root -f _DWM_KEYBOARD_GROUP_REQUEST 8s -set _DWM_KEYBOARD_GROUP_REQUEST \
 	"$(awk 'BEGIN { while (n++ < 600) printf "x" }')"
 assert_no_request
@@ -489,8 +514,15 @@ X xmodmap -e 'keycode 38 = a A Greek_alpha Greek_ALPHA'
 wait_group '0, 2'
 X xmodmap -e 'keycode 38 = a A Greek_alpha Greek_ALPHA Cyrillic_ef Cyrillic_EF'
 wait_group '0, 3'
-sleep 0.3
-# a new count rewrites the names, the unchanged symbols name stays
+# a new count rewrites the names, the unchanged symbols name stays; dwm writes
+# the symbols before the names, so once the names arrived a symbols write
+# would be in the spy output already
+i=0
+while [ "$i" -lt 100 ] &&
+	[ "$(count_lines '^_DWM_KEYBOARD_GROUP_NAMES' "$work/names.spy")" -le "$names_before" ]; do
+	i=$((i + 1))
+	sleep 0.05
+done
 names_after=$(count_lines '^_DWM_KEYBOARD_GROUP_NAMES' "$work/names.spy")
 symbols_after=$(count_lines '^_DWM_KEYBOARD_SYMBOLS' "$work/names.spy")
 [ "$names_after" -gt "$names_before" ] || fail "names not rewritten for the new count"
@@ -535,7 +567,26 @@ root_value _DWM_KEYBOARD_SYMBOLS | grep -q 'alt_shift_toggle' || fail "symbols n
 	fail "unchanged names rewritten ($names_before -> $names_after)"
 
 step=17
-# 17. dwm survived all of it.
+# 17. A layout set on one keyboard device, as Settings does: X copies it to
+# the core keyboard at once when that device sent the last key, otherwise on
+# its next key; then switching works from the device (grp: key) and from dwm.
+X setxkbmap -layout us -option ''
+request 0
+wait_group '0, 1'
+xtest_id=$(X xinput list --id-only 'Virtual core XTEST keyboard') ||
+	fail "no XTEST keyboard device"
+X setxkbmap -device "$xtest_id" -layout us,gr -option '' -option grp:caps_toggle
+press_keys '#38'
+wait_group '0, 2'
+press_keys '#66'
+wait_group '1, 2'
+request next
+wait_group '0, 2'
+press_keys '#66'
+wait_group '1, 2'
+
+step=18
+# 18. dwm survived all of it.
 kill -0 "$dwm_pid" 2>/dev/null || fail "dwm exited"
 
 printf '%s\n' "Keyboard layout Xvfb test: PASS"

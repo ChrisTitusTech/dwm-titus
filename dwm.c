@@ -5351,7 +5351,9 @@ keyboardrequest(void)
 	XUngrabServer(dpy);
 	if (!data)
 		return;
-	if (format != 8 || after || nitems == 0 || nitems >= sizeof(req)) {
+	/* a NUL inside the value would cut it short, so "next\0junk" is invalid */
+	if (format != 8 || after || nitems == 0 || nitems >= sizeof(req)
+	    || memchr(data, '\0', nitems)) {
 		XFree(data);
 		return;
 	}
