@@ -450,7 +450,12 @@ kill -TERM "$term_pid"
 wait "$term_pid" 2>/dev/null || true
 sleep 0.2
 leftover=$(find "$work/helper-tmp" -mindepth 1 | wc -l)
-spies=$(pgrep -f "xprop -root -spy _DWM_KEYBOARD_GROUP_REQUEST" | wc -l)
+# only spies on this test's display count
+spies=0
+for spy in $(pgrep -f "xprop -root -spy _DWM_KEYBOARD_GROUP_REQUEST" || true); do
+	tr '\0' '\n' <"/proc/$spy/environ" 2>/dev/null | grep -qx "DISPLAY=$display" &&
+		spies=$((spies + 1))
+done
 kill -CONT "$dwm_pid"
 [ "$leftover" -eq 0 ] || fail "helper left $leftover temp entries after TERM"
 [ "$spies" -eq 0 ] || fail "helper left $spies xprop -spy running after TERM"
