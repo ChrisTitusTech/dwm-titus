@@ -404,9 +404,17 @@ kill -0 "$dwm_pid" 2>/dev/null || fail "dwm exited after raw writes"
 request 0
 wait_group '0, 3'
 kill -STOP "$dwm_pid"
+# count the xprop runs: the wait listens once instead of polling
+mkdir -p "$work/count-bin"
+real_xprop=$(command -v xprop)
+printf '#!/bin/sh\nprintf x >>"%s"\nexec "%s" "$@"\n' "$work/xprop.count" "$real_xprop" \
+	>"$work/count-bin/xprop"
+chmod 755 "$work/count-bin/xprop"
+: >"$work/xprop.count"
 start=$(date +%s)
 set +e
-request next 2>"$work/timeout.err"
+PATH="$work/count-bin:$PATH" X "$repo_dir/scripts/dwm-quickshell-state" keyboard-group next \
+	2>"$work/timeout.err"
 status=$?
 set -e
 kill -CONT "$dwm_pid"
@@ -414,6 +422,8 @@ elapsed=$(($(date +%s) - start))
 [ "$status" -eq 75 ] || fail "helper exit $status while dwm was stopped, expected 75"
 grep -q 'is dwm running' "$work/timeout.err" || fail "no timeout message"
 [ "$elapsed" -le 3 ] || fail "helper took ${elapsed}s to give up"
+xprop_runs=$(wc -c <"$work/xprop.count")
+[ "$xprop_runs" -le 3 ] || fail "helper ran xprop $xprop_runs times while waiting"
 wait_group '1, 3'
 assert_no_request
 request 0
