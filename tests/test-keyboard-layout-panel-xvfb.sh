@@ -157,6 +157,19 @@ wait_ipc '2:US' label
 sleep 0.5
 wait_group '0, 2'
 
+# A click right after a helper exits, before the queued clicks are sent, is
+# queued too: two clicks plus that one are three steps, from 0 of 2 to 1.
+step=gap
+: >"$work/requests.log"
+ipc gap 2 >/dev/null
+wait_group '1, 2'
+sleep 0.5
+wait_group '1, 2'
+[ "$(wc -l <"$work/requests.log")" -eq 3 ] ||
+	fail "panel sent $(wc -l <"$work/requests.log") requests for three clicks"
+X "$repo_dir/scripts/dwm-quickshell-state" keyboard-group 0
+wait_group '0, 2'
+
 # dwm not taking requests (stopped): the running helper gives up after about
 # a second and the two queued clicks are dropped, not sent. When dwm runs
 # again it takes the one request that was written: exactly one step.

@@ -28,6 +28,10 @@ Scope {
     property var keyboardLayouts: []
     property int keyboardPendingSteps: 0
     property string keyboardPendingTarget: ""
+    // Busy from the start of a helper run until its queued clicks are sent,
+    // so a click in the gap after the helper exits waits its turn too.
+    property bool keyboardRequestBusy: false
+    property int keyboardRequestExit: -1
     property double keyboardLastWheel: 0
 
     function parseState(text) {
@@ -287,13 +291,14 @@ Scope {
     // "prev" rather than an index computed here. One helper runs at a time and
     // only exits once dwm took the request; clicks during a run are counted
     // and sent after it. If the helper fails (dwm did not take the request
-    // within about a second), the queued clicks are dropped, not retried.
+    // within about a second, or did not start), the queued clicks are dropped,
+    // not retried.
     function cycleKeyboardLayout(step) {
         if (root.keyboardGroupCount < 2 || step === 0) {
             return;
         }
 
-        if (keyboardRequestProcess.running) {
+        if (root.keyboardRequestBusy) {
             root.keyboardPendingSteps += step;
             return;
         }
@@ -307,7 +312,7 @@ Scope {
         }
 
         root.keyboardPendingSteps = 0;
-        if (keyboardRequestProcess.running) {
+        if (root.keyboardRequestBusy) {
             root.keyboardPendingTarget = index.toString();
             return;
         }
@@ -328,14 +333,17 @@ Scope {
     }
 
     function runKeyboardRequest(target) {
+        root.keyboardRequestBusy = true;
+        root.keyboardRequestExit = -1;
         keyboardRequestProcess.command = ["dwm-quickshell-state", "keyboard-group", target];
         keyboardRequestProcess.running = true;
     }
 
-    function keyboardRequestFinished(exitCode) {
-        if (exitCode !== 0) {
+    function keyboardRequestFinished() {
+        if (root.keyboardRequestExit !== 0) {
             root.keyboardPendingTarget = "";
             root.keyboardPendingSteps = 0;
+            root.keyboardRequestBusy = false;
             return;
         }
 
@@ -349,6 +357,8 @@ Scope {
 
             root.keyboardPendingSteps -= step;
             root.runKeyboardRequest(step > 0 ? "next" : "prev");
+        } else {
+            root.keyboardRequestBusy = false;
         }
     }
 
@@ -386,8 +396,15 @@ Scope {
 
         command: ["dwm-quickshell-state", "keyboard-group", "next"]
         running: false
+        // exited comes before running turns false; a helper that cannot
+        // start only turns running false, and keeps the exit code at -1
         onExited: (exitCode, exitStatus) => { // qmllint disable signal-handler-parameters
-            Qt.callLater(root.keyboardRequestFinished, exitStatus === 0 ? exitCode : -1);
+            root.keyboardRequestExit = exitStatus === 0 ? exitCode : -1;
+        }
+        onRunningChanged: {
+            if (!keyboardRequestProcess.running) {
+                Qt.callLater(root.keyboardRequestFinished);
+            }
         }
     }
 

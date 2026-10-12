@@ -12,6 +12,7 @@ ShellRoot {
 
     property int assertions: 0
     property string parserResult: "pending"
+    property int gapClicks: 0
 
     DwmState { id: dwmState }
 
@@ -93,6 +94,21 @@ ShellRoot {
         }
     }
 
+    // A click in the gap between a helper exiting and the panel sending the
+    // queued clicks: exited comes before running turns false, so a call
+    // deferred here runs after the helper stopped and before the panel's own
+    // deferred completion.
+    Connections {
+        target: dwmState
+
+        function onKeyboardRequestExitChanged() {
+            if (root.gapClicks > 0 && dwmState.keyboardRequestExit === 0) {
+                root.gapClicks--;
+                Qt.callLater(dwmState.cycleKeyboardLayout, 1);
+            }
+        }
+    }
+
     Timer {
         // The parser model loads its own status first; run the fixtures after.
         interval: 50
@@ -132,6 +148,12 @@ ShellRoot {
 
         // Several clicks in one event-loop turn: all but the first queue.
         function burst(count: int): void {
+            for (let index = 0; index < count; index++) dwmState.cycleKeyboardLayout(1);
+        }
+
+        // A burst plus one click that lands in the gap after the first run.
+        function gap(count: int): void {
+            root.gapClicks = 1;
             for (let index = 0; index < count; index++) dwmState.cycleKeyboardLayout(1);
         }
 
