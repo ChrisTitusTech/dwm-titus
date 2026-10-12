@@ -957,6 +957,19 @@ grep -Fq 'rejected the natural-scroll reset; the parts already reset were put ba
 grep -Fqx "$twin_key"$'\tnatural-scroll\t1\t0' "$work/home/.config/dwm-titus/input-settings.conf"
 rm -f "$work/home/.config/dwm-titus/input-settings.conf"
 
+# The same, but putting back the first part fails too: Reset says so.
+printf '%s\tnatural-scroll\t1\t0\n' "$twin_key" >"$work/home/.config/dwm-titus/input-settings.conf"
+rm -f "$work/set.count"
+if env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" TEST_DEFAULT_17=1 TEST_FAIL_SET_FROM=2 \
+	TEST_SET_COUNTER="$work/set.count" "$helper" reset "$twin_key" natural-scroll \
+	>/dev/null 2>"$work/twin-reset-stuck.err"; then
+	printf 'a reset whose undo failed reported success\n' >&2
+	exit 1
+fi
+grep -Fq 'could not be put back' "$work/twin-reset-stuck.err"
+grep -Fqx "$twin_key"$'\tnatural-scroll\t1\t0' "$work/home/.config/dwm-titus/input-settings.conf"
+rm -f "$work/home/.config/dwm-titus/input-settings.conf"
+
 # A part that disappears during a preview is skipped on Revert; the part that
 # is left gets its own value back, not the first part's.
 env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" "$helper" preview twin-gone 5 \

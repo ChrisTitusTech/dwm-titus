@@ -425,7 +425,7 @@ undo_member_writes() {
 
 # Sets every member that has the setting to its own driver default; a failure
 # part-way puts the earlier members back. Returns 1 when no member has a
-# default, 2 when a member rejected the write.
+# default, 2 when a member rejected the write, 3 when putting back failed too.
 apply_member_defaults() {
 	local setting=$1 default_name=$2 property id properties value old
 	local -a written=()
@@ -440,8 +440,7 @@ apply_member_defaults() {
 		validate_value "$setting" "$value" || continue
 		xinput set-prop "$id" "$property" "$value" || {
 			rm -f "$properties"
-			undo_member_writes "$setting" "${written[@]}" ||
-				printf 'dwm-settings-input: could not put back the parts already reset\n' >&2
+			undo_member_writes "$setting" "${written[@]}" || return 3
 			return 2
 		}
 		written+=("$id"$'\t'"$old")
@@ -930,6 +929,7 @@ reset_setting() {
 		case $status in
 		0) ;;
 		2) die "a part of device $key rejected the $setting reset; the parts already reset were put back" ;;
+		3) die "a part of device $key rejected the $setting reset and the parts already reset could not be put back" ;;
 		*) die "default is unavailable for $setting" ;;
 		esac
 	else
