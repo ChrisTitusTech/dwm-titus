@@ -117,9 +117,10 @@ The installed session must provide:
   keymap's symbols name). `_XKB_RULES_NAMES` is only a hint and never sets the
   group count. A client switches by setting the 8-bit root property
   `_DWM_KEYBOARD_GROUP_REQUEST` to `next`, `prev` or a zero-based group index;
-  dwm reads and deletes the whole value in one request, whatever its size,
-  never deletes it a second time, ignores invalid or out-of-range
-  values, and requests set before dwm reads the previous one coalesce. Switches
+  dwm reads at most 16 bytes and deletes the value in the same read; a longer
+  value is deleted under a server grab, so a newer request is never lost. It
+  ignores invalid (including NUL inside the value) or out-of-range values, and
+  requests set before dwm reads the previous one coalesce. Switches
   change the locked group, so a held group-shift key or latch still adds to the
   effective group until released. The `cyclelayout` func (`i=1` or `i=-1`)
   cycles the same way. Without XKB the properties are removed and requests are

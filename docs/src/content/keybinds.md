@@ -174,6 +174,11 @@ dwm hotkey instead, bind the `cyclelayout` func; there is no default binding:
 { mod="SUPER ALT", key="k", desc="Next keyboard layout", func="cyclelayout", i=1 },
 ```
 
+Settings sets the layout on that keyboard only. X copies it to the shared
+keyboard state, which dwm and the panel read, right away if that keyboard was
+the last one used, otherwise on its next key press. Until then the panel can
+show the old layout; switching works normally after that.
+
 dwm publishes the active layout on the root window, so
 `xprop -root _DWM_KEYBOARD_GROUP` shows the current group and the group count,
 and `dwm-quickshell-state keyboard-group next` switches from a script.
