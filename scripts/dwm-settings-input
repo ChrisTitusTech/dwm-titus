@@ -378,6 +378,23 @@ apply_preview_members() {
 	done <"$file"
 }
 
+# Keep after a failed preview: writes the value again to every captured member
+# that is still present. A device that is gone gets it from the saved setting
+# when it comes back.
+reapply_members() {
+	local token=$1 key=$2 setting=$3 value=$4 file id old
+	file=$(token_file "$token" members)
+	[[ $key != "$accessibility_key" && -s $file ]] || return 0
+	scan_devices
+	collect_members "$key"
+	((${#member_ids[@]} > 0)) || return 0
+	members_share_port "$key" || return 1
+	while IFS=$'\t' read -r id old; do
+		[[ " ${member_ids[*]} " == *" $id "* ]] || continue
+		apply_member_value "$id" "$setting" "$value" || return 1
+	done <"$file"
+}
+
 # Undoes the members apply_preview_members changed before it failed.
 undo_written_members() {
 	local token=$1 setting=$2 file written id old failed=0
@@ -395,25 +412,41 @@ undo_written_members() {
 	return "$failed"
 }
 
-# Sets every member that has the setting to its own driver default.
+# Puts back members a multi-member write changed before a later member
+# failed. Arguments after the setting are "id<TAB>old value" pairs.
+undo_member_writes() {
+	local setting=$1 pair failed=0
+	shift
+	for pair in "$@"; do
+		apply_member_value "${pair%%$'\t'*}" "$setting" "${pair#*$'\t'}" || failed=1
+	done
+	return "$failed"
+}
+
+# Sets every member that has the setting to its own driver default; a failure
+# part-way puts the earlier members back.
 apply_member_defaults() {
-	local setting=$1 default_name=$2 property id properties value applied=0
+	local setting=$1 default_name=$2 property id properties value old
+	local -a written=()
 	property=$(setting_property "$setting") || return 1
 	properties=$(mktemp)
 	for id in "${member_ids[@]}"; do
 		xinput list-props "$id" >"$properties" 2>/dev/null || continue
-		[[ -n $(property_value "$properties" "$property") ]] || continue
+		old=$(property_value "$properties" "$property")
+		[[ -n $old ]] || continue
 		value=$(property_value "$properties" "$default_name")
 		[[ -n $value ]] || continue
 		validate_value "$setting" "$value" || continue
 		xinput set-prop "$id" "$property" "$value" || {
 			rm -f "$properties"
+			undo_member_writes "$setting" "${written[@]}" ||
+				printf 'dwm-settings-input: could not put back the parts already reset\n' >&2
 			return 1
 		}
-		applied=1
+		written+=("$id"$'\t'"$old")
 	done
 	rm -f "$properties"
-	((applied))
+	((${#written[@]}))
 }
 
 # Prints the first member's value of an XInput property, or fails.
@@ -592,7 +625,8 @@ read_value() {
 }
 
 apply_value() {
-	local key=$1 setting=$2 value=$3 id property properties applied=0
+	local key=$1 setting=$2 value=$3 id property properties old
+	local -a written=()
 	validate_value "$setting" "$value" || die "invalid value for $setting"
 	if [[ $key == "$accessibility_key" ]]; then
 		apply_accessibility_value "$setting" "$value"
@@ -602,16 +636,18 @@ apply_value() {
 	# its own failure.
 	resolve_devices "$key" || return 1
 	case $setting in
-	keyboard-layout)
+	keyboard-layout | modifier-options)
 		need_setxkbmap
 		for id in "${member_ids[@]}"; do
-			setxkbmap -device "$id" -layout "$value" || return 1
-		done
-		;;
-	modifier-options)
-		need_setxkbmap
-		for id in "${member_ids[@]}"; do
-			setxkbmap -device "$id" -option '' -option "$value" || return 1
+			old=$(member_value "$id" "$setting") || old=
+			apply_member_value "$id" "$setting" "$value" || {
+				undo_member_writes "$setting" "${written[@]}" || true
+				return 1
+			}
+			# an unknown layout cannot be put back
+			if [[ -n $old || $setting == modifier-options ]]; then
+				written+=("$id"$'\t'"$old")
+			fi
 		done
 		;;
 	*)
@@ -619,15 +655,18 @@ apply_value() {
 		properties=$(mktemp)
 		for id in "${member_ids[@]}"; do
 			xinput list-props "$id" >"$properties" 2>/dev/null || continue
-			[[ -n $(property_value "$properties" "$property") ]] || continue
+			old=$(property_value "$properties" "$property")
+			[[ -n $old ]] || continue
 			xinput set-prop "$id" "$property" "$value" || {
 				rm -f "$properties"
+				# a merged device is changed on all parts or none
+				undo_member_writes "$setting" "${written[@]}" || true
 				return 1
 			}
-			applied=1
+			written+=("$id"$'\t'"$old")
 		done
 		rm -f "$properties"
-		((applied)) || die "$setting is unsupported by device $key"
+		((${#written[@]})) || die "$setting is unsupported by device $key"
 		;;
 	esac
 }
@@ -783,6 +822,12 @@ finish_preview() {
 	claim=$(claim_preview "$token")
 	trap 'rmdir "$claim" 2>/dev/null || true' RETURN
 	IFS='|' read -r key setting previous value persistable <"$state"
+	if [[ $action == keep && -f $(token_file "$token" failed) ]] &&
+		! (reapply_members "$token" "$key" "$setting" "$value"); then
+		# A merged preview stopped part-way: Keep only once every part has it.
+		rmdir "$claim" 2>/dev/null || true
+		die "not every part of the input device accepted the value; use Revert"
+	fi
 	if [[ $action == keep ]]; then
 		persist_value "$key" "$setting" "$value" "$previous" "$persistable"
 	elif ! (restore_members "$token" "$key" "$setting" "$previous"); then

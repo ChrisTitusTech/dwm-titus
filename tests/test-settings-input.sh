@@ -130,14 +130,14 @@ Device 'Power Button':
 	Device Node (102): "/dev/input/event12"
 PROPS
 		;;
-	17) cat <<'PROPS'
+	17) cat <<PROPS
 Device 'Twin PS/2 Mouse':
 	Device Product ID (101): 2, 19
 	Device Node (102): "/dev/input/event13"
 	libinput Accel Speed (300): 0.000000
 	libinput Accel Speed Default (301): 0.000000
 	libinput Natural Scrolling Enabled (302): 0
-	libinput Natural Scrolling Enabled Default (303): 0
+	libinput Natural Scrolling Enabled Default (303): ${TEST_DEFAULT_17:-0}
 PROPS
 		;;
 	18) cat <<'PROPS'
@@ -907,6 +907,54 @@ rm -f "$work/actions.log"
 env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" "$helper" revert twin-stuck >/dev/null
 [[ $(cat "$work/actions.log") == $'xinput set-prop 17 libinput Natural Scrolling Enabled 0\nxinput set-prop 18 libinput Natural Scrolling Enabled 1' ]]
 test ! -e "$work/runtime/dwm-settings-input/twin-stuck.state"
+
+# Keep after such a failure writes the value to every part again. While a part
+# still rejects it Keep fails and keeps the preview for Revert; once every
+# part takes it the value is saved.
+rm -f "$work/set.count"
+env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" TEST_FAIL_SET_FROM=2 \
+	TEST_SET_COUNTER="$work/set.count" "$helper" preview twin-keep 5 "$twin_key" natural-scroll 1 \
+	>"$work/twin-keep.out" 2>/dev/null
+grep -Fq $'preview-failed\ttwin-keep' "$work/twin-keep.out"
+if env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" TEST_FAIL_SET_ID=18 "$helper" \
+	keep twin-keep >/dev/null 2>"$work/twin-keep.err"; then
+	printf 'Keep accepted a value one part still rejects\n' >&2
+	exit 1
+fi
+grep -Fq 'use Revert' "$work/twin-keep.err"
+test -f "$work/runtime/dwm-settings-input/twin-keep.state"
+if grep -Fq "$twin_key"$'\tnatural-scroll' "$work/home/.config/dwm-titus/input-settings.conf" 2>/dev/null; then
+	printf 'Keep saved a value one part rejected\n' >&2
+	exit 1
+fi
+rm -f "$work/actions.log"
+env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" "$helper" keep twin-keep >/dev/null
+[[ $(cat "$work/actions.log") == $'xinput set-prop 17 libinput Natural Scrolling Enabled 1\nxinput set-prop 18 libinput Natural Scrolling Enabled 1' ]]
+grep -Fqx "$twin_key"$'\tnatural-scroll\t1\t0' "$work/home/.config/dwm-titus/input-settings.conf"
+test ! -e "$work/runtime/dwm-settings-input/twin-keep.state"
+
+# Saved values are applied to all parts or none: a part that fails puts the
+# earlier parts back.
+rm -f "$work/actions.log"
+if env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" TEST_FAIL_SET_ID=18 "$helper" \
+	apply-saved 2>/dev/null; then
+	: # apply-saved reports per setting and may still exit 0
+fi
+[[ $(cat "$work/actions.log") == $'xinput set-prop 17 libinput Natural Scrolling Enabled 1\nxinput set-prop 17 libinput Natural Scrolling Enabled 0' ]]
+rm -f "$work/home/.config/dwm-titus/input-settings.conf"
+
+# A Reset that fails on a later part puts the earlier parts back and keeps
+# the saved value.
+printf '%s\tnatural-scroll\t1\t0\n' "$twin_key" >"$work/home/.config/dwm-titus/input-settings.conf"
+rm -f "$work/actions.log"
+if env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" TEST_DEFAULT_17=1 TEST_FAIL_SET_ID=18 \
+	"$helper" reset "$twin_key" natural-scroll >/dev/null 2>"$work/twin-reset-fail.err"; then
+	printf 'a partly failed reset reported success\n' >&2
+	exit 1
+fi
+[[ $(cat "$work/actions.log") == $'xinput set-prop 17 libinput Natural Scrolling Enabled 1\nxinput set-prop 17 libinput Natural Scrolling Enabled 0' ]]
+grep -Fqx "$twin_key"$'\tnatural-scroll\t1\t0' "$work/home/.config/dwm-titus/input-settings.conf"
+rm -f "$work/home/.config/dwm-titus/input-settings.conf"
 
 # A part that disappears during a preview is skipped on Revert; the part that
 # is left gets its own value back, not the first part's.
