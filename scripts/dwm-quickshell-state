@@ -378,6 +378,9 @@ request_keyboard_group() {
 		rm -rf "$spy_dir"
 		return 1
 	}
+	# the panel stops the helper with TERM; leave nothing behind
+	spy_pid=
+	trap 'kill $spy_pid 2>/dev/null; rm -rf "$spy_dir"; exit 143' HUP INT TERM
 	# -spy prints the current value first, so a delete before it started
 	# is seen too
 	timeout 1 xprop -root -spy _DWM_KEYBOARD_GROUP_REQUEST >"$spy_dir/spy" 2>/dev/null &
@@ -394,7 +397,11 @@ request_keyboard_group() {
 	kill "$spy_pid" 2>/dev/null || true
 	wait "$spy_pid" 2>/dev/null || true
 	rm -rf "$spy_dir"
-	if [ "$taken" -ne 0 ]; then
+	trap - HUP INT TERM
+	# xprop prints the value before it listens, so a delete in between
+	# sends no event: look once more before giving up
+	if [ "$taken" -ne 0 ] &&
+		xprop -root _DWM_KEYBOARD_GROUP_REQUEST 2>/dev/null | grep -q ' = '; then
 		printf 'dwm did not take the keyboard layout request; is dwm running?\n' >&2
 		return 75
 	fi

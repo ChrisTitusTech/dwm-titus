@@ -423,11 +423,39 @@ elapsed=$(($(date +%s) - start))
 grep -q 'is dwm running' "$work/timeout.err" || fail "no timeout message"
 [ "$elapsed" -le 3 ] || fail "helper took ${elapsed}s to give up"
 xprop_runs=$(wc -c <"$work/xprop.count")
-[ "$xprop_runs" -le 3 ] || fail "helper ran xprop $xprop_runs times while waiting"
+[ "$xprop_runs" -le 4 ] || fail "helper ran xprop $xprop_runs times while waiting"
 wait_group '1, 3'
 assert_no_request
-request 0
+
+# 7d. dwm late but within the second: the helper sees the delete through its
+# xprop -spy and succeeds.
+kill -STOP "$dwm_pid"
+X "$repo_dir/scripts/dwm-quickshell-state" keyboard-group next 2>"$work/late.err" &
+late_pid=$!
+sleep 0.3
+kill -CONT "$dwm_pid"
+wait "$late_pid" || fail "helper failed although dwm took the request late: $(cat "$work/late.err")"
+wait_group '2, 3'
+
+# 7e. The panel stops a waiting helper with TERM: no xprop or temp dir is
+# left behind.
+mkdir -p "$work/helper-tmp"
+kill -STOP "$dwm_pid"
+# run directly, not through X(), so $! is the helper itself
+DISPLAY=$display TMPDIR="$work/helper-tmp" "$repo_dir/scripts/dwm-quickshell-state" \
+	keyboard-group next 2>/dev/null &
+term_pid=$!
+sleep 0.3
+kill -TERM "$term_pid"
+wait "$term_pid" 2>/dev/null || true
+sleep 0.2
+leftover=$(find "$work/helper-tmp" -mindepth 1 | wc -l)
+spies=$(pgrep -f "xprop -root -spy _DWM_KEYBOARD_GROUP_REQUEST" | wc -l)
+kill -CONT "$dwm_pid"
+[ "$leftover" -eq 0 ] || fail "helper left $leftover temp entries after TERM"
+[ "$spies" -eq 0 ] || fail "helper left $spies xprop -spy running after TERM"
 wait_group '0, 3'
+assert_no_request
 
 step=8
 # 8. The server-side grp:alt_shift_toggle chord, from group 0 and group 1.
@@ -524,18 +552,18 @@ X xmodmap -e 'keycode 38 = a A Greek_alpha Greek_ALPHA'
 wait_group '0, 2'
 X xmodmap -e 'keycode 38 = a A Greek_alpha Greek_ALPHA Cyrillic_ef Cyrillic_EF'
 wait_group '0, 3'
-# a new count rewrites the names, the unchanged symbols name stays; dwm writes
-# the symbols before the names, so once the names arrived a symbols write
-# would be in the spy output already
+# each new count rewrites the names once, the unchanged symbols name stays;
+# dwm writes the symbols before the names, so once both names writes arrived
+# a symbols write would be in the spy output already
 i=0
 while [ "$i" -lt 100 ] &&
-	[ "$(count_lines '^_DWM_KEYBOARD_GROUP_NAMES' "$work/names.spy")" -le "$names_before" ]; do
+	[ "$(count_lines '^_DWM_KEYBOARD_GROUP_NAMES' "$work/names.spy")" -lt $((names_before + 2)) ]; do
 	i=$((i + 1))
 	sleep 0.05
 done
 names_after=$(count_lines '^_DWM_KEYBOARD_GROUP_NAMES' "$work/names.spy")
 symbols_after=$(count_lines '^_DWM_KEYBOARD_SYMBOLS' "$work/names.spy")
-[ "$names_after" -gt "$names_before" ] || fail "names not rewritten for the new count"
+[ "$names_after" -ge $((names_before + 2)) ] || fail "names not rewritten for each new count"
 [ "$symbols_before" = "$symbols_after" ] ||
 	fail "unchanged symbols rewritten ($symbols_before -> $symbols_after)"
 
