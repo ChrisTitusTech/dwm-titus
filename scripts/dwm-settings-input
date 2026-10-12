@@ -424,7 +424,8 @@ undo_member_writes() {
 }
 
 # Sets every member that has the setting to its own driver default; a failure
-# part-way puts the earlier members back.
+# part-way puts the earlier members back. Returns 1 when no member has a
+# default, 2 when a member rejected the write.
 apply_member_defaults() {
 	local setting=$1 default_name=$2 property id properties value old
 	local -a written=()
@@ -441,7 +442,7 @@ apply_member_defaults() {
 			rm -f "$properties"
 			undo_member_writes "$setting" "${written[@]}" ||
 				printf 'dwm-settings-input: could not put back the parts already reset\n' >&2
-			return 1
+			return 2
 		}
 		written+=("$id"$'\t'"$old")
 	done
@@ -625,8 +626,8 @@ read_value() {
 }
 
 apply_value() {
-	local key=$1 setting=$2 value=$3 id property properties old
-	local -a written=()
+	local key=$1 setting=$2 value=$3 id property properties old index
+	local -a written=() olds=()
 	validate_value "$setting" "$value" || die "invalid value for $setting"
 	if [[ $key == "$accessibility_key" ]]; then
 		apply_accessibility_value "$setting" "$value"
@@ -638,8 +639,15 @@ apply_value() {
 	case $setting in
 	keyboard-layout | modifier-options)
 		need_setxkbmap
+		# setxkbmap -device writes the shared rules names that the query reads,
+		# so every old value is read before the first write
 		for id in "${member_ids[@]}"; do
 			old=$(member_value "$id" "$setting") || old=
+			olds+=("$old")
+		done
+		for index in "${!member_ids[@]}"; do
+			id=${member_ids[$index]}
+			old=${olds[$index]}
 			apply_member_value "$id" "$setting" "$value" || {
 				undo_member_writes "$setting" "${written[@]}" || true
 				return 1
@@ -889,7 +897,7 @@ preview_status() {
 }
 
 reset_setting() {
-	local key=$1 setting=$2 default_name default
+	local key=$1 setting=$2 default_name default status
 	if [[ $key == "$accessibility_key" ]]; then
 		case $setting in
 		accessx-shortcuts | sticky-keys | slow-keys | bounce-keys | mouse-keys) ;;
@@ -917,7 +925,13 @@ reset_setting() {
 	if [[ -z ${default+x} ]]; then
 		# Parts of a merged device can have different driver defaults.
 		resolve_devices "$key" || die "input device $key is not available"
-		apply_member_defaults "$setting" "$default_name" || die "default is unavailable for $setting"
+		status=0
+		apply_member_defaults "$setting" "$default_name" || status=$?
+		case $status in
+		0) ;;
+		2) die "a part of device $key rejected the $setting reset; the parts already reset were put back" ;;
+		*) die "default is unavailable for $setting" ;;
+		esac
 	else
 		apply_value "$key" "$setting" "$default"
 	fi

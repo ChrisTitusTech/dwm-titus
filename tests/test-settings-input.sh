@@ -953,6 +953,7 @@ if env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" TEST_DEFAULT_17=1 
 	exit 1
 fi
 [[ $(cat "$work/actions.log") == $'xinput set-prop 17 libinput Natural Scrolling Enabled 1\nxinput set-prop 17 libinput Natural Scrolling Enabled 0' ]]
+grep -Fq 'rejected the natural-scroll reset; the parts already reset were put back' "$work/twin-reset-fail.err"
 grep -Fqx "$twin_key"$'\tnatural-scroll\t1\t0' "$work/home/.config/dwm-titus/input-settings.conf"
 rm -f "$work/home/.config/dwm-titus/input-settings.conf"
 
