@@ -156,6 +156,22 @@ def migrate_window_rules(path):
     return True
 
 
+def super_bound(binding):
+    # dwm maps MODKEY and SUPER to the same mask and keypress() only fires
+    # entries whose whole mask matches, so exactly these sets conflict with
+    # the new binding; SUPER CTRL V and friends do not.
+    if not isinstance(binding, dict) or binding.get("key") != CLIPBOARD_KEYBIND["key"]:
+        return False
+    modifiers = binding.get("mod", "")
+    if isinstance(modifiers, str):
+        tokens = set(modifiers.split())
+    elif isinstance(modifiers, list):
+        tokens = {str(token).strip() for token in modifiers}
+    else:
+        return False
+    return tokens in ({"SUPER"}, {"MODKEY"})
+
+
 def migrate_hotkeys(path):
     original, document = load_regular_file(path)
     # hotkeys.toml declares [vars] before the binding arrays, so keys normally
@@ -166,39 +182,49 @@ def migrate_hotkeys(path):
         keys = document.get("keys")
     if not isinstance(keys, list):
         raise ValueError("missing keys array")
-    for binding in keys:
-        if not isinstance(binding, dict) or binding.get("key") != CLIPBOARD_KEYBIND["key"]:
-            continue
-        modifiers = binding.get("mod", "")
-        if isinstance(modifiers, str) and "SUPER" in modifiers.split():
-            # A user binding already owns Super+V; customization always wins.
-            print(f"dwm-titus: Super+V is already bound in {path}; leaving it in place")
-            return False
+    if any(super_bound(binding) for binding in keys):
+        # A user binding already owns Super+V; customization always wins.
+        print(f"dwm-titus: Super+V is already bound in {path}; leaving it in place")
+        return False
     write_migrated(path, append_entries(path, "keys", original, [CLIPBOARD_KEYBIND]))
     return True
 
 
-def config_path(name):
+MIGRATIONS = {
+    "window-rules.toml": (migrate_window_rules, "dwm-titus: added clipboard window rule to {path}"),
+    "hotkeys.toml": (migrate_hotkeys, "dwm-titus: added clipboard history keybinding to {path}"),
+}
+
+
+def default_path(name):
     configured = os.environ.get("XDG_CONFIG_HOME", "")
     config_home = Path(configured) if os.path.isabs(configured) else Path.home() / ".config"
     return config_home / "dwm-titus" / name
 
 
 def main():
-    targets = [
-        (config_path("window-rules.toml"), migrate_window_rules,
-         "dwm-titus: added clipboard window rule to {path}"),
-        (config_path("hotkeys.toml"), migrate_hotkeys,
-         "dwm-titus: added clipboard history keybinding to {path}"),
-    ]
+    # With no arguments both user files are migrated in place; the desktop
+    # update flow passes staged file paths so the sandboxed copy is migrated.
+    if len(sys.argv) > 3:
+        print(f"usage: {Path(sys.argv[0]).name} [window-rules.toml] [hotkeys.toml]", file=sys.stderr)
+        return 2
+    if len(sys.argv) == 1:
+        paths = [default_path(name) for name in MIGRATIONS]
+    else:
+        paths = [Path(argument) for argument in sys.argv[1:]]
 
     failed = False
-    for path, migrate, message in targets:
+    for path in paths:
+        migration = MIGRATIONS.get(path.name)
+        if migration is None:
+            print(f"dwm-migrate-clipboard-surface: unknown target {path.name}", file=sys.stderr)
+            failed = True
+            continue
         if not path.exists():
             continue
         try:
-            if migrate(path):
-                print(message.format(path=path))
+            if migration[0](path):
+                print(migration[1].format(path=path))
         except (OSError, ValueError) as error:
             print(f"dwm-migrate-clipboard-surface: {path.name}: {error}", file=sys.stderr)
             failed = True

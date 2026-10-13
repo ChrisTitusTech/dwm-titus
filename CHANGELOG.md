@@ -14,8 +14,9 @@ versions from `config.mk`.
   entry copies it back to the clipboard and closes the menu. Session history
   is always available, while disk persistence is opt-in from the window and
   stores a private (0600) history file under the user cache; disabling
-  persistence wipes the stored copy. Upgrades migrate the window rule and the
-  keybinding into existing user TOML files with per-file recovery backups.
+  persistence wipes the stored copy. Upgrades and desktop updates migrate the
+  window rule and the keybinding into existing user TOML files with per-file
+  recovery backups, skipping an existing Super+V binding.
 - Add `fullscreen=1` window rules to open matching applications across the
   entire monitor without a top bar, gaps, or window borders. Title-based rules
   also apply once when a matching title arrives after the window opens.

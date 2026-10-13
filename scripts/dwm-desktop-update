@@ -976,18 +976,23 @@ def prepare_user(source, operation):
     config, data, _ = paths()
     targets = [data, config / "quickshell"]
     migrator = source / "scripts/dwm-migrate-update-center-window-rule"
+    clipboard_migrator = source / "scripts/dwm-migrate-clipboard-surface"
     rules = config / "dwm-titus/window-rules.toml"
+    hotkeys = config / "dwm-titus/hotkeys.toml"
     if migrator.is_file() and not rules.is_symlink() and rules.is_file():
         # Only regular personal rules join the reversible migration. Preserve
         # custom symlinks and special files without blocking the desktop update.
         targets.append(rules)
+    if clipboard_migrator.is_file() and not hotkeys.is_symlink() and hotkeys.is_file():
+        # Same reversible contract for the clipboard history keybinding.
+        targets.append(hotkeys)
     prepared = []
     with contextlib.ExitStack() as cleanup:
         for index, target in enumerate(targets):
             if target.is_symlink():
                 raise RuntimeError("Managed update paths cannot be symlinks: " + str(target))
-            if index == 2 and not target.is_file():
-                raise RuntimeError("Window rules must be a regular file: " + str(target))
+            if index >= 2 and not target.is_file():
+                raise RuntimeError("Migration targets must be regular files: " + str(target))
             ensure_directory(target.parent)
             staged = target.parent / (".dwm-update-" + operation + "-" + str(index))
             if staged.exists() or staged.is_symlink():
@@ -998,6 +1003,9 @@ def prepare_user(source, operation):
             if index == 2:
                 staged.mkdir(mode=0o700)
                 shutil.copy2(target, staged / "window-rules.toml")
+            elif index == 3:
+                staged.mkdir(mode=0o700)
+                shutil.copy2(target, staged / "hotkeys.toml")
             elif target.exists():
                 copy_private_tree(target, staged)
             else:
@@ -1021,8 +1029,14 @@ def prepare_user(source, operation):
             elif index == 1:
                 shutil.rmtree(staged)
                 copy_private_tree(source / "config/quickshell", staged, symlinks=False)
-            else:
+            elif index == 2:
                 sandbox_run(["/usr/bin/python3", migrator, staged / "window-rules.toml"],
+                            writable=(staged,), readonly=(source,), cwd=staged)
+                if clipboard_migrator.is_file():
+                    sandbox_run(["/usr/bin/python3", clipboard_migrator, staged / "window-rules.toml"],
+                                writable=(staged,), readonly=(source,), cwd=staged)
+            elif index == 3:
+                sandbox_run(["/usr/bin/python3", clipboard_migrator, staged / "hotkeys.toml"],
                             writable=(staged,), readonly=(source,), cwd=staged)
             staged.chmod(0o700)
             sync_tree(staged)
@@ -1030,6 +1044,8 @@ def prepare_user(source, operation):
             staging_root = staged
             if index == 2:
                 staged = staged / "window-rules.toml"
+            elif index == 3:
+                staged = staged / "hotkeys.toml"
             prepared.append({"target": str(target), "backup": str(staged), "staging": str(staging_root), "existed": target.exists(), "swapped": False,
                              "original": original, "originalMode": original_mode, "replacement": user_manifest(staged)})
         cleanup.pop_all()

@@ -20,6 +20,9 @@ Scope {
     property bool persistenceEnabled: false
     property bool historyReady: false
     property bool saveFailed: false
+    property bool savePending: false
+    property bool wipePending: false
+    property bool settingsSaveFailed: false
     property var pendingCaptures: []
 
     readonly property string homeDir: Quickshell.env("HOME") || ""
@@ -28,12 +31,16 @@ Scope {
     readonly property string cacheDir: (Quickshell.env("XDG_CACHE_HOME") || (root.homeDir + "/.cache")) + "/dwm-titus"
     readonly property string historyPath: root.cacheDir + "/clipboard-history.json"
     readonly property string status: {
-        const count = root.entries.length === 0 ? "No entries yet"
-            : root.entries.length === 1 ? "1 entry" : root.entries.length + " entries";
-
         if (root.saveFailed) {
             return "History write failed - entries are only in memory";
         }
+        if (root.settingsSaveFailed) {
+            return "Settings write failed - persistence state unchanged on disk";
+        }
+
+        const count = root.entries.length === 0 ? "No entries yet"
+            : root.entries.length === 1 ? "1 entry" : root.entries.length + " entries";
+
         return root.persistenceEnabled ? count : count + " - not saved";
     }
 
@@ -164,10 +171,21 @@ Scope {
         root.entries = entries.slice(0, root.maxEntries);
         root.historyReady = true;
         root.flushPendingCaptures();
+
+        if (root.savePending) {
+            root.savePending = false;
+            root.saveHistory();
+        }
     }
 
     function applyLoadedSettings() {
         root.persistenceEnabled = settingsFile.persistenceEnabled === true;
+
+        // Captures flushed between the history and settings loads could only
+        // be held in memory; persist them now that the stored choice is known.
+        if (root.persistenceEnabled) {
+            root.saveHistory();
+        }
     }
 
     function setPersistence(enabled) {
@@ -181,15 +199,45 @@ Scope {
 
         if (enabled) {
             root.saveHistory();
-        } else if (root.historyReady) {
-            // Completing the deletion contract: disabling persistence wipes
-            // the stored copy instead of leaving a stale one behind.
-            historyFile.entries = [];
-            historyFile.writeAdapter();
+        } else {
+            // The wipe is destructive, so only run it once the settings file
+            // has actually recorded the disabled state; a failed write must
+            // not leave the stored setting enabled with the history deleted.
+            root.wipePending = true;
         }
     }
 
+    function finishSettingsWrite() {
+        root.settingsSaveFailed = false;
+
+        if (root.wipePending && !root.persistenceEnabled) {
+            root.wipePending = false;
+
+            // Completing the deletion contract: disabling persistence wipes
+            // the stored copy instead of leaving a stale one behind.
+            if (root.historyReady) {
+                historyFile.entries = [];
+                historyFile.writeAdapter();
+            }
+        }
+    }
+
+    function settingsWriteFailed() {
+        // The stored preference is still whatever was on disk, so undo the UI
+        // change instead of letting the switch silently diverge from the file.
+        root.wipePending = false;
+        root.settingsSaveFailed = true;
+        settingsFile.reload();
+    }
+
     function saveHistory() {
+        if (!root.historyReady) {
+            // An early write would replace stored history with the not-yet-
+            // loaded list; defer until the initial load has completed.
+            root.savePending = true;
+            return;
+        }
+
         if (!root.persistenceEnabled) {
             return;
         }
@@ -383,6 +431,8 @@ Scope {
         atomicWrites: true
         printErrors: false
         onLoaded: root.applyLoadedSettings()
+        onSaved: root.finishSettingsWrite()
+        onSaveFailed: root.settingsWriteFailed()
         onLoadFailed: error => {
             if (error === 2) {
                 root.applyLoadedSettings();
