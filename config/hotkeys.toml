@@ -134,6 +134,10 @@ keys = [
   { mod="SUPER CTRL SHIFT", key="r",       desc="Reboot",                  func="spawn",       cmd="systemctl reboot" },
   { mod="SUPER CTRL SHIFT", key="s",       desc="Suspend",                 func="spawn",       cmd="systemctl suspend" },
 
+  # ── Keyboard layout ───────────────────────────────────────────────────────────
+  # Uncomment to switch to the next layout (i=-1 for the previous one).
+  # { mod="SUPER ALT",        key="k",       desc="Next keyboard layout",    func="cyclelayout", i=1 },
+
 ]
 
 # ── TAG BINDINGS ──────────────────────────────────────────────────────────────
@@ -164,7 +168,6 @@ tag_keys = [
 # { mod="SUPER SHIFT",  key="c",  desc="VS Code",   func="spawn",  exec=["code"] },
 # { mod="SUPER SHIFT",  key="d",  desc="Discord",   func="spawn",  exec=["discord"] },
 # { mod="SUPER SHIFT",  key="s",  desc="Screenshot",func="spawn",  cmd="scrot -s ~/Pictures/screenshot.png" },
-# { mod="SUPER ALT",    key="k",  desc="Next keyboard layout", func="cyclelayout", i=1 },
 
 
 # ── MOUSE BUTTON BINDINGS ─────────────────────────────────────────────────────

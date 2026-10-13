@@ -629,7 +629,36 @@ press_keys '#66'
 wait_group '1, 2'
 
 step=18
-# 18. dwm survived all of it.
+# 18. The commented cyclelayout example in the shipped hotkeys.toml sits inside
+# keys = [...]: uncommenting it adds exactly one working binding.
+loaded_count() {
+	grep -c 'loaded [0-9]* keybinds' "$work/dwm.log" || true
+}
+wait_loaded() { # $1 = reloads seen before, prints the keybind count
+	i=0
+	while [ "$i" -lt 100 ] && [ "$(loaded_count)" -le "$1" ]; do
+		i=$((i + 1))
+		sleep 0.05
+	done
+	[ "$(loaded_count)" -gt "$1" ] || fail "hotkeys.toml was not reloaded"
+	sed -n 's/.*loaded \([0-9]*\) keybinds.*/\1/p' "$work/dwm.log" | tail -n 1
+}
+grep -q '^  # { mod="SUPER ALT", *key="k", .*func="cyclelayout"' "$repo_dir/config/hotkeys.toml" ||
+	fail "cyclelayout example missing from config/hotkeys.toml"
+seen=$(loaded_count)
+cp "$repo_dir/config/hotkeys.toml" "$home/.config/dwm-titus/hotkeys.toml"
+shipped=$(wait_loaded "$seen")
+seen=$(loaded_count)
+sed 's/^  # \({ mod="SUPER ALT", *key="k", .*func="cyclelayout"\)/  \1/' \
+	"$repo_dir/config/hotkeys.toml" >"$home/.config/dwm-titus/hotkeys.toml"
+uncommented=$(wait_loaded "$seen")
+[ "$uncommented" -eq $((shipped + 1)) ] ||
+	fail "uncommented example: $shipped -> $uncommented keybinds"
+press_keys Super_L Alt_L k
+wait_group '0, 2'
+
+step=19
+# 19. dwm survived all of it.
 kill -0 "$dwm_pid" 2>/dev/null || fail "dwm exited"
 
 printf '%s\n' "Keyboard layout Xvfb test: PASS"
