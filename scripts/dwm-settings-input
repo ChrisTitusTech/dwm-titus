@@ -378,21 +378,21 @@ apply_preview_members() {
 	done <"$file"
 }
 
-# Keep after a failed preview: writes the value again to every captured member
-# that is still present. A device that is gone gets it from the saved setting
-# when it comes back.
+# Keep after a failed preview: writes the value again to every present member
+# that has the setting, also one a replug gave a new XInput id. A device that
+# is gone gets it from the saved setting when it comes back.
 reapply_members() {
-	local token=$1 key=$2 setting=$3 value=$4 file id old
+	local token=$1 key=$2 setting=$3 value=$4 file id
 	file=$(token_file "$token" members)
 	[[ $key != "$accessibility_key" && -s $file ]] || return 0
 	scan_devices
 	collect_members "$key"
 	((${#member_ids[@]} > 0)) || return 0
 	members_share_port "$key" || return 1
-	while IFS=$'\t' read -r id old; do
-		[[ " ${member_ids[*]} " == *" $id "* ]] || continue
+	for id in "${member_ids[@]}"; do
+		member_value "$id" "$setting" >/dev/null || continue
 		apply_member_value "$id" "$setting" "$value" || return 1
-	done <"$file"
+	done
 }
 
 # Undoes the members apply_preview_members changed before it failed.
@@ -624,6 +624,8 @@ read_value() {
 	esac
 }
 
+# Returns 3 when a merged device failed part-way and the parts already written
+# could not be put back.
 apply_value() {
 	local key=$1 setting=$2 value=$3 id property properties old index
 	local -a written=() olds=()
@@ -648,7 +650,7 @@ apply_value() {
 			id=${member_ids[$index]}
 			old=${olds[$index]}
 			apply_member_value "$id" "$setting" "$value" || {
-				undo_member_writes "$setting" "${written[@]}" || true
+				undo_member_writes "$setting" "${written[@]}" || return 3
 				return 1
 			}
 			# an unknown layout cannot be put back
@@ -667,7 +669,7 @@ apply_value() {
 			xinput set-prop "$id" "$property" "$value" || {
 				rm -f "$properties"
 				# a merged device is changed on all parts or none
-				undo_member_writes "$setting" "${written[@]}" || true
+				undo_member_writes "$setting" "${written[@]}" || return 3
 				return 1
 			}
 			written+=("$id"$'\t'"$old")
@@ -940,7 +942,7 @@ reset_setting() {
 }
 
 apply_saved() {
-	local skip_key=${1:-} skip_setting=${2:-} line key setting value baseline remainder pending
+	local skip_key=${1:-} skip_setting=${2:-} line key setting value baseline remainder pending status
 	pending=$state_dir/hotplug-replay.pending
 	if [[ -f $state_dir/current ]]; then
 		: >"$pending"
@@ -964,8 +966,14 @@ apply_saved() {
 		fi
 		[[ -n $key && -n $setting ]] || continue
 		[[ $key != "$skip_key" || $setting != "$skip_setting" ]] || continue
-		(apply_value "$key" "$setting" "$value") ||
-			printf 'dwm-settings-input: skipped unavailable %s/%s\n' "$key" "$setting" >&2
+		status=0
+		(apply_value "$key" "$setting" "$value") || status=$?
+		case $status in
+		0) ;;
+		3) printf 'dwm-settings-input: %s/%s reached only some parts and could not be undone; it is applied again on replug or next login\n' \
+			"$key" "$setting" >&2 ;;
+		*) printf 'dwm-settings-input: skipped unavailable %s/%s\n' "$key" "$setting" >&2 ;;
+		esac
 	done 3<"$settings_file"
 }
 

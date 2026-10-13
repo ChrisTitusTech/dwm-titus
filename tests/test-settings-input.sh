@@ -72,6 +72,13 @@ cat >"$work/devices-shared-18" <<'EOF'
 ⎜   ↳ Twin PS/2 Mouse                      id=18   [slave  pointer  (2)]
 EOF
 
+# The same mouse replugged: X gave both parts new ids.
+cat >"$work/devices-shared-replug" <<'EOF'
+⎡ Virtual core pointer                     id=2    [master pointer  (3)]
+⎜   ↳ Twin PS/2 Mouse                      id=27   [slave  pointer  (2)]
+⎜   ↳ Twin PS/2 Mouse                      id=28   [slave  pointer  (2)]
+EOF
+
 # Two separate same-model mice whose only identity is a shared serial.
 cat >"$work/devices-ambiguous" <<'EOF'
 ⎡ Virtual core pointer                     id=2    [master pointer  (3)]
@@ -130,7 +137,7 @@ Device 'Power Button':
 	Device Node (102): "/dev/input/event12"
 PROPS
 		;;
-	17) cat <<PROPS
+	17 | 27) cat <<PROPS
 Device 'Twin PS/2 Mouse':
 	Device Product ID (101): 2, 19
 	Device Node (102): "/dev/input/event13"
@@ -140,7 +147,7 @@ Device 'Twin PS/2 Mouse':
 	libinput Natural Scrolling Enabled Default (303): ${TEST_DEFAULT_17:-0}
 PROPS
 		;;
-	18) cat <<'PROPS'
+	18 | 28) cat <<'PROPS'
 Device 'Twin PS/2 Mouse':
 	Device Product ID (101): 2, 19
 	Device Node (102): "/dev/input/event14"
@@ -933,6 +940,18 @@ env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" "$helper" keep twin-k
 grep -Fqx "$twin_key"$'\tnatural-scroll\t1\t0' "$work/home/.config/dwm-titus/input-settings.conf"
 test ! -e "$work/runtime/dwm-settings-input/twin-keep.state"
 
+# Keep after a failed preview and a replug: the parts have new ids and still
+# get the value before it is saved.
+rm -f "$work/set.count"
+env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" TEST_FAIL_SET_FROM=2 \
+	TEST_SET_COUNTER="$work/set.count" "$helper" preview twin-replug 5 "$twin_key" natural-scroll 1 \
+	>"$work/twin-replug.out" 2>/dev/null
+grep -Fq $'preview-failed\ttwin-replug' "$work/twin-replug.out"
+rm -f "$work/actions.log"
+env "${env_common[@]}" TEST_DEVICES="$work/devices-shared-replug" "$helper" keep twin-replug >/dev/null
+[[ $(cat "$work/actions.log") == $'xinput set-prop 27 libinput Natural Scrolling Enabled 1\nxinput set-prop 28 libinput Natural Scrolling Enabled 1' ]]
+grep -Fqx "$twin_key"$'\tnatural-scroll\t1\t0' "$work/home/.config/dwm-titus/input-settings.conf"
+
 # Saved values are applied to all parts or none: a part that fails puts the
 # earlier parts back.
 rm -f "$work/actions.log"
@@ -941,6 +960,14 @@ if env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" TEST_FAIL_SET_ID=1
 	: # apply-saved reports per setting and may still exit 0
 fi
 [[ $(cat "$work/actions.log") == $'xinput set-prop 17 libinput Natural Scrolling Enabled 1\nxinput set-prop 17 libinput Natural Scrolling Enabled 0' ]]
+
+# The same, but putting back the first part fails too: the replay says the
+# device is split instead of calling it unavailable.
+rm -f "$work/set.count"
+env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" TEST_FAIL_SET_FROM=2 \
+	TEST_SET_COUNTER="$work/set.count" "$helper" apply-saved 2>"$work/twin-replay-stuck.err" || true
+grep -Fq "$twin_key/natural-scroll reached only some parts and could not be undone" \
+	"$work/twin-replay-stuck.err"
 rm -f "$work/home/.config/dwm-titus/input-settings.conf"
 
 # A Reset that fails on a later part puts the earlier parts back and keeps
