@@ -11,8 +11,11 @@ versions from `config.mk`.
 - Add the Super+V clipboard history menu: a floating `dwm clipboard` window
   that records the last 50 clipboard texts with search, per-entry delete,
   clear-all, duplicate promotion to the top, and copy timestamps. Selecting an
-  entry copies it back to the clipboard and closes the menu. History persists
-  in the user cache directory across shell restarts.
+  entry copies it back to the clipboard and closes the menu. Session history
+  is always available, while disk persistence is opt-in from the window and
+  stores a private (0600) history file under the user cache; disabling
+  persistence wipes the stored copy. Upgrades migrate the window rule and the
+  keybinding into existing user TOML files with per-file recovery backups.
 - Add `fullscreen=1` window rules to open matching applications across the
   entire monitor without a top bar, gaps, or window borders. Title-based rules
   also apply once when a matching title arrives after the window opens.

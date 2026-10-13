@@ -191,6 +191,11 @@ ShellRoot {
                 launcherModel.close();
                 commandMenuModel.close();
                 updateCenterModel.close();
+                networkModel.close();
+                bluetoothModel.close();
+                controlsModel.close();
+                controlCenterModel.close();
+                powerMenuModel.close("panel");
             }
         }
     }
@@ -348,6 +353,14 @@ ShellRoot {
 
         function open(): void {
             clipboardModel.open();
+        }
+
+        function persistence(): bool {
+            return clipboardModel.persistenceEnabled;
+        }
+
+        function setPersistence(enabled: bool): void {
+            clipboardModel.setPersistence(enabled);
         }
 
         function status(): string {

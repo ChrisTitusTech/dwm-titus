@@ -7,6 +7,7 @@ Scope {
 
     readonly property int maxEntries: 50
     readonly property int maxEntryLength: 100000
+    readonly property int maxPendingCaptures: 8
     property bool visible: false
     property string query: ""
     property int selectedIndex: 0
@@ -14,15 +15,33 @@ Scope {
     property var entries: []
     property var filteredEntries: []
     property int timeTick: 0
+    // Clipboard history is opt-in: captures always stay in memory for the
+    // session, but nothing is written to disk until persistence is enabled.
+    property bool persistenceEnabled: false
+    property bool historyReady: false
+    property bool saveFailed: false
+    property var pendingCaptures: []
 
     readonly property string homeDir: Quickshell.env("HOME") || ""
+    readonly property string configDir: (Quickshell.env("XDG_CONFIG_HOME") || (root.homeDir + "/.config")) + "/dwm-titus"
+    readonly property string settingsPath: root.configDir + "/clipboard-settings.json"
     readonly property string cacheDir: (Quickshell.env("XDG_CACHE_HOME") || (root.homeDir + "/.cache")) + "/dwm-titus"
     readonly property string historyPath: root.cacheDir + "/clipboard-history.json"
-    readonly property string status: root.entries.length === 0 ? "No entries yet"
-        : root.entries.length === 1 ? "1 entry" : root.entries.length + " entries"
+    readonly property string status: {
+        const count = root.entries.length === 0 ? "No entries yet"
+            : root.entries.length === 1 ? "1 entry" : root.entries.length + " entries";
 
-    Component.onCompleted: Quickshell.execDetached(["sh", "-c",
-        "mkdir -p \"$1\" && chmod 700 \"$1\"", "sh", root.cacheDir])
+        if (root.saveFailed) {
+            return "History write failed - entries are only in memory";
+        }
+        return root.persistenceEnabled ? count : count + " - not saved";
+    }
+
+    Component.onCompleted: {
+        Quickshell.execDetached(["mkdir", "-p", root.configDir]);
+        Quickshell.execDetached(["sh", "-c",
+            "mkdir -p \"$1\" && chmod 700 \"$1\"", "sh", root.cacheDir]);
+    }
 
     onEntriesChanged: root.refreshFilteredEntries()
     onQueryChanged: root.refreshFilteredEntries()
@@ -36,20 +55,66 @@ Scope {
     }
 
     function capture(text) {
+        // FileView loads asynchronously; a capture that saved before the
+        // initial load finished could replace the stored history with a
+        // single-entry list, so early captures are queued instead.
+        if (!root.historyReady) {
+            root.queueCapture(text);
+            return;
+        }
+
+        root.recordEntry(text);
+        root.saveHistory();
+    }
+
+    function queueCapture(text) {
         if (typeof text !== "string") {
             return;
         }
 
         const value = text.length > root.maxEntryLength ? text.slice(0, root.maxEntryLength) : text;
 
-        if (value.trim().length === 0) {
+        if (value.trim().length === 0 || root.pendingCaptures.indexOf(value) >= 0) {
             return;
         }
 
-        // Already the newest entry. This also ignores the copy-back performed
-        // by select(), so writing an entry to the clipboard can never re-record it.
+        root.pendingCaptures = root.pendingCaptures.concat([value]).slice(-root.maxPendingCaptures);
+    }
+
+    function flushPendingCaptures() {
+        const pending = root.pendingCaptures;
+
+        root.pendingCaptures = [];
+
+        let changed = false;
+
+        for (const value of pending) {
+            changed = root.recordEntry(value) || changed;
+        }
+
+        if (changed) {
+            root.saveHistory();
+        }
+    }
+
+    function recordEntry(text) {
+        if (typeof text !== "string") {
+            return false;
+        }
+
+        const value = text.length > root.maxEntryLength ? text.slice(0, root.maxEntryLength) : text;
+
+        if (value.trim().length === 0) {
+            return false;
+        }
+
+        // Recopying the newest entry refreshes its timestamp so the displayed
+        // age reflects the latest copy. This branch also ignores the copy-back
+        // performed by select(), so writing an entry to the clipboard can
+        // never re-record it.
         if (root.entries.length > 0 && root.entries[0].text === value) {
-            return;
+            root.entries = [{ "text": value, "timestamp": Date.now() }].concat(root.entries.slice(1));
+            return true;
         }
 
         const remaining = [];
@@ -61,7 +126,7 @@ Scope {
         }
 
         root.entries = [{ "text": value, "timestamp": Date.now() }].concat(remaining).slice(0, root.maxEntries);
-        root.saveHistory();
+        return true;
     }
 
     // JsonAdapter hands back a QVariantList, which is array-like but not a
@@ -97,9 +162,38 @@ Scope {
         }
 
         root.entries = entries.slice(0, root.maxEntries);
+        root.historyReady = true;
+        root.flushPendingCaptures();
+    }
+
+    function applyLoadedSettings() {
+        root.persistenceEnabled = settingsFile.persistenceEnabled === true;
+    }
+
+    function setPersistence(enabled) {
+        if (root.persistenceEnabled === enabled) {
+            return;
+        }
+
+        root.persistenceEnabled = enabled;
+        settingsFile.persistenceEnabled = enabled;
+        settingsFile.writeAdapter();
+
+        if (enabled) {
+            root.saveHistory();
+        } else if (root.historyReady) {
+            // Completing the deletion contract: disabling persistence wipes
+            // the stored copy instead of leaving a stale one behind.
+            historyFile.entries = [];
+            historyFile.writeAdapter();
+        }
     }
 
     function saveHistory() {
+        if (!root.persistenceEnabled) {
+            return;
+        }
+
         historyFile.entries = root.entries;
         historyFile.writeAdapter();
     }
@@ -257,11 +351,19 @@ Scope {
             root.restrictHistoryFileMode();
             root.loadHistory();
         }
-        onSaved: root.restrictHistoryFileMode()
+        onSaved: {
+            root.saveFailed = false;
+            root.restrictHistoryFileMode();
+        }
+        onSaveFailed: root.saveFailed = true
         onLoadFailed: error => {
+            root.historyReady = true;
+
             if (error === 2) {
                 root.saveHistory();
             }
+
+            root.flushPendingCaptures();
         }
 
         // qmllint disable unresolved-type
@@ -269,6 +371,30 @@ Scope {
             id: clipboardAdapter
 
             property var entries: []
+        }
+    }
+
+    FileView {
+        id: settingsFile
+
+        property alias persistenceEnabled: clipboardSettings.persistenceEnabled
+
+        path: root.settingsPath
+        atomicWrites: true
+        printErrors: false
+        onLoaded: root.applyLoadedSettings()
+        onLoadFailed: error => {
+            if (error === 2) {
+                root.applyLoadedSettings();
+                settingsFile.writeAdapter();
+            }
+        }
+
+        // qmllint disable unresolved-type
+        adapter: JsonAdapter {
+            id: clipboardSettings
+
+            property bool persistenceEnabled: false
         }
     }
 }

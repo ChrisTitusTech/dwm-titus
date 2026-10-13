@@ -157,6 +157,19 @@ FloatingWindow {
                     Layout.fillWidth: true
                 }
 
+                UiText {
+                    text: "Persist"
+                    color: root.clipboardModel.persistenceEnabled ? Theme.menuText : Theme.menuMutedText
+                    font.pixelSize: Theme.smallFontSize
+                }
+
+                PanelToggleSwitch {
+                    checked: root.clipboardModel.persistenceEnabled
+                    accessibleName: "Persist clipboard history across restarts"
+                    accessibleDescription: "When enabled, clipboard entries are written to the private history file"
+                    onToggled: root.clipboardModel.setPersistence(!root.clipboardModel.persistenceEnabled)
+                }
+
                 ShellButton {
                     label: "Clear all"
                     danger: true
