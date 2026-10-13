@@ -5344,11 +5344,14 @@ keyboardrequest(void)
 	if (XGetWindowProperty(dpy, root, kbrequestatom, 0L, sizeof(req) / 4, True,
 	    AnyPropertyType, &type, &format, &nitems, &after, &data) != Success) {
 		XUngrabServer(dpy);
+		XFlush(dpy);
 		return;
 	}
 	if (after)
 		XDeleteProperty(dpy, root, kbrequestatom);
 	XUngrabServer(dpy);
+	/* XPending does not flush while events are queued; send the ungrab now */
+	XFlush(dpy);
 	if (!data)
 		return;
 	/* a NUL inside the value would cut it short, so "next\0junk" is invalid */
