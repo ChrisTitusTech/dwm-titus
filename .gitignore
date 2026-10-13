@@ -17,6 +17,10 @@ livemedia.log
 program.log
 *.iso
 
+# Generated Python bytecode
+__pycache__/
+*.pyc
+
 # Local editor settings that may contain machine-specific absolute paths
 .zed/settings.json
 
