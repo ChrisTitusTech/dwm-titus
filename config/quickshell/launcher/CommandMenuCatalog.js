@@ -10,6 +10,7 @@ var menus = {
         { "id": "audio", "label": "Audio", "detail": "Volume, microphone, and media", "kind": "action", "actionType": "ipc", "target": "controls", "action": "open", "argument": "", "keywords": "sound volume microphone media", "enabled": true, "current": false },
         { "id": "health", "label": "System Health", "detail": "Desktop diagnostics and status", "kind": "action", "actionType": "ipc", "target": "systemhealth", "action": "open", "argument": "", "keywords": "diagnostics status services", "enabled": true, "current": false },
         { "id": "keybindings", "label": "Keybindings", "detail": "Search the active keyboard shortcuts", "kind": "action", "actionType": "ipc", "target": "controlcenter", "action": "keybindings", "argument": "", "keywords": "hotkeys shortcuts keys", "enabled": true, "current": false },
+        { "id": "clipboard", "label": "Clipboard History", "detail": "Browse copied text", "kind": "action", "actionType": "ipc", "target": "clipboard", "action": "open", "argument": "", "keywords": "clipboard paste copy history pano", "enabled": true, "current": false },
         { "id": "screenshots", "label": "Screenshots", "detail": "Capture a monitor, desktop, or region", "kind": "submenu", "target": "screenshots", "keywords": "capture image clipboard", "enabled": true, "current": false },
         { "id": "system", "label": "System", "detail": "Lock, power, and system settings", "kind": "submenu", "target": "system", "keywords": "lock logout reboot shutdown power", "enabled": true, "current": false }
     ],
