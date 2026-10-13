@@ -974,7 +974,7 @@ def private_mode(path):
 def prepare_user(source, operation):
     validate_update_paths()
     config, data, _ = paths()
-    targets = [data, config / "quickshell"]
+    targets = [(data, "data"), (config / "quickshell", "quickshell")]
     migrator = source / "scripts/dwm-migrate-update-center-window-rule"
     clipboard_migrator = source / "scripts/dwm-migrate-clipboard-surface"
     rules = config / "dwm-titus/window-rules.toml"
@@ -982,16 +982,16 @@ def prepare_user(source, operation):
     if migrator.is_file() and not rules.is_symlink() and rules.is_file():
         # Only regular personal rules join the reversible migration. Preserve
         # custom symlinks and special files without blocking the desktop update.
-        targets.append(rules)
+        targets.append((rules, "window-rules.toml"))
     if clipboard_migrator.is_file() and not hotkeys.is_symlink() and hotkeys.is_file():
         # Same reversible contract for the clipboard history keybinding.
-        targets.append(hotkeys)
+        targets.append((hotkeys, "hotkeys.toml"))
     prepared = []
     with contextlib.ExitStack() as cleanup:
-        for index, target in enumerate(targets):
+        for index, (target, kind) in enumerate(targets):
             if target.is_symlink():
                 raise RuntimeError("Managed update paths cannot be symlinks: " + str(target))
-            if index >= 2 and not target.is_file():
+            if kind.endswith(".toml") and not target.is_file():
                 raise RuntimeError("Migration targets must be regular files: " + str(target))
             ensure_directory(target.parent)
             staged = target.parent / (".dwm-update-" + operation + "-" + str(index))
@@ -1000,17 +1000,14 @@ def prepare_user(source, operation):
             cleanup.callback(shutil.rmtree, staged, True)
             original = user_manifest(target) if target.exists() else None
             original_mode = stat.S_IMODE(target.stat().st_mode) if target.exists() else 0o755
-            if index == 2:
+            if kind.endswith(".toml"):
                 staged.mkdir(mode=0o700)
-                shutil.copy2(target, staged / "window-rules.toml")
-            elif index == 3:
-                staged.mkdir(mode=0o700)
-                shutil.copy2(target, staged / "hotkeys.toml")
+                shutil.copy2(target, staged / kind)
             elif target.exists():
                 copy_private_tree(target, staged)
             else:
                 staged.mkdir(mode=0o700)
-            if index == 0:
+            if kind == "data":
                 reason = checkout_reason(target, runner=lambda args: sandbox_run(args, readonly=(target,), cwd=target))
                 if reason:
                     raise RuntimeError(reason)
@@ -1026,24 +1023,24 @@ def prepare_user(source, operation):
                     elif old.exists():
                         shutil.rmtree(old)
                     shutil.copytree(source / name, old, symlinks=True)
-            elif index == 1:
+            elif kind == "quickshell":
                 shutil.rmtree(staged)
                 copy_private_tree(source / "config/quickshell", staged, symlinks=False)
-            elif index == 2:
+            elif kind == "window-rules.toml":
                 sandbox_run(["/usr/bin/python3", migrator, staged / "window-rules.toml"],
                             writable=(staged,), readonly=(source,), cwd=staged)
                 if clipboard_migrator.is_file():
                     sandbox_run(["/usr/bin/python3", clipboard_migrator, staged / "window-rules.toml"],
                                 writable=(staged,), readonly=(source,), cwd=staged)
-            elif index == 3:
+            elif kind == "hotkeys.toml":
                 sandbox_run(["/usr/bin/python3", clipboard_migrator, staged / "hotkeys.toml"],
                             writable=(staged,), readonly=(source,), cwd=staged)
             staged.chmod(0o700)
             sync_tree(staged)
             sync_directory(staged.parent)
             staging_root = staged
-            if index == 2:
-                staged = staged / "window-rules.toml"
+            if kind.endswith(".toml"):
+                staged = staged / kind
             elif index == 3:
                 staged = staged / "hotkeys.toml"
             prepared.append({"target": str(target), "backup": str(staged), "staging": str(staging_root), "existed": target.exists(), "swapped": False,
