@@ -89,6 +89,7 @@ keyboard_codes() {
 	awk -v symbols="$symbols" -v hint="$hint" -v groups="$groups" '
 		function base(token) {
 			sub(/^.*\//, "", token)
+			sub(/:[1-4]$/, "", token)
 			sub(/\(.*$/, "", token)
 			return token
 		}
@@ -97,8 +98,9 @@ keyboard_codes() {
 				exit
 			}
 			if (symbols != "") {
-				# Group 1 has no ":1" suffix: it is the token just before
-				# the first ":2" one.
+				# Group 1 usually has no ":1" suffix: it is the token just
+				# before the first ":2" one. A keymap loaded with xkbcomp may
+				# spell it out (pc+us:1+gr:2); base() drops it.
 				n = split(symbols, tokens, "+")
 				for (i = 1; i <= n; i++) {
 					token = tokens[i]
