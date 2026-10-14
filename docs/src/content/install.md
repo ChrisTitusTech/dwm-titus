@@ -34,11 +34,11 @@ download, start again instead of resuming the older file. The build manifest
 records the version, size and SHA-256 of each current image.
 
 Use the standard image unless you need the proprietary NVIDIA driver packages.
-Both include LightDM, dwm, Quickshell, Brave Origin, Celluloid, mpv, sxiv, Thunar,
+Both include LightDM, dwm, Quickshell, Brave Origin, Celluloid, mpv, sxiv, Path, Thunar,
 Alacritty, Starship, Herdr, fonts, Papirus icons, Gear Lever, and `maim` with region capture and
 clipboard dependencies. Fresh accounts use Brave Origin for web browsing,
 Celluloid for its supported audio/video formats, sxiv for its supported image
-formats, Thunar for folders, and Alacritty for the terminal. Existing application
+formats, Path for folders (with Thunar also available), and Alacritty for the terminal. Existing application
 preferences are preserved; use Settings > Defaults to change them. Internet
 access is needed for later updates and additional software.
 
@@ -79,7 +79,7 @@ For NVIDIA, use the NVIDIA ISO link from the table with the same checksum file.
    using the **dwm** session. The desktop is already installed; you do not need to
    run the existing-system installer below.
 
-`Super` is usually the Windows key. Open Thunar with `Super+E`, open a terminal
+`Super` is usually the Windows key. Open the default file manager with `Super+E`, open a terminal
 with `Super+X`, take a full
 screenshot with `Super+P`, select a region with `Super+Shift+P`, or copy a region
 to the clipboard with `Super+Ctrl+P`.
