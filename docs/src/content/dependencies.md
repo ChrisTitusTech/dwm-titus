@@ -80,7 +80,7 @@ helpers and service APIs perform the underlying operations.
 
 | Piece | Dependencies | Role and selection |
 | --- | --- | --- |
-| File manager | `Thunar` | Full. Graphical folder browsing. |
+| File manager | `path`, `Thunar` | Full. Prefer [Path](https://github.com/ChrisTitusTech/Path) for fresh-account folder defaults when installed; otherwise Thunar. Path comes from `christitustech/copr-fedora` and is skipped when unavailable. |
 | File access and shares | `gvfs`, `gvfs-smb` | Full. File-access integration and SMB network shares. |
 | Thumbnails | `tumbler` | Full. File-manager thumbnail generation. |
 | Archives | `thunar-archive-plugin`, `file-roller` | Full. Archive creation/extraction and file-manager integration. |

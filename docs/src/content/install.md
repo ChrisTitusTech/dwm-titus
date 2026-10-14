@@ -135,6 +135,35 @@ The installer separately asks before enabling the `christitustech/copr-fedora`
 COPR for patched Gamescope and RPM Fusion nonfree for Steam. Declining skips the
 gaming subset without affecting other full-profile extras.
 
+### Optional Path File Manager
+
+[Path](https://github.com/ChrisTitusTech/Path) is packaged as `path` in the
+[christitustech/copr-fedora COPR](https://copr.fedorainfracloud.org/coprs/christitustech/copr-fedora/).
+To install it explicitly on Fedora x86_64:
+
+```bash
+sudo dnf copr enable christitustech/copr-fedora
+sudo dnf install path
+```
+
+The full installer attempts Path after its existing gaming-repository approval
+step, or uses an already enabled COPR. If the package is unavailable, it skips
+Path and retains Thunar. The installer does not enable a repository solely for
+Path. The explicit commands above do not require opting into gaming packages.
+
+Fresh accounts prefer `pathfm.desktop` for folders when Path is installed,
+otherwise `thunar.desktop`. Existing MIME preferences are preserved. To select
+Path on an existing account, use Settings > Default Applications or:
+
+```bash
+dwm-default-apps set-role file-manager pathfm.desktop
+```
+
+Before removing Path, select Thunar with
+`dwm-default-apps set-role file-manager thunar.desktop`. Seeding does not rewrite
+an existing MIME preference file after removal. File chooser portals prefer
+Path when its backend is installed, with GTK as the fallback backend.
+
 ### 2. Clone and Build
 
 ```bash
