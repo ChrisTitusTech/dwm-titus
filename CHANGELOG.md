@@ -12,7 +12,8 @@ versions from `config.mk`.
   `christitustech/copr-fedora` COPR. Full installs attempt it after approved
   repository setup and skip it when unavailable. Fresh-account folder defaults
   prefer Path when installed, with Thunar otherwise; existing MIME preferences
-  remain unchanged. Prefer Path's file chooser portal with GTK fallback.
+  remain unchanged. Keep GTK as the file chooser portal until Path supports
+  cancellation through the portal request API.
 
 - Add `fullscreen=1` window rules to open matching applications across the
   entire monitor without a top bar, gaps, or window borders. Title-based rules

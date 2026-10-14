@@ -161,8 +161,10 @@ dwm-default-apps set-role file-manager pathfm.desktop
 
 Before removing Path, select Thunar with
 `dwm-default-apps set-role file-manager thunar.desktop`. Seeding does not rewrite
-an existing MIME preference file after removal. File chooser portals prefer
-Path when its backend is installed, with GTK as the fallback backend.
+an existing MIME preference file after removal. File chooser portals continue
+to use GTK: the current Path package opens a chooser but does not implement
+caller cancellation through `org.freedesktop.portal.Request.Close`. Using Path
+for folder browsing does not require its file chooser portal.
 
 ### 2. Clone and Build
 
