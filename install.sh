@@ -611,6 +611,10 @@ fi
 
 # ── Optional desktop extras ──────────────────────────────
 if install_optional_profile; then
+	info "Installing optional desktop extras..."
+	if ! dwm_install_available_package_profile optional; then
+		warn "Some optional desktop extras were unavailable in enabled repositories."
+	fi
 	if fedora_gaming_profile; then
 		if [[ $FEDORA_GAMING_REPOS_APPROVED != true ]]; then
 			warn "Fedora gaming packages were skipped because their repositories were not approved."
@@ -623,11 +627,6 @@ if install_optional_profile; then
 		else
 			warn "Fedora gaming repository setup failed; no gaming packages were installed."
 		fi
-	fi
-	# Path is available from the COPR enabled above with explicit approval.
-	info "Installing optional desktop extras..."
-	if ! dwm_install_available_package_profile optional; then
-		warn "Some optional desktop extras were unavailable in enabled repositories."
 	fi
 	ok "Optional desktop extras processed."
 else

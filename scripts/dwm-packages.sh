@@ -72,10 +72,8 @@ dwm_packages() {
 		dwm_packages "$family" keyring
 		;;
 	fedora:desktop-optional)
-		# Path: https://github.com/ChrisTitusTech/Path, packaged in
-		# christitustech/copr-fedora; skip when that repository is unavailable.
 		printf '%s\n' \
-			path Thunar gvfs gvfs-smb tumbler thunar-archive-plugin file-roller \
+			Thunar gvfs gvfs-smb tumbler thunar-archive-plugin file-roller \
 			xdg-user-dirs NetworkManager \
 			NetworkManager-wifi rsync
 		;;

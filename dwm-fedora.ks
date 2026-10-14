@@ -157,7 +157,6 @@ google-noto-sans-mono-fonts
 NetworkManager
 NetworkManager-wifi
 rsync
-path
 Thunar
 gvfs
 gvfs-smb
