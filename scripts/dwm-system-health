@@ -917,14 +917,7 @@ repair_user() {
 		systemctl --user restart "${units[@]}"
 		;;
 	install-dependencies)
-		local installer=$SCRIPT_DIR/../install.sh
-		if [[ -x $installer ]] && command -v dwm-terminal >/dev/null 2>&1; then
-			local quoted_dir
-			printf -v quoted_dir '%q' "${installer%/*}"
-			dwm-terminal -e bash -lc "cd $quoted_dir && exec ./install.sh"
-		else
-			control_helper_action dependency-check
-		fi
+		control_helper_action install-missing-deps
 		;;
 	*)
 		printf 'unsupported user repair: %s\n' "$action" >&2

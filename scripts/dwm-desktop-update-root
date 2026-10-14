@@ -79,6 +79,11 @@ def fingerprint(path):
             "mode": stat.S_IMODE(info.st_mode)}
 
 
+def existing_candidate_matches(path, record):
+    info = path.lstat()
+    return stat.S_ISREG(info.st_mode) and info.st_uid == 0 and fingerprint(path) == record
+
+
 def copy_saved(source, target):
     with source.open("rb") as original, target.open("xb") as stream:
         shutil.copyfileobj(original, stream)
@@ -182,16 +187,18 @@ def validate_packages(packages):
         fail("Invalid desktop package names")
 
 
-def install_packages(packages):
+def install_packages(packages, interactive=False):
     validate_packages(packages)
     missing = [package for package in packages if subprocess.run(
         ["/usr/bin/rpm", "-q", "--quiet", "--", package], stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL, timeout=10).returncode != 0]
     if missing:
         print("Installing required desktop packages: " + ", ".join(missing), flush=True)
-        subprocess.run(["/usr/bin/dnf", "install", "-y", "--", *missing], check=True,
+        subprocess.run(["/usr/bin/dnf", "install", *([] if interactive else ["-y"]), "--", *missing], check=True,
                        env={"PATH": "/usr/bin:/bin", "HOME": "/root", "LANG": "C.UTF-8"},
-                       stdin=subprocess.DEVNULL, cwd="/", timeout=1800)
+                       stdin=None if interactive else subprocess.DEVNULL, cwd="/", timeout=1800)
+    elif interactive:
+        print("All desktop dependency packages are installed.", flush=True)
 
 
 def validate_candidate(candidate, installed):
@@ -308,7 +315,8 @@ def apply_archive(archive, expected, operation, uid, bundle_digest, revision):
             fail("Update bundle checksum mismatch")
         trusted_parent(Path(name).parent)
         if name not in installed["files"] and os.path.lexists(name):
-            fail("New managed destination already exists: " + name)
+            if not existing_candidate_matches(Path(name), record):
+                fail("New managed destination already exists: " + name)
     removed = sorted(set(installed["files"]) - set(candidate["files"]))
     for name in removed:
         trusted_parent(Path(name).parent)
@@ -326,6 +334,9 @@ def apply_archive(archive, expected, operation, uid, bundle_digest, revision):
             trusted_parent(path.parent, create=True)
             replacement = candidate["files"].get(name)
             old = fingerprint(path) if os.path.lexists(path) else None
+            if name not in installed["files"] and old is not None:
+                if not existing_candidate_matches(path, replacement):
+                    fail("New managed destination already exists: " + name)
             if old is not None and "sha256" in old:
                 if (old["mode"] not in (0o644, 0o755)
                         or (path.lstat().st_uid != 0 and old != installed["files"].get(name))):
@@ -480,7 +491,7 @@ def perform(args, uid):
             install_packages(packages)
             journal["packages"] = packages
             write_json(backup / "journal.json", journal)
-        elif args[0] == "dependencies" and len(args) == 2:
+        elif args[0] in ("dependencies", "repair-dependencies") and len(args) == 2:
             for journal_path in STATE.glob("*/journal.json"):
                 journal = read_json(journal_path)
                 if not isinstance(journal, dict) or journal.get("state") not in ("complete", "rolled-back"):
@@ -489,7 +500,25 @@ def perform(args, uid):
             manifest = read_json(manifest_path)
             if hashlib.sha256(manifest_path.read_bytes()).hexdigest() != args[1]:
                 fail("Dependency preview changed; check again")
-            install_packages(manifest["packages"])
+            if args[0] == "repair-dependencies":
+                if not sys.stdin.isatty():
+                    fail("Dependency repair requires an interactive terminal")
+                mapping = PREFIX / "bin/dwm-packages.sh"
+                trusted(mapping)
+                if fingerprint(mapping) != manifest["files"].get(str(mapping)):
+                    fail("Installed package map changed; update or restore the managed helper first")
+                packages = []
+                for profile in ("required", "recommended", "source-update"):
+                    result = subprocess.run(["/usr/bin/bash", str(mapping), "fedora", profile],
+                                            check=True, capture_output=True, text=True, stdin=subprocess.DEVNULL,
+                                            env={"PATH": "/usr/bin:/bin", "HOME": "/root", "LANG": "C.UTF-8"},
+                                            cwd="/", timeout=10)
+                    packages.extend(result.stdout.splitlines())
+                if not packages:
+                    fail("Installed desktop package map is empty")
+                install_packages(sorted(set(packages)), interactive=True)
+            else:
+                install_packages(manifest["packages"])
         else:
             fail("Unsupported desktop update action")
 
