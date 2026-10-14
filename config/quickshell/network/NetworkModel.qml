@@ -15,6 +15,14 @@ Scope {
     property bool actionUsesPasswordStdin: false
     property bool wifiPasswordPromptVisible: false
     property string wifiPasswordPromptOrigin: ""
+    property bool hiddenPromptVisible: false
+    property string hiddenPromptOrigin: ""
+    property string hiddenSsid: ""
+    property string hiddenSecurity: "wpa-psk"
+    property string hiddenDevice: ""
+    property string hiddenError: ""
+    property bool hiddenConnectPending: false
+    property string hiddenPromptPendingOrigin: ""
     property int selectedIndex: 0
     property int selectedWifiIndex: -1
     property string statusText: "NET offline"
@@ -37,6 +45,15 @@ Scope {
     readonly property var savedProfiles: root.connections.filter(function(profile) {
         return !profile.active && root.isSupportedProfile(profile.type);
     })
+    readonly property var wifiDevices: root.devices.filter(function(device) {
+        return device.type === "wifi" && device.state !== "unmanaged" && device.state !== "unavailable";
+    })
+    readonly property bool promptVisible: root.wifiPasswordPromptVisible || root.hiddenPromptVisible
+    readonly property string hiddenSsidError: root.validateHiddenSsid(root.hiddenSsid)
+    readonly property string hiddenPasswordError: root.validateHiddenPassword(root.hiddenSecurity, root.wifiPassword)
+    readonly property bool hiddenFormValid: root.hiddenSsidError.length === 0
+        && root.hiddenPasswordError.length === 0 && root.hiddenSecurity !== "enterprise"
+        && root.hiddenDevice.length > 0
     readonly property bool active: true
     readonly property bool actionsAvailable: (providerState === "available" || providerState === "restricted")
         && operationState === "delegated"
@@ -49,6 +66,34 @@ Scope {
         const value = (security || "").toUpperCase();
         return value.indexOf("802.1X") < 0 && value.indexOf("EAP") < 0
             && value.indexOf("ENTERPRISE") < 0;
+    }
+
+    function utf8Length(text) {
+        try {
+            return encodeURIComponent(text).replace(/%[0-9A-F]{2}/g, "x").length;
+        } catch (error) {
+            return 33;
+        }
+    }
+
+    // Mirrors wifi-connect-hidden validation in scripts/dwm-quickshell-network.
+    function validateHiddenSsid(ssid) {
+        if (ssid.length === 0) return "Network name is required";
+        if (root.utf8Length(ssid) > 32) return "Network name is longer than 32 bytes";
+        if (/[\x00-\x1f\x7f]/.test(ssid)) return "Network name must not contain control characters";
+        return "";
+    }
+
+    function validateHiddenPassword(security, password) {
+        if (security === "wpa-psk") {
+            if (/^[0-9A-Fa-f]{64}$/.test(password)) return "";
+            if (/^[\x20-\x7e]{8,63}$/.test(password)) return "";
+            return "8 to 63 characters, or 64 hex digits";
+        }
+        if (security === "sae" || security === "wep") {
+            return password.length > 0 ? "" : "Password is required";
+        }
+        return "";
     }
 
     function open() {
@@ -64,6 +109,7 @@ Scope {
         root.wifiPasswordPromptOrigin = "";
         root.message = "";
         root.wifiPassword = "";
+        if (root.hiddenPromptOrigin === "panel" || root.hiddenPromptPendingOrigin === "panel") root.resetHiddenPrompt();
         root.stopUnownedWork("panel");
     }
 
@@ -78,6 +124,7 @@ Scope {
         root.wifiPasswordPromptVisible = false;
         root.wifiPasswordPromptOrigin = "";
         root.wifiPassword = "";
+        if (root.hiddenPromptOrigin === "settings" || root.hiddenPromptPendingOrigin === "settings") root.resetHiddenPrompt();
         root.stopUnownedWork("settings");
     }
 
@@ -165,6 +212,7 @@ Scope {
         else if (!root.actionFailed && !root.busy) root.message = "";
         if (root.selectedIndex >= connections.length) root.selectedIndex = Math.max(0, connections.length - 1);
         if (root.selectedWifiIndex >= wifiNetworks.length) root.selectedWifiIndex = -1;
+        root.openPendingHiddenPrompt();
     }
 
     function parseDevices(text) {
@@ -287,6 +335,81 @@ Scope {
         root.message = "";
     }
 
+    function openHiddenPrompt(origin) {
+        if (root.busy) return;
+        if (snapshotProcess.running || root.providerState === "loading") {
+            // Opened together with the popover: wait for the snapshot that open() started.
+            root.hiddenPromptPendingOrigin = origin || "panel";
+            return;
+        }
+        // Keep a pending request when the snapshot failed, so the next good
+        // snapshot can still open the form; close() clears it.
+        if (!root.actionsAvailable || root.wifiDevices.length === 0) return;
+        root.hiddenPromptPendingOrigin = "";
+        root.wifiPasswordPromptVisible = false;
+        root.wifiPasswordPromptOrigin = "";
+        root.selectedWifiIndex = -1;
+        root.wifiPassword = "";
+        root.hiddenError = "";
+        const names = root.wifiDevices.map(device => device.device);
+        if (names.indexOf(root.hiddenDevice) < 0) {
+            const idle = root.wifiDevices.filter(device => device.state === "disconnected");
+            root.hiddenDevice = idle.length > 0 ? idle[0].device : names[0];
+        }
+        if (root.hiddenSecurity === "enterprise" && !root.editorAvailable) root.hiddenSecurity = "wpa-psk";
+        root.hiddenPromptOrigin = origin || "panel";
+        root.hiddenPromptVisible = true;
+        root.message = "";
+    }
+
+    function openPendingHiddenPrompt() {
+        if (root.hiddenPromptPendingOrigin.length > 0) root.openHiddenPrompt(root.hiddenPromptPendingOrigin);
+    }
+
+    function resetHiddenPrompt() {
+        root.hiddenPromptPendingOrigin = "";
+        root.hiddenPromptVisible = false;
+        root.hiddenPromptOrigin = "";
+        root.hiddenSsid = "";
+        root.hiddenSecurity = "wpa-psk";
+        root.hiddenDevice = "";
+        root.hiddenError = "";
+        root.wifiPassword = "";
+    }
+
+    function cancelHiddenPrompt() {
+        root.resetHiddenPrompt();
+        root.message = "";
+    }
+
+    function openEditorForHidden() {
+        root.cancelHiddenPrompt();
+        root.message = "Enterprise Wi-Fi opens in Advanced NetworkManager settings";
+        root.openEditor();
+    }
+
+    function connectHidden(origin) {
+        if (!root.hiddenFormValid || !root.actionsAvailable || root.busy || actionProcess.running) {
+            return;
+        }
+
+        const secured = root.hiddenSecurity !== "none";
+        const args = [root.hiddenDevice, root.hiddenSsid, root.hiddenSecurity];
+        if (secured) args.push("--password-stdin");
+
+        root.busy = true;
+        root.actionFailed = false;
+        root.actionOrigin = origin || root.hiddenPromptOrigin || "panel";
+        root.actionLabel = "connect hidden Wi-Fi";
+        root.actionUsesPasswordStdin = secured;
+        root.hiddenConnectPending = true;
+        root.hiddenError = "";
+        root.hiddenPromptVisible = false;
+        root.message = "Connecting " + root.hiddenSsid;
+        actionProcess.command = Commands.networkHelperCommand("wifi-connect-hidden", args);
+        actionProcess.running = true;
+    }
+
     function connectWifi(network, origin) {
         if (!network || network.device.length === 0 || network.bssid.length === 0 || network.ssid.length === 0) {
             return;
@@ -308,6 +431,7 @@ Scope {
                     break;
                 }
             }
+            root.resetHiddenPrompt();
             root.wifiPasswordPromptVisible = true;
             root.wifiPasswordPromptOrigin = origin || "panel";
             root.message = "";
@@ -408,7 +532,11 @@ Scope {
                 }
             }
         }
-        onRunningChanged: if (!running) root.snapshotOrigin = ""
+        onRunningChanged: {
+            if (running) return;
+            root.snapshotOrigin = "";
+            root.openPendingHiddenPrompt();
+        }
     }
 
     Process {
@@ -469,6 +597,16 @@ Scope {
                 root.actionUsesPasswordStdin = false;
                 root.wifiPassword = "";
                 if (!root.actionFailed) root.message = "";
+                if (root.hiddenConnectPending) {
+                    root.hiddenConnectPending = false;
+                    if (root.actionFailed) {
+                        // Keep name, security, and device; only the password is retyped.
+                        root.hiddenPromptOrigin = root.actionOrigin;
+                        root.hiddenPromptVisible = root.actionOrigin === "panel" ? root.visible : root.settingsVisible;
+                    } else {
+                        root.resetHiddenPrompt();
+                    }
+                }
                 root.refresh(false);
                 root.actionOrigin = "";
                 root.actionLabel = "";
@@ -481,6 +619,7 @@ Scope {
                 if (error.length > 0) {
                     root.actionFailed = true;
                     root.message = root.actionLabel + " failed: " + error;
+                    if (root.hiddenConnectPending) root.hiddenError = error;
                 }
             }
         }

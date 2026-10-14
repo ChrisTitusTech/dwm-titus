@@ -34,12 +34,27 @@ A provider failure affects only its owning Settings section.
 
 NetworkManager state uses explicit `nmcli --terse --escape yes -f ...` fields.
 Wi-Fi scans are bounded to 10 seconds, profile and Wi-Fi activation to 90
-seconds, and disconnect/forget to 15 seconds. Hidden, enterprise, advanced, and
-VPN editing remains delegated to `nm-connection-editor`.
+seconds, and disconnect/forget to 15 seconds. Enterprise, advanced, and VPN
+editing remains delegated to `nm-connection-editor`.
+
+`wifi-connect-hidden <ifname|-> <ssid> <none|wep|wpa-psk|sae>
+[--password-stdin]` creates a profile with `802-11-wireless.hidden yes` and no
+BSSID, then activates it by UUID. The SSID must be 1 to 32 bytes without
+control characters, and WPA-PSK passwords must be 8 to 63 printable ASCII
+characters or 64 hex digits. `-` picks the only managed Wi-Fi device. A name
+that is already taken becomes `<ssid> (hidden)`, then `(hidden 2)` and so on.
+Activation watches `nmcli device monitor` for the device: a second "need
+authentication" state means NetworkManager rejected the secret and asks again,
+so the helper stops there instead of letting nmcli resend the same password
+until the timeout. On failure the new profile is deleted and stderr carries
+one line, with not-found, authentication, and IP failures mapped to plain text.
+Exit status is 2 for invalid input, 3 for device selection, 4 for a rejected
+password, and otherwise nmcli's.
 
 Secured Wi-Fi secrets cross the QML/helper boundary only on stdin. The helper
-creates a mode-0600 `nmcli --passwd-file`, clears the QML value after writing,
-and removes the file on success, failure, timeout, cancellation, or signal.
+creates a mode-0600 `nmcli --passwd-file` (for hidden networks, under
+`$XDG_RUNTIME_DIR` when it is usable), clears the QML value after writing, and
+removes the file on success, failure, timeout, cancellation, or signal.
 
 ## Bluetooth records
 

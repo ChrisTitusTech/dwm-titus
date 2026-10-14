@@ -16,6 +16,13 @@ versions from `config.mk`.
 - Add `fakefullscreen=1` rules for borderless, monitor-sized windowed mode
   without requesting fullscreen from the application.
 
+- Join hidden Wi-Fi networks from the panel network popover (#375). A
+  "Hidden network..." row at the end of the Wi-Fi list asks for the name,
+  security type (WPA2/WPA3 Personal, WEP, or open), device, and password, and
+  saves a normal NetworkManager profile with hidden-network probing. A wrong
+  password or name is reported in the form and leaves no profile behind.
+  `quickshell ipc call network openHiddenPrompt` opens the form directly.
+
 - Keep Update Center floating and apply its saved Float update terminal toggle
   to the next update or recovery terminal, which defaults to tiled.
 
@@ -31,6 +38,11 @@ versions from `config.mk`.
   authorization policy are not stored or changed by the updater.
 
 ### Fixed
+
+- Install `nm-connection-editor` with the recommended profile and both Fedora
+  images. The network popover already sends Edit Connections and enterprise
+  (802.1X) Wi-Fi to it, but stock installs did not have it, so those paths were
+  hidden or failed.
 
 - Make Kitty follow the selected theme instead of Nord. The shipped
   `kitty.conf` no longer sets its own palette or includes `nord.conf`. Theme

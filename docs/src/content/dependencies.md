@@ -67,6 +67,7 @@ helpers and service APIs perform the underlying operations.
 | Audio engine | `pipewire`, `wireplumber`, `pipewire-pulseaudio` | Desktop. Audio processing, device/session policy, and PulseAudio compatibility. |
 | Audio tools | `alsa-utils`, `pulseaudio-utils`, `pavucontrol` | Desktop. Mixer commands, audio controls, and a standalone configuration interface. |
 | Network connections | `NetworkManager`, `NetworkManager-wifi` | Full package group. Backend for networking controls, including the Wi-Fi device plugin. `NetworkManager` alone leaves Wi-Fi interfaces unmanaged. It may already be present on an existing Fedora system. |
+| Network editor | `nm-connection-editor` | Desktop. The advanced NetworkManager editor behind the network popover's Edit Connections action and the enterprise (802.1X) Wi-Fi path. |
 | Bluetooth | `bluez`, `blueman` | Desktop. Bluetooth services and device-management tools. |
 | Battery and power profiles | `upower`, `power-profiles-daemon` | Desktop. Battery state and performance/power profiles. The installer retains an installed provider of `ppd-service` rather than replacing it. |
 | Brightness | `brightnessctl` | Desktop. Backlight control where supported by the hardware. |

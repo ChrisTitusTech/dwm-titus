@@ -34,6 +34,27 @@ grep -Fq "[ -n \"\$parent_identity\" ] || return 1" "$repo/scripts/dwm-quickshel
 grep -Fq 'property string wifiPasswordPromptOrigin: ""' "$network_model"
 grep -Fq 'function supportsFixedWifiSecurity(security)' "$network_model"
 grep -Fq 'function closeSettings()' "$network_model"
+grep -Fq 'property bool hiddenPromptVisible: false' "$network_model"
+grep -Fq 'property string hiddenPromptOrigin: ""' "$network_model"
+grep -Fq 'function openHiddenPrompt(origin)' "$network_model"
+grep -Fq 'function cancelHiddenPrompt()' "$network_model"
+grep -Fq 'function connectHidden(origin)' "$network_model"
+# IPC can open the form while open() is still loading the first snapshot.
+grep -Fq 'root.hiddenPromptPendingOrigin = origin || "panel";' "$network_model"
+grep -Fq 'if (root.hiddenPromptPendingOrigin.length > 0) root.openHiddenPrompt(root.hiddenPromptPendingOrigin);' "$network_model"
+test "$(grep -Fc 'root.openPendingHiddenPrompt();' "$network_model")" -eq 2
+grep -Fq 'root.hiddenPromptPendingOrigin = "";' "$network_model"
+# A failed snapshot must not drop a pending hidden prompt request: the request
+# is only cleared once the form can actually open.
+grep -A1 -F 'if (!root.actionsAvailable || root.wifiDevices.length === 0) return;' "$network_model" |
+	grep -Fq 'root.hiddenPromptPendingOrigin = "";'
+grep -Fq 'readonly property var wifiDevices' "$network_model"
+grep -Fq 'Commands.networkHelperCommand("wifi-connect-hidden", args)' "$network_model"
+grep -Fq 'root.actionUsesPasswordStdin = secured;' "$network_model"
+if grep -Fq 'args.push(root.wifiPassword)' "$network_model"; then
+	printf 'Hidden Wi-Fi password must not be passed on argv.\n' >&2
+	exit 1
+fi
 grep -Fq 'function openSettings()' "$bluetooth_model"
 grep -Fq 'function closeSettings()' "$bluetooth_model"
 grep -Fq 'root.actionOrigin === origin && actionProcess.running' "$network_model"

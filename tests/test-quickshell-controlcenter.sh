@@ -521,8 +521,21 @@ grep -Fq 'root.wifiPasswordPromptVisible = true;' "$repo/config/quickshell/netwo
 grep -Fq 'root.networkModel.cancelWifiPasswordPrompt()' "$repo/config/quickshell/network/NetworkWindow.qml"
 grep -Fq 'wifiPasswordInput.forceActiveFocus();' "$repo/config/quickshell/network/NetworkWindow.qml"
 grep -Fq 'visible: panelWindow !== null && panelWindow.screen !== null' "$repo/config/quickshell/network/NetworkWindow.qml"
-grep -Fq 'enabled: !root.networkModel.wifiPasswordPromptVisible' "$repo/config/quickshell/network/NetworkWindow.qml"
-grep -Fq 'grabFocus: !networkModel.wifiPasswordPromptVisible' "$repo/config/quickshell/network/NetworkWindow.qml"
+grep -Fq 'enabled: !root.networkModel.promptVisible' "$repo/config/quickshell/network/NetworkWindow.qml"
+grep -Fq 'grabFocus: !networkModel.promptVisible' "$repo/config/quickshell/network/NetworkWindow.qml"
+grep -Fq '&& networkModel.visible && !networkModel.promptVisible' "$repo/config/quickshell/network/NetworkWindow.qml"
+grep -Fq 'readonly property bool promptVisible: root.wifiPasswordPromptVisible || root.hiddenPromptVisible' \
+	"$repo/config/quickshell/network/NetworkModel.qml"
+grep -Fq 'NetworkHiddenPrompt {' "$repo/config/quickshell/network/NetworkWindow.qml"
+grep -Fq 'NetworkHiddenRow {' "$repo/config/quickshell/network/NetworkWindow.qml"
+grep -Fq 'footer: Item {' "$repo/config/quickshell/network/NetworkWindow.qml"
+grep -Fq 'onJoinRequested: root.networkModel.openHiddenPrompt("panel")' "$repo/config/quickshell/network/NetworkWindow.qml"
+grep -Fq 'root.networkModel.cancelHiddenPrompt();' "$repo/config/quickshell/network/NetworkWindow.qml"
+grep -Fq 'FloatingWindow {' "$repo/config/quickshell/network/NetworkHiddenPrompt.qml"
+grep -Fq 'title: "dwm network password"' "$repo/config/quickshell/network/NetworkHiddenPrompt.qml"
+grep -Fq 'objectName: "hiddenViewport"' "$repo/config/quickshell/network/NetworkHiddenPrompt.qml"
+grep -Fq 'onClosed: root.networkModel.cancelHiddenPrompt()' "$repo/config/quickshell/network/NetworkHiddenPrompt.qml"
+grep -Fq 'function openHiddenPrompt(): void {' "$repo/config/quickshell/shell.qml"
 grep -Fq 'FloatingWindow {' "$repo/config/quickshell/network/NetworkWindow.qml"
 grep -Fq 'title: "dwm network password"' "$repo/config/quickshell/network/NetworkWindow.qml"
 grep -Fq '{ title="dwm network password",     isfloating=1, alwaysontop=1 }' \
@@ -564,7 +577,7 @@ grep -Fq 'root.wifiPasswordPromptVisible && root.selectedWifiIndex < 0' "$repo/c
 grep -Fq 'args.push("--password-stdin");' "$repo/config/quickshell/network/NetworkModel.qml"
 grep -Fq 'args.push(network.security);' "$repo/config/quickshell/network/NetworkModel.qml"
 grep -Fq 'stdinEnabled: true' "$repo/config/quickshell/network/NetworkModel.qml"
-test "$(grep -Fc 'root.busy || actionProcess.running' "$repo/config/quickshell/network/NetworkModel.qml")" -eq 4
+test "$(grep -Fc 'root.busy || actionProcess.running' "$repo/config/quickshell/network/NetworkModel.qml")" -eq 5
 if grep -Fq 'args.push(root.wifiPassword)' "$repo/config/quickshell/network/NetworkModel.qml"; then
 	exit 1
 fi
