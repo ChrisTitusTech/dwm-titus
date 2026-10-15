@@ -40,7 +40,7 @@ touch "$work/xsessions/dwm.desktop"
 touch "$work/home/.xinitrc"
 
 # Symlink essential system utilities into work bin
-for tool in bash sh dirname pwd printf echo grep awk cat sed cut tr rm paste; do
+for tool in bash sh dirname pwd printf echo grep awk cat sed cut tr rm paste chmod; do
 	cmd_path=$(command -v "$tool" || true)
 	[ -n "$cmd_path" ] && ln -sf "$cmd_path" "$work/bin/$tool"
 done
@@ -96,12 +96,17 @@ fi
 cat >"$work/bin/dwm-desktop-update" <<'SH'
 #!/bin/sh
 printf 'INSTALLER_CALLED:%s\n' "$*" >"$DWM_TEST_INSTALLER_LOG"
+cat >"$(dirname "$0")/startx" <<'INNER'
+#!/bin/sh
+exit 0
+INNER
+chmod +x "$(dirname "$0")/startx"
 exit 0
 SH
 chmod +x "$work/bin/dwm-desktop-update"
 export DWM_TEST_INSTALLER_LOG="$work/installer.log"
 
-output=$(printf 'y\n' | env HOME="$work/home" PATH="$work/bin" \
+output=$(printf 'y\n\n' | env HOME="$work/home" PATH="$work/bin" \
 	DWM_TEST_INSTALLER_LOG="$DWM_TEST_INSTALLER_LOG" \
 	bash "$CHECK_DEPS" --interactive || true)
 if [ ! -f "$DWM_TEST_INSTALLER_LOG" ]; then
@@ -112,9 +117,14 @@ if ! grep -Fq "INSTALLER_CALLED:install-dependencies" "$DWM_TEST_INSTALLER_LOG";
 	echo "FAIL: installer called with wrong arguments" >&2
 	exit 1
 fi
+if ! grep -Fq "Dependencies OK, press any key to quit." <<<"$output"; then
+	echo "FAIL: expected Dependencies OK after successful repair" >&2
+	exit 1
+fi
 
 # 5. Interactive mode when dependency missing and updater unavailable (no install.sh fallback)
 rm -f "$work/bin/dwm-desktop-update"
+rm -f "$work/bin/startx"
 isolated_dir="$work/isolated"
 mkdir -p "$isolated_dir"
 cp "$CHECK_DEPS" "$REPO_DIR/scripts/dwm-utils.sh" "$REPO_DIR/scripts/dwm-packages.sh" "$isolated_dir/"
@@ -166,6 +176,17 @@ fi
 # 7. Interactive mode when both package and Meslo font are missing (mixed failure)
 rm -f "$work/bin/startx"
 rm -f "$DWM_TEST_INSTALLER_LOG"
+cat >"$work/bin/dwm-desktop-update" <<'SH'
+#!/bin/sh
+printf 'INSTALLER_CALLED:%s\n' "$*" >"$DWM_TEST_INSTALLER_LOG"
+cat >"$(dirname "$0")/startx" <<'INNER'
+#!/bin/sh
+exit 0
+INNER
+chmod +x "$(dirname "$0")/startx"
+exit 0
+SH
+chmod +x "$work/bin/dwm-desktop-update"
 
 set +e
 output=$(printf 'y\n\n' | env HOME="$work/home" PATH="$work/bin" \
@@ -184,6 +205,34 @@ if [ ! -f "$DWM_TEST_INSTALLER_LOG" ]; then
 fi
 if ! grep -Fq "Meslo" <<<"$output"; then
 	echo "FAIL: expected Meslo guidance on mixed failure" >&2
+	exit 1
+fi
+# 8. Interactive mode when repair succeeds but dependency remains missing
+cat >"$work/bin/fc-list" <<'SH'
+#!/bin/sh
+printf '%s\n' 'MesloLGS Nerd Font' 'Noto Color Emoji'
+SH
+chmod +x "$work/bin/fc-list"
+
+cat >"$work/bin/dwm-desktop-update" <<'SH'
+#!/bin/sh
+exit 0
+SH
+chmod +x "$work/bin/dwm-desktop-update"
+rm -f "$work/bin/startx"
+
+set +e
+output=$(printf 'y\n\n' | env HOME="$work/home" PATH="$work/bin" \
+	bash "$CHECK_DEPS" --interactive)
+exit_code=$?
+set -e
+
+if [ "$exit_code" -ne 1 ]; then
+	echo "FAIL: expected exit code 1 when dependency remains missing after repair, got $exit_code" >&2
+	exit 1
+fi
+if ! grep -Fq "Required dependencies are still missing after repair." <<<"$output"; then
+	echo "FAIL: expected missing after repair error message" >&2
 	exit 1
 fi
 

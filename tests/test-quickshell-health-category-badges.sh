@@ -57,6 +57,7 @@ ShellRoot {
                 { id: "b2", category: "boot", status: "warn", kind: "check" },
                 { id: "b3", category: "boot", status: "warn", kind: "check" },
                 { id: "b4", category: "boot", status: "error", kind: "check" },
+                { id: "r1", category: "boot", status: "restricted", kind: "check" },
                 { id: "s1", category: "services", status: "warn", kind: "check" },
                 { id: "n1", category: "network", status: "error", kind: "check" },
                 { id: "st1", category: "storage", status: "ok", kind: "check" }

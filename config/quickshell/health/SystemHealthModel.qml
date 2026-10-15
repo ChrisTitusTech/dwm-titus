@@ -201,7 +201,7 @@ Scope {
         for (let i = 0; i < root.rows.length; i++) {
             const row = root.rows[i];
             if ((category === "overview" || row.category === category)
-                    && (row.status === "error" || row.status === "restricted")) {
+                    && row.status === "error") {
                 count++;
             }
         }

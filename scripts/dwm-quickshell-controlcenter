@@ -1400,10 +1400,12 @@ launch_background() {
 }
 
 terminal_run() {
+	terminal_cmd=$1
+	shift
 	if command -v dwm-terminal >/dev/null 2>&1; then
-		launch_background dwm-terminal -e sh -c "$1"
+		launch_background dwm-terminal -e sh -c "$terminal_cmd" sh "$@"
 	else
-		sh -c "$1"
+		sh -c "$terminal_cmd" sh "$@"
 	fi
 }
 
@@ -1670,7 +1672,8 @@ dependency_check() {
 		printf 'check-deps.sh is unavailable\n' >&2
 		return 1
 	fi
-	terminal_run "exec \"$checker\" --interactive"
+	# shellcheck disable=SC2016 # Expand positional arguments in the terminal shell.
+	terminal_run 'exec "$1" --interactive' "$checker"
 }
 
 install_missing_deps() {

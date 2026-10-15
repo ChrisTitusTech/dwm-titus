@@ -29,6 +29,12 @@ class DependencyLaunchers(unittest.TestCase):
             before = {p: p.read_bytes() for p in files}
             tools = base / "bin"
             tools.mkdir()
+            for cmd in ("cc", "make", "Xorg", "startx", "xrandr", "xset", "xsetroot", "xkbset",
+                        "quickshell", "picom", "feh", "xsettingsd", "bwrap", "xclip", "xdotool",
+                        "dex", "amixer", "jq", "bluetoothctl", "blueman-applet", "alacritty", "xdg-open"):
+                p = tools / cmd
+                p.write_text("#!/bin/sh\nexit 0\n")
+                p.chmod(0o755)
             log = base / "calls.jsonl"
             log.touch()
             terminal = tools / "dwm-terminal"
@@ -40,18 +46,20 @@ class DependencyLaunchers(unittest.TestCase):
             updater = tools / "dwm-desktop-update"
             updater.write_text("#!/usr/bin/python3\nimport json,os,sys\n"
                                "assert sys.argv[1:] == ['install-dependencies'], sys.argv\n"
-                               "with open(os.environ['REPAIR_CALLS'],'a') as f: f.write(json.dumps(sys.argv[1:])+'\\n')\n")
+                               "with open(os.environ['REPAIR_CALLS'],'a') as f: f.write(json.dumps(sys.argv[1:])+'\\n')\n"
+                               "with open(os.environ['FIX_TARGET'],'w') as f: f.write('#!/bin/sh\\nexit 0\\n')\n")
             updater.chmod(0o755)
             environment = {**os.environ, "PATH": str(tools) + ":/usr/bin:/bin", "HOME": str(base),
-                           "DWM_TEST_SYNC": "1", "REPAIR_CALLS": str(log)}
+                           "DWM_TEST_SYNC": "1", "REPAIR_CALLS": str(log), "FIX_TARGET": str(pkg)}
             for source_exists in (True, False):
                 if not source_exists:
                     installer.unlink()
                 for name, args in (("dwm-quickshell-controlcenter", ["action", "dependency-check"]),
                                    ("dwm-system-health", ["repair-user", "install-dependencies"])):
                     with self.subTest(button=name, source_exists=source_exists):
+                        pkg.write_text("#!/bin/sh\nexit 1\n")
                         marker.unlink(missing_ok=True)
-                        result = subprocess.run([scripts / name, *args], input="y\n", env=environment,
+                        result = subprocess.run([scripts / name, *args], input="y\n\n", env=environment,
                                                  capture_output=True, text=True, timeout=15)
                         self.assertFalse(marker.exists(), "Dependency button ran the full desktop installer")
                         self.assertEqual(result.returncode, 0, result.stderr)

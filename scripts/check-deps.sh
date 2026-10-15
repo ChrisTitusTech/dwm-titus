@@ -277,9 +277,21 @@ else
 				if [ $repair_status -ne 0 ]; then
 					exit "$repair_status"
 				fi
-				if [ $MISSING_FONTS -gt 0 ]; then
-					printf "\n${YELLOW}Package dependencies installed, but Meslo Nerd Font is still missing.${NC}\n"
-					printf "Run: ./install.sh (automated install includes font setup)\n"
+				echo ""
+				echo "Re-checking dependencies..."
+				recheck_status=0
+				recheck_output=$("$SCRIPT_DIR/check-deps.sh" --non-interactive 2>&1) || recheck_status=$?
+				printf '%s\n' "$recheck_output"
+				if [ $recheck_status -ne 0 ]; then
+					if grep -Fq "Package suggestions from the shared dependency map:" <<<"$recheck_output" \
+						|| grep -Eq '\(missing\)|missing pam_gnome_keyring|Noto Color Emoji' <<<"$recheck_output"; then
+						printf "\n${RED}Required dependencies are still missing after repair.${NC}\n"
+					elif [ $MISSING_FONTS -gt 0 ] || grep -Fq "Meslo" <<<"$recheck_output"; then
+						printf "\n${YELLOW}Package dependencies installed, but Meslo Nerd Font is still missing.${NC}\n"
+						printf "Run: ./install.sh (automated install includes font setup)\n"
+					else
+						printf "\n${RED}Required dependencies are still missing after repair.${NC}\n"
+					fi
 					printf "Press any key to quit.\n"
 					read -r -s -n 1 _ || true
 					exit 1

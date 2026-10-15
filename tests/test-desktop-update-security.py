@@ -409,18 +409,24 @@ raise SystemExit(17)
         def package_command(args, **kwargs):
             if args[0] == "/usr/bin/bash":
                 self.assertEqual(args[:3], ["/usr/bin/bash", str(mapping), "fedora"])
-                self.assertIn(args[3], ("required", "recommended", "source-update"))
+                self.assertIn(args[3], ("required", "source-update", "desktop", "system-management", "theme", "fonts",
+                                        "terminal-primary", "screenshot-optional", "theme-gtk"))
                 profiles.append(args[3])
                 return real_run(args, **kwargs)
             if args[0] == "/usr/bin/rpm":
-                if args[1:] == ["-q", "--whatprovides", "ppd-service"]:
+                if args[1:] in (["-q", "--whatprovides", "ppd-service"], ["-q", "--whatprovides", "xserver"]):
                     return subprocess.CompletedProcess(args, 1)
                 self.assertEqual(args[:5], ["/usr/bin/rpm", "-q", "--quiet", "--", args[4]])
                 self.assertEqual(len(args), 5)
                 packages.append(args[4])
                 return subprocess.CompletedProcess(args, 0 if args[4] == "gcc" else 1)
-            self.assertEqual(args[:3], ["/usr/bin/dnf", "install", "--"])
-            self.assertEqual(args[3:], sorted(set(packages) - {"gcc"}))
+            self.assertEqual(args[0:2], ["/usr/bin/dnf", "install"])
+            if args[2] == "--skip-unavailable":
+                self.assertEqual(args[3], "--")
+                self.assertTrue(len(args[4:]) > 0)
+            else:
+                self.assertEqual(args[2], "--")
+                self.assertTrue(len(args[3:]) > 0)
             self.assertIsNone(kwargs["stdin"])
             self.assertEqual(kwargs["env"], {"PATH": "/usr/bin:/bin", "HOME": "/root", "LANG": "C.UTF-8"})
             self.assertTrue(kwargs["check"])
@@ -432,10 +438,15 @@ raise SystemExit(17)
                 patch.object(sys.stdin, "isatty", return_value=True):
             perform(["repair-dependencies", generation], 1000)
             perform(["repair-dependencies", generation], 1000)
-        self.assertEqual(profiles, ["required", "recommended", "source-update"] * 2)
+        expected_profiles = ["required", "source-update", "desktop", "system-management", "theme", "fonts", "screenshot-optional", "theme-gtk"]
+        self.assertEqual(profiles, expected_profiles * 2)
         self.assertIn("quickshell", packages)
         self.assertIn("xkbset", packages)
-        self.assertEqual(len(transactions), 2)
+        self.assertEqual(len(transactions), 4)
+        self.assertEqual(transactions[0][0:3], ["/usr/bin/dnf", "install", "--"])
+        self.assertEqual(transactions[1][0:4], ["/usr/bin/dnf", "install", "--skip-unavailable", "--"])
+        self.assertEqual(transactions[2][0:3], ["/usr/bin/dnf", "install", "--"])
+        self.assertEqual(transactions[3][0:4], ["/usr/bin/dnf", "install", "--skip-unavailable", "--"])
         self.assertEqual({p: p.read_bytes() for p in original}, original)
         self.assertFalse(list((self.prefix / "transactions").glob("*/journal.json")))
         self.assertFalse((self.prefix / "transactions/latest.json").exists())
@@ -448,7 +459,7 @@ raise SystemExit(17)
         def installed(args, **kwargs):
             if args[0] == "/usr/bin/bash":
                 return real_run(args, **kwargs)
-            if args[0] == "/usr/bin/rpm" and args[1:] == ["-q", "--whatprovides", "ppd-service"]:
+            if args[0] == "/usr/bin/rpm" and args[1:] in (["-q", "--whatprovides", "ppd-service"], ["-q", "--whatprovides", "xserver"]):
                 return subprocess.CompletedProcess(args, 1)
             self.assertEqual(args[0:4], ["/usr/bin/rpm", "-q", "--quiet", "--"])
             self.assertEqual(len(args), 5)
@@ -476,7 +487,7 @@ raise SystemExit(17)
             if args[0] == "/usr/bin/bash":
                 return real_run(args, **kwargs)
             if args[0] == "/usr/bin/rpm":
-                if args[1:] == ["-q", "--whatprovides", "ppd-service"]:
+                if args[1:] in (["-q", "--whatprovides", "ppd-service"], ["-q", "--whatprovides", "xserver"]):
                     return subprocess.CompletedProcess(args, 1)
                 return subprocess.CompletedProcess(args, 1)
             self.assertEqual(args[:3], ["/usr/bin/dnf", "install", "--"])
