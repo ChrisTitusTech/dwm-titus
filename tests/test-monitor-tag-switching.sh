@@ -200,7 +200,16 @@ case $* in
 *"_NET_NUMBER_OF_DESKTOPS"*) printf '_NET_NUMBER_OF_DESKTOPS(CARDINAL) = 9\n' ;;
 *"_NET_DESKTOP_NAMES"*) printf '_NET_DESKTOP_NAMES(UTF8_STRING) = "1", "2", "3", "4", "5", "6", "7", "8", "9"\n' ;;
 *"_NET_ACTIVE_WINDOW"*) printf '_NET_ACTIVE_WINDOW(WINDOW): window id # 0x0\n' ;;
-*"_NET_CLIENT_LIST"*) printf '_NET_CLIENT_LIST(WINDOW): window id #\n' ;;
+*"_NET_CLIENT_LIST"*) printf '_NET_CLIENT_LIST(WINDOW): window id # %s\n' "${DWM_TEST_CLIENT_LIST-}" ;;
+*"-id 0x1 _NET_WM_DESKTOP"*)
+	printf '_NET_WM_DESKTOP(CARDINAL) = 0\n'
+	printf 'WM_CLASS(STRING) = "foot", "Foot"\n'
+	;;
+*"-id 0x2 _NET_WM_DESKTOP"*)
+	printf '_NET_WM_DESKTOP(CARDINAL) = 2\n'
+	printf 'WM_CLASS(STRING) = "foot", "Foot"\n'
+	;;
+*"-id 0x3 _NET_WM_DESKTOP"*) printf '_NET_WM_DESKTOP(CARDINAL) = 4294967295\n' ;;
 *"WM_NAME"*) printf 'WM_NAME(STRING) = "VOL 50%%"\n' ;;
 *) exit 1 ;;
 esac
@@ -223,5 +232,12 @@ grep -Fqx 'fullscreen_monitors=0|1' "$work/state.out"
 PATH="$work/bin:$PATH" \
 	"$repo_dir/scripts/dwm-quickshell-state" state >"$work/fallback.out"
 grep -Fqx 'monitor_desktops=4' "$work/fallback.out"
+grep -Fqx 'occupied=' "$work/fallback.out"
+
+DWM_TEST_CLIENT_LIST='0x1, 0x2, 0x3' \
+	PATH="$work/bin:$PATH" \
+	"$repo_dir/scripts/dwm-quickshell-state" state >"$work/occupied.out"
+grep -Fqx 'occupied=0|2' "$work/occupied.out"
+grep -Fqx 'apps=0x1:foot' "$work/occupied.out"
 
 printf '%s\n' "Monitor tag-switch source guard: PASS"
