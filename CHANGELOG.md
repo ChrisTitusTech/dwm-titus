@@ -40,6 +40,11 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Mark panel tags that hold windows with a small corner square and draw their
+  numbers brighter than empty tags. The panel state helper now reads xprop's
+  window-list format, so the occupied tags and the panel's running-apps list
+  are no longer always empty, and it reads each window's properties with one
+  xprop call.
 - Make Kitty follow the selected theme instead of Nord. The shipped
   `kitty.conf` no longer sets its own palette or includes `nord.conf`. Theme
   apply, including from Settings, updates an existing `kitty.conf` once: it
