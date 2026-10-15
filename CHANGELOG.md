@@ -40,6 +40,14 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Settings > Input no longer lists power, sleep and video buttons as keyboards,
+  and shows a device that X splits into several XInput devices on one port
+  (same identity) once instead of one card per part with doubled rows. Changes
+  apply to every part that supports them and Revert restores each part's own
+  value; before, they failed with "stable device identity is ambiguous".
+  Same-identity devices on different ports are listed once with an explanation
+  and still left alone.
+
 - Make Kitty follow the selected theme instead of Nord. The shipped
   `kitty.conf` no longer sets its own palette or includes `nord.conf`. Theme
   apply, including from Settings, updates an existing `kitty.conf` once: it
