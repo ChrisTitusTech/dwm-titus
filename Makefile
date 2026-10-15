@@ -506,6 +506,7 @@ check-quickshell-design-system:
 
 check-quickshell-large-surfaces:
 	tests/test-quickshell-large-surfaces.sh
+	tests/test-quickshell-health-category-badges.sh
 
 check-quickshell-large-surfaces-xvfb: all
 	status=0; tests/test-quickshell-large-surfaces-xvfb.sh || status=$$?; \
@@ -701,6 +702,8 @@ check-install-preservation:
 check-desktop-update: dwm
 	@python3 tests/test-desktop-update-sandbox.py
 	python3 tests/test-desktop-update.py
+	python3 tests/test-dependency-repair-launchers.py
+	tests/test-check-deps-interactive.sh
 	tests/test-desktop-update-ui.sh
 	dbus-run-session -- xvfb-run -a /usr/bin/python3 tests/test-desktop-update-progress.py
 	dbus-run-session -- xvfb-run -a /usr/bin/python3 tests/test-desktop-update-focus.py

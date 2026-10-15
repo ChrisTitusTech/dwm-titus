@@ -135,6 +135,14 @@ Rectangle {
             }
 
             ShellButton {
+                visible: root.rowData.repairId.length > 0 && !root.hasServiceActions
+                label: root.rowData.repairId === "install-dependencies" ? "Repair" : root.rowData.repairLabel
+                enabled: !root.healthModel.busy
+                danger: true
+                onActivated: root.healthModel.requestRepair(root.rowData)
+            }
+
+            ShellButton {
                 visible: root.rowData.evidence.length > 0
                 label: root.expanded ? "Less" : "Details"
                 onActivated: root.expanded = !root.expanded
@@ -149,22 +157,6 @@ Rectangle {
             font.family: Theme.fontFamily
             font.pixelSize: Theme.smallFontSize
             wrapMode: Text.WrapAnywhere
-        }
-
-        RowLayout {
-            Layout.fillWidth: true
-            visible: root.rowData.repairId.length > 0 && !root.hasServiceActions
-
-            Item {
-                Layout.fillWidth: true
-            }
-
-            ShellButton {
-                label: root.rowData.repairLabel
-                enabled: !root.healthModel.busy
-                danger: root.rowData.privilege === "system"
-                onActivated: root.healthModel.requestRepair(root.rowData)
-            }
         }
     }
 }

@@ -120,8 +120,7 @@ root-owned installed helper.
 | Restart Quickshell | Reload the managed Quickshell shell |
 | Reload Wallpaper | Randomize from `~/Pictures/backgrounds/` |
 | Restart NetworkManager | `sudo systemctl restart NetworkManager` |
-| Run Dependency Check | Opens `check-deps.sh` in a terminal |
-| Install Missing Deps | Runs `install.sh` in a terminal |
+| Check Dependencies | Opens `check-deps.sh` in an interactive tiled terminal to verify and repair packages |
 | Wallpaper Folder | Open `~/Pictures/backgrounds/` in the file manager |
 | GTK Settings | Launch `nwg-look` for GTK theming |
 
