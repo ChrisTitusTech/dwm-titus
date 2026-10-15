@@ -89,6 +89,7 @@ keyboard_codes() {
 	awk -v symbols="$symbols" -v hint="$hint" -v groups="$groups" '
 		function base(token) {
 			sub(/^.*\//, "", token)
+			sub(/:[1-4]$/, "", token)
 			sub(/\(.*$/, "", token)
 			return token
 		}
@@ -97,11 +98,18 @@ keyboard_codes() {
 				exit
 			}
 			if (symbols != "") {
-				# Group 1 has no ":1" suffix: it is the token just before
-				# the first ":2" one.
+				# Group 1 usually has no ":1" suffix: it is the token just
+				# before the first ":2" one. A keymap loaded with xkbcomp may
+				# spell it out (pc+us:1+inet(evdev)+gr:2), and then that
+				# token wins. Only a ":1" before the first ":2" counts: the
+				# rules add options after the layouts with a ":1" too
+				# (pc+us+gr:2+inet(evdev)+group(alts_toggle):1+...).
 				n = split(symbols, tokens, "+")
 				for (i = 1; i <= n; i++) {
 					token = tokens[i]
+					if (token ~ /:1$/ && explicit == "" && first == "" && i > 1) {
+						explicit = base(token)
+					}
 					if (match(token, /:[2-4]$/)) {
 						group = substr(token, RSTART + 1) + 0
 						if (codes[group] == "") {
@@ -114,7 +122,10 @@ keyboard_codes() {
 				}
 				# Without a second group: skip the leading model part.
 				fallback = (n > 1 && (tokens[1] == "pc" || tokens[1] ~ /\//)) ? tokens[2] : tokens[1]
-				codes[1] = first != "" ? first : base(fallback)
+				if (first == "") {
+					explicit = ""
+				}
+				codes[1] = explicit != "" ? explicit : (first != "" ? first : base(fallback))
 			} else if (hint != "") {
 				split(hint, layouts, ",")
 				for (i = 1; i <= groups; i++) {

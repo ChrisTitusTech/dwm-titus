@@ -47,6 +47,16 @@ wait_group() {
 	wait_root_value _DWM_KEYBOARD_GROUP "$1"
 }
 
+# xprop -spy processes on this test's display waiting for the request
+display_spies() {
+	count=0
+	for spy in $(pgrep -f "xprop -root -spy _DWM_KEYBOARD_GROUP_REQUEST" || true); do
+		tr '\0' '\n' <"/proc/$spy/environ" 2>/dev/null | grep -qx "DISPLAY=$display" &&
+			count=$((count + 1))
+	done
+	printf '%s\n' "$count"
+}
+
 assert_no_request() {
 	i=0
 	while [ "$i" -lt 100 ]; do
@@ -138,6 +148,25 @@ count_lines() {
 }
 
 # Wait until the watch stream's newest value for key matches.
+# Returns once the watch stream has not grown for half a second (up to 10s).
+wait_watch_quiet() {
+	i=0
+	quiet=0
+	size=$(wc -c <"$work/watch.out")
+	while [ "$i" -lt 200 ] && [ "$quiet" -lt 10 ]; do
+		i=$((i + 1))
+		sleep 0.05
+		now=$(wc -c <"$work/watch.out")
+		if [ "$now" = "$size" ]; then
+			quiet=$((quiet + 1))
+		else
+			quiet=0
+			size=$now
+		fi
+	done
+	[ "$quiet" -ge 10 ] || fail "watch stream did not settle"
+}
+
 wait_watch_value() {
 	i=0
 	while [ "$i" -lt 100 ]; do
@@ -353,7 +382,9 @@ if request 9 2>/dev/null; then
 fi
 
 step=5
-# 5. An unchanged group publishes nothing: no new watch block.
+# 5. An unchanged group publishes nothing: no new watch block. The watcher
+# can still be writing blocks for step 4's burst, so count once it is quiet.
+wait_watch_quiet
 blocks_before=$(count_lines '^keyboard_group=' "$work/watch.out")
 request 2
 assert_no_request
@@ -445,17 +476,21 @@ kill -STOP "$dwm_pid"
 DISPLAY=$display TMPDIR="$work/helper-tmp" "$repo_dir/scripts/dwm-quickshell-state" \
 	keyboard-group next 2>/dev/null &
 term_pid=$!
-sleep 0.3
+# TERM only once the helper waits in its spy (its trap is set by then), or
+# the check below would pass without testing the cleanup. The spy lives
+# for a second at most, so poll briefly.
+i=0
+while [ "$i" -lt 100 ] && [ "$(display_spies)" -eq 0 ]; do
+	i=$((i + 1))
+	sleep 0.02
+done
+[ "$(display_spies)" -gt 0 ] || fail "the helper never started its xprop -spy"
+[ -n "$(find "$work/helper-tmp" -mindepth 1)" ] || fail "the helper has no temp dir while it waits"
 kill -TERM "$term_pid"
 wait "$term_pid" 2>/dev/null || true
 sleep 0.2
 leftover=$(find "$work/helper-tmp" -mindepth 1 | wc -l)
-# only spies on this test's display count
-spies=0
-for spy in $(pgrep -f "xprop -root -spy _DWM_KEYBOARD_GROUP_REQUEST" || true); do
-	tr '\0' '\n' <"/proc/$spy/environ" 2>/dev/null | grep -qx "DISPLAY=$display" &&
-		spies=$((spies + 1))
-done
+spies=$(display_spies)
 kill -CONT "$dwm_pid"
 [ "$leftover" -eq 0 ] || fail "helper left $leftover temp entries after TERM"
 [ "$spies" -eq 0 ] || fail "helper left $spies xprop -spy running after TERM"
@@ -533,6 +568,18 @@ step=13
 # hint; without either the codes are empty but names and count remain.
 X setxkbmap -layout us,gr -option ''
 wait_state_value keyboard_layouts 'us|gr'
+# the rules add some options after the layouts with a ":1" of their own
+# (pc+de+ru:2+inet(evdev)+group(alts_toggle):1+...): still de, not group
+X setxkbmap -layout de,ru -option grp:alts_toggle
+wait_state_value keyboard_layouts 'de|ru'
+X setxkbmap -layout us,gr -option ''
+wait_state_value keyboard_layouts 'us|gr'
+# a symbols name with an explicit ":1" on group 1 (as xkbcomp may load it)
+X xprop -root -f _DWM_KEYBOARD_SYMBOLS 8s -set _DWM_KEYBOARD_SYMBOLS 'pc+de:1+ru:2+inet(evdev)'
+wait_state_value keyboard_layouts 'de|ru'
+# the ":1" token wins even when another part sits between it and ":2"
+X xprop -root -f _DWM_KEYBOARD_SYMBOLS 8s -set _DWM_KEYBOARD_SYMBOLS 'pc+fr:1+inet(evdev)+ru:2'
+wait_state_value keyboard_layouts 'fr|ru'
 X xprop -root -remove _DWM_KEYBOARD_SYMBOLS
 wait_state_value keyboard_layouts 'us|gr'
 wait_watch_value keyboard_layouts 'us|gr'
