@@ -138,6 +138,25 @@ count_lines() {
 }
 
 # Wait until the watch stream's newest value for key matches.
+# Returns once the watch stream has not grown for half a second (up to 10s).
+wait_watch_quiet() {
+	i=0
+	quiet=0
+	size=$(wc -c <"$work/watch.out")
+	while [ "$i" -lt 200 ] && [ "$quiet" -lt 10 ]; do
+		i=$((i + 1))
+		sleep 0.05
+		now=$(wc -c <"$work/watch.out")
+		if [ "$now" = "$size" ]; then
+			quiet=$((quiet + 1))
+		else
+			quiet=0
+			size=$now
+		fi
+	done
+	[ "$quiet" -ge 10 ] || fail "watch stream did not settle"
+}
+
 wait_watch_value() {
 	i=0
 	while [ "$i" -lt 100 ]; do
@@ -353,7 +372,9 @@ if request 9 2>/dev/null; then
 fi
 
 step=5
-# 5. An unchanged group publishes nothing: no new watch block.
+# 5. An unchanged group publishes nothing: no new watch block. The watcher
+# can still be writing blocks for step 4's burst, so count once it is quiet.
+wait_watch_quiet
 blocks_before=$(count_lines '^keyboard_group=' "$work/watch.out")
 request 2
 assert_no_request
