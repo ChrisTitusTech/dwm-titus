@@ -69,14 +69,17 @@ optional_missing() {
 	local id=$1
 	local label=$2
 	local detail=${3:-$2}
+	local repair_id=${4-install-dependencies}
+	local repair_label=${5-Open dependency installer}
 
 	optional_fail=$((optional_fail + 1))
 	if [[ $format == health-tsv ]]; then
-		emit_health warn "$id" "$label" "$detail" install-dependencies "Open dependency installer"
+		emit_health warn "$id" "$label" "$detail" "$repair_id" "$repair_label"
 	else
 		printf '  degraded %s\n' "$label"
 	fi
 }
+
 
 have_cmd() {
 	command -v "$1" >/dev/null 2>&1
@@ -175,7 +178,7 @@ check_herdr() {
 	elif [[ -n ${HOME:-} && -x $path ]]; then
 		ok herdr "Herdr workspace" "$path is available"
 	else
-		optional_missing herdr "Herdr workspace" "Install with install-herdr; dwm-terminal will use the outer terminal directly"
+		optional_missing herdr "Herdr workspace" "Install with install-herdr; dwm-terminal will use the outer terminal directly" "" ""
 	fi
 }
 
@@ -186,9 +189,10 @@ check_path_optional() {
 	if [[ -e $path ]]; then
 		ok "$id" "$path" "$path exists"
 	else
-		optional_missing "$id" "$path" "$path is missing"
+		optional_missing "$id" "$path" "$path is missing" "" ""
 	fi
 }
+
 
 main() {
 	if [[ $format == human ]]; then

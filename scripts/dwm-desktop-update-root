@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import pwd
 import re
 import shutil
 import signal
@@ -77,6 +78,11 @@ def fingerprint(path):
         fail("Unsupported managed file: " + str(path))
     return {"sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
             "mode": stat.S_IMODE(info.st_mode)}
+
+
+def existing_candidate_matches(path, record):
+    info = path.lstat()
+    return stat.S_ISREG(info.st_mode) and info.st_uid == 0 and fingerprint(path) == record
 
 
 def copy_saved(source, target):
@@ -175,6 +181,34 @@ def trusted_parent(path, create=False):
     trusted(path, True)
 
 
+def supported_terminal_installed(uid=None):
+    search_paths = os.environ.get("PATH", "")
+    paths = [p for p in search_paths.split(os.pathsep) if p] + ["/usr/local/bin", "/usr/bin", "/bin"]
+    if uid is not None and uid != 0:
+        try:
+            user_home = Path(pwd.getpwuid(uid).pw_dir)
+            paths.insert(0, str(user_home / ".local/bin"))
+        except (KeyError, OSError):
+            pass
+    candidate_path = os.pathsep.join(dict.fromkeys(paths))
+    return any(shutil.which(term, path=candidate_path) for term in (
+        "dwmterm", "alacritty", "kitty", "st", "warp-terminal", "xterm"))
+
+
+def power_profiles_provider_installed():
+    return subprocess.run(
+        ["/usr/bin/rpm", "-q", "--whatprovides", "ppd-service"],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL,
+        timeout=10).returncode == 0
+
+
+def xserver_installed():
+    return any(shutil.which(cmd, path="/usr/local/bin:/usr/bin:/bin") for cmd in ("Xorg", "Xlibre")) or subprocess.run(
+        ["/usr/bin/rpm", "-q", "--whatprovides", "xserver"],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL,
+        timeout=10).returncode == 0
+
+
 def validate_packages(packages):
     if (not isinstance(packages, list) or len(packages) > 256
             or any(not isinstance(item, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9+_.-]{0,127}", item)
@@ -182,16 +216,26 @@ def validate_packages(packages):
         fail("Invalid desktop package names")
 
 
-def install_packages(packages):
+def install_packages(packages, interactive=False, skip_unavailable=False):
     validate_packages(packages)
     missing = [package for package in packages if subprocess.run(
         ["/usr/bin/rpm", "-q", "--quiet", "--", package], stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL, timeout=10).returncode != 0]
     if missing:
-        print("Installing required desktop packages: " + ", ".join(missing), flush=True)
-        subprocess.run(["/usr/bin/dnf", "install", "-y", "--", *missing], check=True,
+        label = "optional" if skip_unavailable else "required"
+        print(f"Installing {label} desktop packages: " + ", ".join(missing), flush=True)
+        flags = []
+        if not interactive:
+            flags.append("-y")
+        if skip_unavailable:
+            flags.append("--skip-unavailable")
+        subprocess.run(["/usr/bin/dnf", "install", *flags, "--", *missing], check=True,
                        env={"PATH": "/usr/bin:/bin", "HOME": "/root", "LANG": "C.UTF-8"},
-                       stdin=subprocess.DEVNULL, cwd="/", timeout=1800)
+                       stdin=None if interactive else subprocess.DEVNULL, cwd="/", timeout=1800)
+    elif interactive and not skip_unavailable:
+        print("All desktop dependency packages are installed.", flush=True)
+
+
 
 
 def validate_candidate(candidate, installed):
@@ -308,7 +352,8 @@ def apply_archive(archive, expected, operation, uid, bundle_digest, revision):
             fail("Update bundle checksum mismatch")
         trusted_parent(Path(name).parent)
         if name not in installed["files"] and os.path.lexists(name):
-            fail("New managed destination already exists: " + name)
+            if not existing_candidate_matches(Path(name), record):
+                fail("New managed destination already exists: " + name)
     removed = sorted(set(installed["files"]) - set(candidate["files"]))
     for name in removed:
         trusted_parent(Path(name).parent)
@@ -326,6 +371,9 @@ def apply_archive(archive, expected, operation, uid, bundle_digest, revision):
             trusted_parent(path.parent, create=True)
             replacement = candidate["files"].get(name)
             old = fingerprint(path) if os.path.lexists(path) else None
+            if name not in installed["files"] and old is not None:
+                if not existing_candidate_matches(path, replacement):
+                    fail("New managed destination already exists: " + name)
             if old is not None and "sha256" in old:
                 if (old["mode"] not in (0o644, 0o755)
                         or (path.lstat().st_uid != 0 and old != installed["files"].get(name))):
@@ -480,7 +528,7 @@ def perform(args, uid):
             install_packages(packages)
             journal["packages"] = packages
             write_json(backup / "journal.json", journal)
-        elif args[0] == "dependencies" and len(args) == 2:
+        elif args[0] in ("dependencies", "repair-dependencies") and len(args) == 2:
             for journal_path in STATE.glob("*/journal.json"):
                 journal = read_json(journal_path)
                 if not isinstance(journal, dict) or journal.get("state") not in ("complete", "rolled-back"):
@@ -489,7 +537,53 @@ def perform(args, uid):
             manifest = read_json(manifest_path)
             if hashlib.sha256(manifest_path.read_bytes()).hexdigest() != args[1]:
                 fail("Dependency preview changed; check again")
-            install_packages(manifest["packages"])
+            if args[0] == "repair-dependencies":
+                if not sys.stdin.isatty():
+                    fail("Dependency repair requires an interactive terminal")
+                mapping = PREFIX / "bin/dwm-packages.sh"
+                trusted(mapping)
+                if fingerprint(mapping) != manifest["files"].get(str(mapping)):
+                    fail("Installed package map changed; update or restore the managed helper first")
+                required_profiles = ["required", "source-update", "desktop", "system-management", "theme", "fonts"]
+                if not supported_terminal_installed(uid):
+                    required_profiles.append("terminal-primary")
+                required_packages = []
+                for profile in required_profiles:
+                    result = subprocess.run(["/usr/bin/bash", str(mapping), "fedora", profile],
+                                            check=True, capture_output=True, text=True, stdin=subprocess.DEVNULL,
+                                            env={"PATH": "/usr/bin:/bin", "HOME": "/root", "LANG": "C.UTF-8"},
+                                            cwd="/", timeout=10)
+                    required_packages.extend(result.stdout.splitlines())
+                if "power-profiles-daemon" in required_packages and power_profiles_provider_installed():
+                    required_packages = [pkg for pkg in required_packages if pkg != "power-profiles-daemon"]
+                if "xorg-x11-server-Xorg" in required_packages and xserver_installed():
+                    required_packages = [pkg for pkg in required_packages if pkg != "xorg-x11-server-Xorg"]
+
+                optional_profiles = ["screenshot-optional", "theme-gtk"]
+                optional_packages = []
+                for profile in optional_profiles:
+                    result = subprocess.run(["/usr/bin/bash", str(mapping), "fedora", profile],
+                                            check=True, capture_output=True, text=True, stdin=subprocess.DEVNULL,
+                                            env={"PATH": "/usr/bin:/bin", "HOME": "/root", "LANG": "C.UTF-8"},
+                                            cwd="/", timeout=10)
+                    optional_packages.extend(result.stdout.splitlines())
+                if "power-profiles-daemon" in optional_packages and power_profiles_provider_installed():
+                    optional_packages = [pkg for pkg in optional_packages if pkg != "power-profiles-daemon"]
+
+                required_set = set(required_packages)
+                optional_packages = [pkg for pkg in optional_packages if pkg not in required_set]
+
+                if not required_packages and not optional_packages:
+                    fail("Installed desktop package map is empty")
+
+                if required_packages:
+                    install_packages(sorted(required_set), interactive=True, skip_unavailable=False)
+                if optional_packages:
+                    install_packages(sorted(set(optional_packages)), interactive=True, skip_unavailable=True)
+
+
+            else:
+                install_packages(manifest["packages"])
         else:
             fail("Unsupported desktop update action")
 

@@ -1644,11 +1644,37 @@ restart_networkmanager() {
 }
 
 dependency_check() {
-	terminal_run "$repo_dir/scripts/check-deps.sh; printf '\\nPress enter to close...'; read -r _"
+	if ! command -v dwm-terminal >/dev/null 2>&1 ||
+		! dwm-terminal --print-command >/dev/null 2>&1; then
+		printf 'dwm-terminal is unavailable\n' >&2
+		return 1
+	fi
+	checker=${DWM_CHECK_DEPS_SCRIPT:-}
+	if [ -z "$checker" ]; then
+		checker="$repo_dir/scripts/check-deps.sh"
+		if [ ! -x "$checker" ]; then
+			helper_dir=$(
+				unset CDPATH
+				cd -- "$(dirname -- "$0")" && pwd
+			)
+			checker="$helper_dir/check-deps.sh"
+		fi
+		if [ ! -x "$checker" ]; then
+			checker=$(command -v check-deps.sh 2>/dev/null || true)
+		fi
+		if [ -z "$checker" ] || [ ! -x "$checker" ]; then
+			checker=/usr/local/bin/check-deps.sh
+		fi
+	fi
+	if [ ! -x "$checker" ]; then
+		printf 'check-deps.sh is unavailable\n' >&2
+		return 1
+	fi
+	terminal_run "exec \"$checker\" --interactive"
 }
 
 install_missing_deps() {
-	terminal_run "cd '$repo_dir' && ./install.sh; printf '\\nPress enter to close...'; read -r _"
+	dependency_check
 }
 
 self_heal() {

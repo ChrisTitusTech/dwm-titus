@@ -32,6 +32,13 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Keep dependency-install actions limited to missing Fedora packages with DNF
+  confirmation, preserving desktop files, receipts, and Update Center status.
+- Preserve surviving managed-file records during source reinstalls and recover
+  exact matching omitted files without replacing unrelated destinations.
+- Release rejected desktop update preparations and avoid session restart
+  requirements after recovery when the active desktop was unchanged.
+
 - Make Kitty follow the selected theme instead of Nord. The shipped
   `kitty.conf` no longer sets its own palette or includes `nord.conf`. Theme
   apply, including from Settings, updates an existing `kitty.conf` once: it
