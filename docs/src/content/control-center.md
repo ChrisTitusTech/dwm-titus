@@ -47,8 +47,10 @@ paired device, and disconnect a connected device through `bluetoothctl`.
 The Bar Widgets page can show or hide the workspace, volume, Bluetooth,
 network, and power widgets. Those choices are stored in the project-owned
 `~/.config/dwm-titus/panel-widgets.conf` state and apply to every monitor and
-future Quickshell session. Settings Appearance exposes the same shared controls
-and can restore the safe all-on default. The redesigned panel retains the
+future Quickshell session. The Clock seconds row adds seconds to the panel
+clock; it is off by default. Settings Appearance exposes the same shared
+controls; its **Show all widgets** button turns every widget back on and
+leaves the clock seconds setting as it is. The redesigned panel retains the
 active-window title, status segments, and system tray, and shows all nine dwm
 tags (workspaces). Hovering icon-only panel controls displays a text tooltip.
 

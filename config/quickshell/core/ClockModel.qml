@@ -9,6 +9,8 @@ Scope {
     property var timezoneState: null
     property string observedTimezone: ""
     property bool initialized: false
+    // Off by default: seconds switch the one SystemClock to a 1 Hz tick.
+    property bool showSeconds: false
     property string panelText: ""
     property string settingsText: ""
     property double timestamp: 0
@@ -19,8 +21,16 @@ Scope {
         // retains local wall-clock fields that Qt can reinterpret in a new zone.
         // Reassigning an equal date alone also cannot notify text bindings.
         const current = new Date(root.timestamp);
-        root.panelText = Qt.formatDateTime(current, "ddd dd MMM - HH:mm");
+        root.panelText = Qt.formatDateTime(current,
+            root.showSeconds ? "ddd dd MMM - HH:mm:ss" : "ddd dd MMM - HH:mm");
         root.settingsText = Qt.formatDateTime(current, "dddd, dd MMMM yyyy - HH:mm t");
+    }
+
+    // Truncate to the minute when seconds are off, so a precision switch never
+    // leaves a stale seconds value in the retained epoch.
+    function sourceEpoch() {
+        const epoch = source.date.getTime();
+        return root.showSeconds ? epoch : epoch - epoch % 60000;
     }
 
     function refreshTimezone() {
@@ -34,8 +44,13 @@ Scope {
     }
 
     onTimezoneStateChanged: root.refreshTimezone()
+    onShowSecondsChanged: {
+        if (!root.initialized) return;
+        root.timestamp = root.sourceEpoch();
+        root.refreshDisplay();
+    }
     Component.onCompleted: {
-        root.timestamp = source.date.getTime();
+        root.timestamp = root.sourceEpoch();
         root.initialized = true;
         root.refreshTimezone();
         root.refreshDisplay();
@@ -43,10 +58,10 @@ Scope {
 
     SystemClock {
         id: source
-        precision: SystemClock.Minutes
+        precision: root.showSeconds ? SystemClock.Seconds : SystemClock.Minutes
         onDateChanged: {
             if (root.initialized) {
-                root.timestamp = source.date.getTime();
+                root.timestamp = root.sourceEpoch();
                 root.refreshDisplay();
             }
         }

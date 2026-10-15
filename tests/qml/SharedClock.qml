@@ -16,9 +16,10 @@ ShellRoot {
     }
     function checkText() {
         const current = new Date(clock.timestamp);
-        check(clock.panelText === Qt.formatDateTime(current, "ddd dd MMM - HH:mm"), "Panel format and epoch");
+        check(clock.panelText === Qt.formatDateTime(current,
+            clock.showSeconds ? "ddd dd MMM - HH:mm:ss" : "ddd dd MMM - HH:mm"), "Panel format and epoch");
         check(clock.settingsText === Qt.formatDateTime(current, "dddd, dd MMMM yyyy - HH:mm t"), "Settings format and epoch");
-        check(current.getSeconds() === 0, "Minute precision is preserved");
+        if (!clock.showSeconds) check(current.getSeconds() === 0, "Minute precision is preserved");
     }
     function run() {
         try {
@@ -52,6 +53,30 @@ ShellRoot {
             clock.panelText = "stale";
             clock.settingsText = "stale";
             clock.refreshDisplay();
+            checkText();
+            check(!clock.showSeconds, "Seconds are off by default");
+            check(/ - \d\d:\d\d$/.test(clock.panelText), "Default panel text has no seconds");
+            // The text is assigned imperatively, so every toggle must refresh it
+            // at once, even several times within the same second.
+            for (let pass = 0; pass < 3; pass++) {
+                clock.panelText = "stale";
+                clock.showSeconds = true;
+                check(/ - \d\d:\d\d:\d\d$/.test(clock.panelText), "Seconds appear immediately");
+                checkText();
+                check(/ - \d\d:\d\d$/.test(clock.settingsText.replace(/ \S+$/, "")),
+                    "Settings readout stays minute-level");
+                clock.panelText = "stale";
+                clock.showSeconds = false;
+                check(/ - \d\d:\d\d$/.test(clock.panelText), "Seconds disappear immediately");
+                checkText();
+            }
+            // Back in minute mode the retained-epoch timezone behaviour still holds.
+            const minuteEpoch = clock.timestamp - 120000;
+            clock.timestamp = minuteEpoch;
+            clock.timezoneState = {status: "available", value: "America/Chicago"};
+            check(clock.timestamp === minuteEpoch, "Minute mode keeps the retained epoch after seconds");
+            checkText();
+            clock.timezoneState = {status: "available", value: "Etc/UTC"};
             checkText();
             console.info("Shared clock tests: PASS (" + assertions + " assertions)");
         } catch (error) {

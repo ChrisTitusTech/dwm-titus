@@ -10,6 +10,10 @@
 - The five persisted choices are Workspaces, Volume, Bluetooth, Network, and
   Power. Active-window title, status segments, clock, and tray remain outside
   this setting and retain their existing behavior.
+- Protocol 1.1 adds one `option` line, `clock-seconds` (default disabled), after
+  the widget lines. 1.0 files are still read with their widget choices. While
+  every option is at its default the helper keeps writing 1.0, so an older
+  helper after a downgrade still reads the widget choices.
 
 ## Safety and migration
 
