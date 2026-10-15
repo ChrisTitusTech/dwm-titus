@@ -18,6 +18,21 @@ Scope {
     property bool batteryAvailable: false
     property int batteryPercent: 0
     property string batteryStatus: ""
+    // Keyboard layout groups published by dwm (_DWM_KEYBOARD_GROUP). The pill
+    // rules (short code, click cycles, right-click settings, middle-click
+    // first layout, wheel bursts) follow the Keyboard-Layout-for-Omarchy
+    // plugin (MIT), adapted to dwm owning the state.
+    property int keyboardGroup: 0
+    property int keyboardGroupCount: 0
+    property var keyboardNames: []
+    property var keyboardLayouts: []
+    property int keyboardPendingSteps: 0
+    property string keyboardPendingTarget: ""
+    // Busy from the start of a helper run until its queued clicks are sent,
+    // so a click in the gap after the helper exits waits its turn too.
+    property bool keyboardRequestBusy: false
+    property int keyboardRequestExit: -1
+    property double keyboardLastWheel: 0
 
     function parseState(text) {
         const lines = text.trim().split("\n");
@@ -76,6 +91,18 @@ Scope {
             } else if (key === "status") {
                 root.statusText = value;
                 root.updateStatusSegments();
+            } else if (key === "keyboard_group") {
+                const parsed = parseInt(value, 10);
+
+                root.keyboardGroup = isNaN(parsed) ? 0 : parsed;
+            } else if (key === "keyboard_groups") {
+                const parsed = parseInt(value, 10);
+
+                root.keyboardGroupCount = isNaN(parsed) ? 0 : Math.max(0, Math.min(4, parsed));
+            } else if (key === "keyboard_names") {
+                root.keyboardNames = value.length > 0 ? value.split("|") : [];
+            } else if (key === "keyboard_layouts") {
+                root.keyboardLayouts = value.length > 0 ? value.split("|") : [];
             }
         }
     }
@@ -229,6 +256,112 @@ Scope {
         });
     }
 
+    function keyboardName(index) {
+        const name = index >= 0 && index < root.keyboardNames.length ? root.keyboardNames[index] : "";
+
+        return name.length > 0 ? name : "Layout " + (index + 1);
+    }
+
+    // Short code for the pill: the layout code from the keymap ("us" -> "US"),
+    // else the first letters of the group name, else the group number.
+    function keyboardLabel(index) {
+        const code = index >= 0 && index < root.keyboardLayouts.length ? root.keyboardLayouts[index] : "";
+
+        if (code.length > 0) {
+            return code.toUpperCase();
+        }
+
+        const name = index >= 0 && index < root.keyboardNames.length ? root.keyboardNames[index] : "";
+        const letters = name.replace(/[^A-Za-z]/g, "");
+
+        return letters.length > 0 ? letters.slice(0, 2).toUpperCase() : (index + 1).toString();
+    }
+
+    function keyboardSummary() {
+        const codes = [];
+
+        for (let index = 0; index < root.keyboardGroupCount; index++) {
+            codes.push(root.keyboardLabel(index).toLowerCase());
+        }
+
+        return root.keyboardName(root.keyboardGroup) + " (" + codes.join(", ") + ")";
+    }
+
+    // dwm cycles from the server's current group, so clicks send "next" or
+    // "prev" rather than an index computed here. One helper runs at a time and
+    // only exits once dwm took the request; clicks during a run are counted
+    // and sent after it. If the helper fails (dwm did not take the request
+    // within about a second, or did not start), the queued clicks are dropped,
+    // not retried.
+    function cycleKeyboardLayout(step) {
+        if (root.keyboardGroupCount < 2 || step === 0) {
+            return;
+        }
+
+        if (root.keyboardRequestBusy) {
+            root.keyboardPendingSteps += step;
+            return;
+        }
+
+        root.runKeyboardRequest(step > 0 ? "next" : "prev");
+    }
+
+    function setKeyboardLayout(index) {
+        if (index < 0 || index >= root.keyboardGroupCount) {
+            return;
+        }
+
+        root.keyboardPendingSteps = 0;
+        if (root.keyboardRequestBusy) {
+            root.keyboardPendingTarget = index.toString();
+            return;
+        }
+
+        root.runKeyboardRequest(index.toString());
+    }
+
+    // Touchpads send bursts of wheel events; one step per 150 ms burst.
+    function wheelKeyboardLayout(delta) {
+        const now = Date.now();
+
+        if (delta === 0 || now - root.keyboardLastWheel < 150) {
+            return;
+        }
+
+        root.keyboardLastWheel = now;
+        root.cycleKeyboardLayout(delta > 0 ? -1 : 1);
+    }
+
+    function runKeyboardRequest(target) {
+        root.keyboardRequestBusy = true;
+        root.keyboardRequestExit = -1;
+        keyboardRequestProcess.command = ["dwm-quickshell-state", "keyboard-group", target];
+        keyboardRequestProcess.running = true;
+    }
+
+    function keyboardRequestFinished() {
+        if (root.keyboardRequestExit !== 0) {
+            root.keyboardPendingTarget = "";
+            root.keyboardPendingSteps = 0;
+            root.keyboardRequestBusy = false;
+            return;
+        }
+
+        if (root.keyboardPendingTarget.length > 0) {
+            const target = root.keyboardPendingTarget;
+
+            root.keyboardPendingTarget = "";
+            root.runKeyboardRequest(target);
+        } else if (root.keyboardPendingSteps !== 0) {
+            const step = root.keyboardPendingSteps > 0 ? 1 : -1;
+
+            root.keyboardPendingSteps -= step;
+            root.runKeyboardRequest(step > 0 ? "next" : "prev");
+        } else {
+            root.keyboardRequestBusy = false;
+        }
+    }
+
     function switchWorkspace(index) {
         switchWorkspaceProcess.command = ["dwm-quickshell-state", "switch", index.toString()];
         switchWorkspaceProcess.running = true;
@@ -256,6 +389,23 @@ Scope {
 
         command: ["dwm-quickshell-state", "switch", root.currentWorkspace.toString()]
         running: false
+    }
+
+    Process {
+        id: keyboardRequestProcess
+
+        command: ["dwm-quickshell-state", "keyboard-group", "next"]
+        running: false
+        // exited comes before running turns false; a helper that cannot
+        // start only turns running false, and keeps the exit code at -1
+        onExited: (exitCode, exitStatus) => { // qmllint disable signal-handler-parameters
+            root.keyboardRequestExit = exitStatus === 0 ? exitCode : -1;
+        }
+        onRunningChanged: {
+            if (!keyboardRequestProcess.running) {
+                Qt.callLater(root.keyboardRequestFinished);
+            }
+        }
     }
 
     Process {

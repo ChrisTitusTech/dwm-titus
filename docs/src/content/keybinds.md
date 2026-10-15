@@ -160,6 +160,29 @@ keys = [
 
 See the comments in `hotkeys.toml` for a full list of `func` values and modifier syntax.
 
+### Keyboard layouts
+
+Set two or more layouts in Settings -> Input -> Keyboard layout (for example
+`us,gr`). Keep a Latin layout first: dwm matches hotkeys against the first
+layout's keys. To switch with a key, pick one under Settings -> Input ->
+Switch layout with (Alt+Shift, Caps Lock, ...), or type any `grp:` option into
+Modifier options. Avoid the Space chords such as `grp:win_space_toggle`: XKB
+switches the layout and dwm still runs Super+Space (toggle floating). To switch with a
+dwm hotkey instead, bind the `cyclelayout` func; there is no default binding:
+
+```toml
+{ mod="SUPER ALT", key="k", desc="Next keyboard layout", func="cyclelayout", i=1 },
+```
+
+Settings sets the layout on that keyboard only. X copies it to the shared
+keyboard state, which dwm and the panel read, right away if that keyboard was
+the last one used, otherwise on its next key press. Until then the panel can
+show the old layout; switching works normally after that.
+
+dwm publishes the active layout on the root window, so
+`xprop -root _DWM_KEYBOARD_GROUP` shows the current group and the group count,
+and `dwm-quickshell-state keyboard-group next` switches from a script.
+
 The browser binding uses `dwm-default-apps open`. Configure it with
 Settings -> Defaults or with `dwm-default-apps browsers` and
 `dwm-default-apps set-browser <desktop-id>`.

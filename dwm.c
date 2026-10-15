@@ -42,6 +42,7 @@
 #include <X11/XF86keysym.h>
 #include <X11/Xatom.h>
 #include <X11/Xlib.h>
+#include <X11/XKBlib.h>
 #include <X11/Xproto.h>
 #include <X11/Xutil.h>
 #ifdef XINERAMA
@@ -297,6 +298,11 @@ static void updatestatus(void);
 static void updatetitle(Client *c);
 static void updatewindowtype(Client *c);
 static void updatewmhints(Client *c);
+static void keyboardrequest(void);
+static void keyboardsetup(void);
+static void updatekeyboard(void);
+static void kbpublishgroup(int group);
+static void xkbevent(XEvent *e);
 static void view(const Arg *arg);
 static pid_t winpid(Window w);
 static Client *wintoclient(Window w);
@@ -329,6 +335,7 @@ static void scan(void);
 static void sigchld(int unused);
 static void sigusr2_handler(int sig);
 static void sigstatusbar(const Arg *arg);
+static void cyclelayout(const Arg *arg);
 static void setup(void);
 static void unmapnotify(XEvent *e);
 
@@ -429,6 +436,16 @@ static int clientlistcachevalid;
 static int selectedmonitorcache;
 static int selectedmonitorcachevalid;
 static Atom dwmfullscreenmonitorsatom, dwmtagupdateatom;
+/* XKB keyboard group state published on the root window (see SPEC.md 5.1) */
+static Atom kbgroupatom, kbnamesatom, kbsymbolsatom, kbrequestatom, kbutf8atom;
+static int xkbeventbase = -1;  /* -1: no usable XKB extension */
+static long kbpublished[2] = { -1, -1 }; /* group, group count */
+static int kbgroups;            /* group count from the keyboard controls */
+static unsigned char kbwrap;    /* groups_wrap from the keyboard controls */
+static Atom kbnamecache[XkbNumKbdGroups + 1]; /* group names + count */
+static int kbnamecachevalid;
+static Atom kbsymbolscache;
+static int kbsymbolscachevalid;
 static unsigned long tagupdatesequence;
 
 /* External dock integration */
@@ -2455,6 +2472,9 @@ propertynotify(XEvent *e)
 	}
 	if ((ev->window == root) && (ev->atom == XA_WM_NAME)) {
 		updatestatus();
+	} else if (ev->window == root && ev->atom == kbrequestatom) {
+		if (ev->state == PropertyNewValue)
+			keyboardrequest();
 	} else if (ev->state == PropertyDelete) {
 		return; /* ignore */
 	} else if ((c = wintoclient(ev->window))) {
@@ -2827,7 +2847,9 @@ run(void)
 		/* Drain all pending X events */
 		while (XPending(dpy)) {
 			XNextEvent(dpy, &ev);
-			if (handler[ev.type])
+			if (xkbeventbase >= 0 && ev.type == xkbeventbase)
+				xkbevent(&ev);
+			else if (handler[ev.type])
 				handler[ev.type](&ev);
 		}
 		if (!running) break;
@@ -3541,6 +3563,7 @@ static void (*lookup_func(const char *name))(const Arg *)
 	if (strcmp(name, "moveorplace")          == 0) return moveorplace;
 	if (strcmp(name, "resizemouse")          == 0) return resizemouse;
 	if (strcmp(name, "sigstatusbar")         == 0) return sigstatusbar;
+	if (strcmp(name, "cyclelayout")          == 0) return cyclelayout;
 	return NULL;
 }
 
@@ -4312,6 +4335,7 @@ setup(void)
 	runtime_config_setup();
 	runtime_config_reload();
 	grabkeys();
+	keyboardsetup();
 	focus(NULL);
 }
 
@@ -5150,6 +5174,250 @@ updatecurrentdesktop(void)
 	free(monitor_desktops);
 	updateselectedmonitor();
 	updatefullscreenmonitors();
+}
+
+/* Keyboard layout groups. dwm owns the XKB group state for the panel the same
+ * way it owns the tag state: it listens for XkbStateNotify, publishes what the
+ * keyboard reports, and handles switch requests itself so rapid clicks cycle
+ * from the server's current state. The design follows the Keyboard-Layout-for-
+ * Omarchy plugin (MIT, by the same author), rewritten for X11. */
+static int
+kbnormalize(int group, int count)
+{
+	if (count < 1)
+		return 0;
+	if (group >= 0 && group < count)
+		return group;
+	switch (XkbOutOfRangeGroupAction(kbwrap)) {
+	case XkbClampIntoRange:
+		return group < 0 ? 0 : count - 1;
+	case XkbRedirectIntoRange:
+		group = XkbOutOfRangeGroupNumber(kbwrap);
+		return group < count ? group : 0;
+	default:
+		return ((group % count) + count) % count;
+	}
+}
+
+static void
+kbpublishnames(XkbDescPtr xkb)
+{
+	Atom names[XkbNumKbdGroups + 1] = { 0 }, symbols = None;
+	char *buf = NULL, *name, *tmp;
+	size_t len = 0, n;
+	int i;
+
+	if (xkb->names) {
+		for (i = 0; i < kbgroups; i++)
+			names[i] = xkb->names->groups[i];
+		symbols = xkb->names->symbols;
+	}
+	/* Each property is rewritten only when its own value changed. */
+	if (!kbsymbolscachevalid || symbols != kbsymbolscache) {
+		kbsymbolscache = symbols;
+		kbsymbolscachevalid = 1;
+		name = symbols ? XGetAtomName(dpy, symbols) : NULL;
+		if (name)
+			XChangeProperty(dpy, root, kbsymbolsatom, XA_STRING, 8,
+				PropModeReplace, (unsigned char *)name, (int)strlen(name));
+		else
+			XDeleteProperty(dpy, root, kbsymbolsatom);
+		XFree(name);
+	}
+	/* the names property has one entry per group, so a new count rewrites it */
+	names[XkbNumKbdGroups] = (Atom)kbgroups;
+	if (kbnamecachevalid && !memcmp(names, kbnamecache, sizeof(names)))
+		return;
+	memcpy(kbnamecache, names, sizeof(names));
+	kbnamecachevalid = 1;
+
+	/* NUL-separated like _NET_DESKTOP_NAMES, one entry per group */
+	for (i = 0; i < kbgroups; i++) {
+		name = names[i] ? XGetAtomName(dpy, names[i]) : NULL;
+		n = name ? strlen(name) : 0;
+		if (!(tmp = realloc(buf, len + n + 1))) {
+			XFree(name);
+			free(buf);
+			kbnamecachevalid = 0;
+			return;
+		}
+		buf = tmp;
+		if (n)
+			memcpy(buf + len, name, n);
+		buf[len + n] = '\0';
+		len += n + 1;
+		XFree(name);
+	}
+	if (buf)
+		XChangeProperty(dpy, root, kbnamesatom, kbutf8atom, 8,
+			PropModeReplace, (unsigned char *)buf, (int)len);
+	else
+		XDeleteProperty(dpy, root, kbnamesatom);
+	free(buf);
+}
+
+/* Group switches come with the group in the event, so they need no round trip. */
+void
+kbpublishgroup(int group)
+{
+	long data[2];
+
+	data[0] = kbnormalize(group, kbgroups);
+	data[1] = kbgroups;
+	if (data[0] == kbpublished[0] && data[1] == kbpublished[1])
+		return;
+	ewmh_replace_root_cardinal(kbgroupatom, data, 2);
+	kbpublished[0] = data[0];
+	kbpublished[1] = data[1];
+}
+
+/* The keymap changed: re-read the group count, wrap mode, names and group. */
+void
+updatekeyboard(void)
+{
+	XkbDescPtr xkb;
+	XkbStateRec st;
+
+	if (xkbeventbase < 0 || !(xkb = XkbAllocKeyboard()))
+		return;
+	kbgroups = 1;
+	kbwrap = XkbWrapIntoRange;
+	if (XkbGetControls(dpy, XkbAllControlsMask, xkb) == Success && xkb->ctrls) {
+		kbgroups = xkb->ctrls->num_groups;
+		kbwrap = xkb->ctrls->groups_wrap;
+	}
+	if (kbgroups < 1 || kbgroups > XkbNumKbdGroups)
+		kbgroups = kbgroups < 1 ? 1 : XkbNumKbdGroups;
+	if (XkbGetNames(dpy, XkbGroupNamesMask|XkbSymbolsNameMask, xkb) != Success)
+		XkbFreeNames(xkb, XkbAllNamesMask, True);
+	/* group and count first, so a reader of the names already sees the new count */
+	if (XkbGetState(dpy, XkbUseCoreKbd, &st) == Success)
+		kbpublishgroup(st.group);
+	kbpublishnames(xkb);
+	XkbFreeKeyboard(xkb, 0, True);
+}
+
+/* Moves the locked group; the effective group follows it, plus any group a
+ * held shift key or a latch adds until it is released. */
+static void
+kblock(int group, int relative)
+{
+	XkbStateRec st;
+
+	if (xkbeventbase < 0 || kbgroups < 1)
+		return;
+	if (relative) {
+		if (XkbGetState(dpy, XkbUseCoreKbd, &st) != Success)
+			return;
+		/* from the group the panel shows, also when a stale lock is out of range */
+		group += kbnormalize(st.locked_group, kbgroups);
+		group = (group % kbgroups + kbgroups) % kbgroups;
+	} else if (group < 0 || group >= kbgroups) {
+		return;
+	}
+	XkbLockGroup(dpy, XkbUseCoreKbd, (unsigned int)group);
+}
+
+void
+cyclelayout(const Arg *arg)
+{
+	kblock(arg->i ? arg->i : 1, 1);
+}
+
+/* _DWM_KEYBOARD_GROUP_REQUEST: "next", "prev" or a zero-based group index.
+ * Requests set before dwm reads the previous one coalesce (last wins). */
+void
+keyboardrequest(void)
+{
+	Atom type;
+	int format;
+	unsigned long nitems, after;
+	unsigned char *data = NULL;
+	char req[16];
+	char *end;
+	long n;
+
+	/* Only a few bytes are read, so a huge value cannot stall dwm. The read
+	 * deletes only a value that fits; a longer one is deleted under the same
+	 * server grab, so a newer request cannot slip in between and be lost. */
+	XGrabServer(dpy);
+	if (XGetWindowProperty(dpy, root, kbrequestatom, 0L, sizeof(req) / 4, True,
+	    AnyPropertyType, &type, &format, &nitems, &after, &data) != Success) {
+		XUngrabServer(dpy);
+		XFlush(dpy);
+		return;
+	}
+	if (after)
+		XDeleteProperty(dpy, root, kbrequestatom);
+	XUngrabServer(dpy);
+	/* XPending does not flush while events are queued; send the ungrab now */
+	XFlush(dpy);
+	if (!data)
+		return;
+	/* a NUL inside the value would cut it short, so "next\0junk" is invalid */
+	if (format != 8 || after || nitems == 0 || nitems >= sizeof(req)
+	    || memchr(data, '\0', nitems)) {
+		XFree(data);
+		return;
+	}
+	memcpy(req, data, nitems);
+	req[nitems] = '\0';
+	XFree(data);
+	if (!strcmp(req, "next"))
+		kblock(1, 1);
+	else if (!strcmp(req, "prev"))
+		kblock(-1, 1);
+	else if (req[0] >= '0' && req[0] <= '9') {
+		n = strtol(req, &end, 10);
+		if (*end == '\0' && n < XkbNumKbdGroups)
+			kblock((int)n, 0);
+	}
+}
+
+void
+keyboardsetup(void)
+{
+	int opcode, error, major = XkbMajorVersion, minor = XkbMinorVersion;
+	unsigned long mask = XkbNewKeyboardNotifyMask|XkbMapNotifyMask
+		|XkbNamesNotifyMask|XkbControlsNotifyMask;
+
+	kbgroupatom = XInternAtom(dpy, "_DWM_KEYBOARD_GROUP", False);
+	kbnamesatom = XInternAtom(dpy, "_DWM_KEYBOARD_GROUP_NAMES", False);
+	kbsymbolsatom = XInternAtom(dpy, "_DWM_KEYBOARD_SYMBOLS", False);
+	kbrequestatom = XInternAtom(dpy, "_DWM_KEYBOARD_GROUP_REQUEST", False);
+	kbutf8atom = XInternAtom(dpy, "UTF8_STRING", False);
+	/* a request left over from a previous dwm is stale */
+	XDeleteProperty(dpy, root, kbrequestatom);
+	if (!XkbQueryExtension(dpy, &opcode, &xkbeventbase, &error, &major, &minor)) {
+		xkbeventbase = -1;
+		XDeleteProperty(dpy, root, kbgroupatom);
+		XDeleteProperty(dpy, root, kbnamesatom);
+		XDeleteProperty(dpy, root, kbsymbolsatom);
+		return;
+	}
+	XkbSelectEventDetails(dpy, XkbUseCoreKbd, XkbStateNotify,
+		XkbGroupStateMask, XkbGroupStateMask);
+	XkbSelectEvents(dpy, XkbUseCoreKbd, mask, mask);
+	updatekeyboard();
+}
+
+void
+xkbevent(XEvent *e)
+{
+	switch (((XkbEvent *)e)->any.xkb_type) {
+	case XkbStateNotify:
+		if (kbgroups < 1)
+			updatekeyboard();
+		else
+			kbpublishgroup(((XkbEvent *)e)->state.group);
+		break;
+	case XkbMapNotify: /* xmodmap can add or drop groups */
+	case XkbNewKeyboardNotify:
+	case XkbNamesNotify:
+	case XkbControlsNotify:
+		updatekeyboard();
+		break;
+	}
 }
 
 void

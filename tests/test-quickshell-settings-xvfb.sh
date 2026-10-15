@@ -2059,6 +2059,69 @@ while [ "$i" -lt 100 ]; do
 done
 [ "$panel_volume" = true ]
 
+panel_keyboard=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings panelWidgetEnabled keyboard-layout)
+[ "$panel_keyboard" = true ]
+for keyboard_value in false true; do
+	i=0
+	while [ "$i" -lt 100 ]; do
+		DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+			XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings panelWidgetSet keyboard-layout "$keyboard_value" \
+			>/dev/null 2>&1 || true
+		panel_keyboard=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+			XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings panelWidgetEnabled keyboard-layout 2>/dev/null || true)
+		[ "$panel_keyboard" = "$keyboard_value" ] && break
+		i=$((i + 1))
+		sleep 0.05
+	done
+	[ "$panel_keyboard" = "$keyboard_value" ]
+	if [ "$keyboard_value" = false ]; then
+		expected=$(printf 'keyboard-layout\tdisabled')
+		grep -Fqx "$expected" "$config_home/dwm-titus/panel-widgets.conf"
+	elif grep -Fq keyboard-layout "$config_home/dwm-titus/panel-widgets.conf"; then
+		printf 'Enabled keyboard-layout widget was written to panel-widgets.conf\n' >&2
+		exit 1
+	fi
+done
+
+panel_seconds=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings panelOptionEnabled clock-seconds)
+[ "$panel_seconds" = false ]
+i=0
+while [ "$i" -lt 100 ]; do
+	# Repeat the set: the model ignores it while the reset is still settling.
+	DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings panelOptionSet clock-seconds true \
+		>/dev/null 2>&1 || true
+	panel_seconds=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings panelOptionEnabled clock-seconds 2>/dev/null || true)
+	[ "$panel_seconds" = true ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$panel_seconds" = true ]
+expected=$(printf 'option\tclock-seconds\tenabled')
+grep -Fqx "$expected" "$config_home/dwm-titus/panel-widgets.conf"
+# "Show all widgets" (reset) must leave the seconds option alone.
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings panelWidgetsReset >/dev/null 2>&1 || true
+sleep 0.5
+panel_seconds=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings panelOptionEnabled clock-seconds 2>/dev/null || true)
+[ "$panel_seconds" = true ]
+grep -Fqx "$expected" "$config_home/dwm-titus/panel-widgets.conf"
+i=0
+while [ "$i" -lt 100 ]; do
+	DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings panelOptionSet clock-seconds false >/dev/null 2>&1 || true
+	panel_seconds=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings panelOptionEnabled clock-seconds 2>/dev/null || true)
+	[ "$panel_seconds" = false ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$panel_seconds" = false ]
+
 test_stage='validating desktop personalization Settings lifecycle'
 personalization_status=idle
 personalization_mutation=idle
