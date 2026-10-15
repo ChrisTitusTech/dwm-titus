@@ -26,6 +26,13 @@ grep -Fq 'RunningAppsArea { desktopState: root.state }' "$panel/DwmPanel.qml"
 grep -Fq 'clip: true' "$panel/DwmPanel.qml"
 grep -Fq 'running: !Theme.reducedMotion && titleViewport.width > 0' "$panel/DwmPanel.qml"
 grep -Fq 'elide: Theme.reducedMotion ? Text.ElideRight : Text.ElideNone' "$panel/DwmPanel.qml"
+grep -Fq 'const shouldScroll = !Theme.reducedMotion' "$panel/DwmPanel.qml"
+grep -Fq 'titleViewport.titleOffset = shouldScroll' "$panel/DwmPanel.qml"
+grep -Fq 'if (shouldScroll) titleScroll.restart();' "$panel/DwmPanel.qml"
+if grep -Fq 'loops: Animation.Infinite' "$panel/DwmPanel.qml"; then
+	echo "The active title animation must not loop indefinitely" >&2
+	exit 1
+fi
 grep -Fq 'value: titleViewport.titleStartOffset' "$panel/DwmPanel.qml"
 grep -Fq 'to: 0' "$panel/DwmPanel.qml"
 grep -Fq '(activeTitle.implicitWidth - titleViewport.width) * 16' "$panel/DwmPanel.qml"

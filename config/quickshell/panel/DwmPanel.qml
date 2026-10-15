@@ -158,15 +158,19 @@ PanelWindow {
                                 color: Theme.text
                                 elide: Theme.reducedMotion ? Text.ElideRight : Text.ElideNone
                                 onTextChanged: {
-                                    titleViewport.titleOffset = titleViewport.titleStartOffset;
-                                    if (titleScroll.running) titleScroll.restart();
+                                    const shouldScroll = !Theme.reducedMotion
+                                        && titleViewport.width > 0
+                                        && implicitWidth > titleViewport.width;
+                                    titleViewport.titleOffset = shouldScroll
+                                        ? titleViewport.titleStartOffset : 0;
+                                    if (shouldScroll) titleScroll.restart();
+                                    else titleScroll.stop();
                                 }
                             }
 
                             SequentialAnimation {
                                 id: titleScroll
 
-                                loops: Animation.Infinite
                                 running: !Theme.reducedMotion && titleViewport.width > 0
                                     && activeTitle.implicitWidth > titleViewport.width
 
