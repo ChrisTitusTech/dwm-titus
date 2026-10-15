@@ -185,7 +185,7 @@ PanelWindow {
                                     property: "titleOffset"
                                     to: 0
                                     duration: Math.max(1400,
-                                        (activeTitle.implicitWidth - titleViewport.width) * 24)
+                                        (activeTitle.implicitWidth - titleViewport.width) * 16)
                                     easing.type: Easing.InOutSine
                                 }
                             }

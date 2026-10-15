@@ -28,6 +28,7 @@ grep -Fq 'running: !Theme.reducedMotion && titleViewport.width > 0' "$panel/DwmP
 grep -Fq 'elide: Theme.reducedMotion ? Text.ElideRight : Text.ElideNone' "$panel/DwmPanel.qml"
 grep -Fq 'value: titleViewport.titleStartOffset' "$panel/DwmPanel.qml"
 grep -Fq 'to: 0' "$panel/DwmPanel.qml"
+grep -Fq '(activeTitle.implicitWidth - titleViewport.width) * 16' "$panel/DwmPanel.qml"
 grep -Fq 'implicitWidth: buttonContent.implicitWidth + (Theme.controlPaddingX * 2)' "$core/ShellButton.qml"
 grep -Fq 'property url leadingIcon: ""' "$core/ShellButton.qml"
 grep -Fq '&& root.label.length > 0 ? root.labelSpacing : 0' \
