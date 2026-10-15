@@ -135,15 +135,64 @@ PanelWindow {
                         Layout.preferredHeight: Theme.pillHeight
                         outlined: true
 
-                        UiText {
-                            id: activeTitle
+                        Item {
+                            id: titleViewport
+
+                            property real titleOffset: 0
+                            readonly property real titleStartOffset: Math.min(
+                                0, titleViewport.width - activeTitle.implicitWidth)
+
                             anchors.fill: parent
                             anchors.leftMargin: Theme.pillHorizontalPadding
                             anchors.rightMargin: Theme.pillHorizontalPadding
-                            text: root.state.activeWindowTitle
-                            color: Theme.text
-                            elide: Text.ElideRight
-                            verticalAlignment: Text.AlignVCenter
+                            clip: true
+
+                            UiText {
+                                id: activeTitle
+
+                                x: titleViewport.titleOffset
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: Theme.reducedMotion ? titleViewport.width
+                                    : Math.max(titleViewport.width, implicitWidth)
+                                text: root.state.activeWindowTitle
+                                color: Theme.text
+                                elide: Theme.reducedMotion ? Text.ElideRight : Text.ElideNone
+                                onTextChanged: {
+                                    const shouldScroll = !Theme.reducedMotion
+                                        && titleViewport.width > 0
+                                        && implicitWidth > titleViewport.width;
+                                    titleViewport.titleOffset = shouldScroll
+                                        ? titleViewport.titleStartOffset : 0;
+                                    if (shouldScroll) titleScroll.restart();
+                                    else titleScroll.stop();
+                                }
+                            }
+
+                            SequentialAnimation {
+                                id: titleScroll
+
+                                running: !Theme.reducedMotion && titleViewport.width > 0
+                                    && activeTitle.implicitWidth > titleViewport.width
+
+                                onRunningChanged: titleViewport.titleOffset = running
+                                    ? titleViewport.titleStartOffset : 0
+
+                                PropertyAction {
+                                    target: titleViewport
+                                    property: "titleOffset"
+                                    value: titleViewport.titleStartOffset
+                                }
+                                PauseAnimation { duration: 800 }
+
+                                NumberAnimation {
+                                    target: titleViewport
+                                    property: "titleOffset"
+                                    to: 0
+                                    duration: Math.max(1400,
+                                        (activeTitle.implicitWidth - titleViewport.width) * 16)
+                                    easing.type: Easing.InOutSine
+                                }
+                            }
                         }
                     }
 
