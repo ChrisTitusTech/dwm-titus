@@ -8,6 +8,13 @@ versions from `config.mk`.
 
 ### Added
 
+- Integrate Path from `ChrisTitusTech/Path`, available as `path` in the
+  `christitustech/copr-fedora` COPR. Full installs attempt it after approved
+  repository setup and skip it when unavailable. Both Fedora image profiles
+  include Path from their existing COPR. Fresh-account folder defaults
+  prefer Path when installed, with Thunar otherwise; existing MIME preferences
+  remain unchanged. Keep GTK as the file chooser portal until Path supports
+  cancellation through the portal request API.
 - dwm publishes the active keyboard layout group, the group names and the
   keymap symbols name on the root window and switches layouts on a
   `_DWM_KEYBOARD_GROUP_REQUEST` root property or the new `cyclelayout` hotkey

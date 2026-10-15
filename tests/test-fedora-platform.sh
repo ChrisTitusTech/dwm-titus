@@ -172,3 +172,42 @@ fi
 # the host policy's existing label and does not alter that policy.
 
 printf 'Fedora-only platform contract: PASS\n'
+
+# Exercise the actual optional-install block without enabling repositories or
+# installing packages. Path must be attempted after approved COPR setup, while
+# declined or failed setup must still allow the other desktop extras.
+awk '
+    /^if install_optional_profile; then$/ && !done { capture = 1 }
+    capture { print }
+    capture && /^fi$/ { capture = 0; done = 1 }
+' "$repo/install.sh" >"$work/optional-install.sh"
+# The extracted installer block consumes these variables and mock functions.
+# shellcheck disable=SC2034,SC2329
+for approval in true false failed; do
+	(
+		FEDORA_GAMING_REPOS_APPROVED=$approval
+		[[ $approval != failed ]] || FEDORA_GAMING_REPOS_APPROVED=true
+		repo_ready=false
+		install_optional_profile() { return 0; }
+		fedora_gaming_profile() { return 0; }
+		info() { :; }
+		warn() { :; }
+		ok() { :; }
+		configure_fedora_gaming_repositories() {
+			[[ $approval != failed ]] || return 1
+			repo_ready=true
+		}
+		configure_fedora_gamemode_access() { :; }
+		dwm_install_available_package_profile() {
+			if [[ $1 == optional ]]; then
+				printf 'optional:%s\n' "$repo_ready"
+			fi
+		}
+		# shellcheck source=/dev/null
+		source "$work/optional-install.sh"
+	) >"$work/optional-$approval"
+	expected=false
+	[[ $approval != true ]] || expected=true
+	grep -Fx "optional:$expected" "$work/optional-$approval"
+done
+printf 'Optional desktop packages follow approved repository setup: PASS\n'
