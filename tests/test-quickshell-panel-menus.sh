@@ -23,6 +23,9 @@ grep -Fq 'signal popupRequested(var panelWindow, string popupId)' "$panel/DwmPan
 grep -Fq 'model: root.state.workspaceIndexes(root.screen)' "$panel/DwmPanel.qml"
 grep -Fq 'sourceComponent: TrayArea {}' "$panel/DwmPanel.qml"
 grep -Fq 'RunningAppsArea { desktopState: root.state }' "$panel/DwmPanel.qml"
+grep -Fq 'clip: true' "$panel/DwmPanel.qml"
+grep -Fq 'running: !Theme.reducedMotion && titleViewport.width > 0' "$panel/DwmPanel.qml"
+grep -Fq 'elide: Theme.reducedMotion ? Text.ElideRight : Text.ElideNone' "$panel/DwmPanel.qml"
 grep -Fq 'implicitWidth: buttonContent.implicitWidth + (Theme.controlPaddingX * 2)' "$core/ShellButton.qml"
 grep -Fq 'property url leadingIcon: ""' "$core/ShellButton.qml"
 grep -Fq '&& root.label.length > 0 ? root.labelSpacing : 0' \

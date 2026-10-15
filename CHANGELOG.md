@@ -18,6 +18,9 @@ versions from `config.mk`.
 
 ### Changed
 
+- Scroll long active-window titles within the panel title pill, with reduced
+  motion preserving right-side elision.
+
 - Reuse existing non-interactive sudo authorization for confirmed desktop
   updates and recovery, falling back to polkit when unavailable. Passwords and
   authorization policy are not stored or changed by the updater.

@@ -135,15 +135,63 @@ PanelWindow {
                         Layout.preferredHeight: Theme.pillHeight
                         outlined: true
 
-                        UiText {
-                            id: activeTitle
+                        Item {
+                            id: titleViewport
+
+                            property real titleOffset: 0
+
                             anchors.fill: parent
                             anchors.leftMargin: Theme.pillHorizontalPadding
                             anchors.rightMargin: Theme.pillHorizontalPadding
-                            text: root.state.activeWindowTitle
-                            color: Theme.text
-                            elide: Text.ElideRight
-                            verticalAlignment: Text.AlignVCenter
+                            clip: true
+
+                            UiText {
+                                id: activeTitle
+
+                                x: titleViewport.titleOffset
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: Theme.reducedMotion ? titleViewport.width
+                                    : Math.max(titleViewport.width, implicitWidth)
+                                text: root.state.activeWindowTitle
+                                color: Theme.text
+                                elide: Theme.reducedMotion ? Text.ElideRight : Text.ElideNone
+                                onTextChanged: {
+                                    titleViewport.titleOffset = 0;
+                                    if (titleScroll.running) titleScroll.restart();
+                                }
+                            }
+
+                            SequentialAnimation {
+                                id: titleScroll
+
+                                loops: Animation.Infinite
+                                running: !Theme.reducedMotion && titleViewport.width > 0
+                                    && activeTitle.implicitWidth > titleViewport.width
+
+                                onRunningChanged: titleViewport.titleOffset = 0
+
+                                PauseAnimation { duration: 800 }
+
+                                NumberAnimation {
+                                    target: titleViewport
+                                    property: "titleOffset"
+                                    to: titleViewport.width - activeTitle.implicitWidth
+                                    duration: Math.max(1400,
+                                        (activeTitle.implicitWidth - titleViewport.width) * 24)
+                                    easing.type: Easing.InOutSine
+                                }
+
+                                PauseAnimation { duration: 800 }
+
+                                NumberAnimation {
+                                    target: titleViewport
+                                    property: "titleOffset"
+                                    to: 0
+                                    duration: Math.max(1400,
+                                        (activeTitle.implicitWidth - titleViewport.width) * 24)
+                                    easing.type: Easing.InOutSine
+                                }
+                            }
                         }
                     }
 
