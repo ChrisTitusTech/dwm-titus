@@ -15,7 +15,15 @@ versions from `config.mk`.
   prefer Path when installed, with Thunar otherwise; existing MIME preferences
   remain unchanged. Keep GTK as the file chooser portal until Path supports
   cancellation through the portal request API.
-
+- dwm publishes the active keyboard layout group, the group names and the
+  keymap symbols name on the root window and switches layouts on a
+  `_DWM_KEYBOARD_GROUP_REQUEST` root property or the new `cyclelayout` hotkey
+  func. `dwm-quickshell-state` reports them as `keyboard_*` fields, streams
+  layout switches as small keyboard-only updates, and gains
+  `keyboard-group <next|prev|N>`, which returns once dwm has taken the
+  request (exit 75 after about a second if it does not). Workspace names containing commas are no
+  longer split. The design follows the Keyboard-Layout-for-Omarchy plugin
+  (https://github.com/Somnius/Keyboard-Layout-for-Omarchy, MIT).
 - Add `fullscreen=1` window rules to open matching applications across the
   entire monitor without a top bar, gaps, or window borders. Title-based rules
   also apply once when a matching title arrives after the window opens.
