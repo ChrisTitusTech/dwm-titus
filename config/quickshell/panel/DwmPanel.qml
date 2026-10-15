@@ -139,6 +139,8 @@ PanelWindow {
                             id: titleViewport
 
                             property real titleOffset: 0
+                            readonly property real titleStartOffset: Math.min(
+                                0, titleViewport.width - activeTitle.implicitWidth)
 
                             anchors.fill: parent
                             anchors.leftMargin: Theme.pillHorizontalPadding
@@ -156,7 +158,7 @@ PanelWindow {
                                 color: Theme.text
                                 elide: Theme.reducedMotion ? Text.ElideRight : Text.ElideNone
                                 onTextChanged: {
-                                    titleViewport.titleOffset = 0;
+                                    titleViewport.titleOffset = titleViewport.titleStartOffset;
                                     if (titleScroll.running) titleScroll.restart();
                                 }
                             }
@@ -168,19 +170,14 @@ PanelWindow {
                                 running: !Theme.reducedMotion && titleViewport.width > 0
                                     && activeTitle.implicitWidth > titleViewport.width
 
-                                onRunningChanged: titleViewport.titleOffset = 0
+                                onRunningChanged: titleViewport.titleOffset = running
+                                    ? titleViewport.titleStartOffset : 0
 
-                                PauseAnimation { duration: 800 }
-
-                                NumberAnimation {
+                                PropertyAction {
                                     target: titleViewport
                                     property: "titleOffset"
-                                    to: titleViewport.width - activeTitle.implicitWidth
-                                    duration: Math.max(1400,
-                                        (activeTitle.implicitWidth - titleViewport.width) * 24)
-                                    easing.type: Easing.InOutSine
+                                    value: titleViewport.titleStartOffset
                                 }
-
                                 PauseAnimation { duration: 800 }
 
                                 NumberAnimation {
