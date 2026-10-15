@@ -283,8 +283,8 @@ else
 				recheck_output=$("$SCRIPT_DIR/check-deps.sh" --non-interactive 2>&1) || recheck_status=$?
 				printf '%s\n' "$recheck_output"
 				if [ $recheck_status -ne 0 ]; then
-					if grep -Fq "Package suggestions from the shared dependency map:" <<<"$recheck_output" \
-						|| grep -Eq '\(missing\)|missing pam_gnome_keyring|Noto Color Emoji' <<<"$recheck_output"; then
+					if grep -Fq "Package suggestions from the shared dependency map:" <<<"$recheck_output" ||
+						grep -Eq '\(missing\)|missing pam_gnome_keyring|Noto Color Emoji' <<<"$recheck_output"; then
 						printf "\n${RED}Required dependencies are still missing after repair.${NC}\n"
 					elif [ $MISSING_FONTS -gt 0 ] || grep -Fq "Meslo" <<<"$recheck_output"; then
 						printf "\n${YELLOW}Package dependencies installed, but Meslo Nerd Font is still missing.${NC}\n"

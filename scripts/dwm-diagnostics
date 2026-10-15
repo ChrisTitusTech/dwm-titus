@@ -80,7 +80,6 @@ optional_missing() {
 	fi
 }
 
-
 have_cmd() {
 	command -v "$1" >/dev/null 2>&1
 }
@@ -192,7 +191,6 @@ check_path_optional() {
 		optional_missing "$id" "$path" "$path is missing" "" ""
 	fi
 }
-
 
 main() {
 	if [[ $format == human ]]; then
