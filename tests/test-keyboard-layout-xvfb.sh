@@ -547,9 +547,18 @@ step=13
 # hint; without either the codes are empty but names and count remain.
 X setxkbmap -layout us,gr -option ''
 wait_state_value keyboard_layouts 'us|gr'
+# the rules add some options after the layouts with a ":1" of their own
+# (pc+de+ru:2+inet(evdev)+group(alts_toggle):1+...): still de, not group
+X setxkbmap -layout de,ru -option grp:alts_toggle
+wait_state_value keyboard_layouts 'de|ru'
+X setxkbmap -layout us,gr -option ''
+wait_state_value keyboard_layouts 'us|gr'
 # a symbols name with an explicit ":1" on group 1 (as xkbcomp may load it)
 X xprop -root -f _DWM_KEYBOARD_SYMBOLS 8s -set _DWM_KEYBOARD_SYMBOLS 'pc+de:1+ru:2+inet(evdev)'
 wait_state_value keyboard_layouts 'de|ru'
+# the ":1" token wins even when another part sits between it and ":2"
+X xprop -root -f _DWM_KEYBOARD_SYMBOLS 8s -set _DWM_KEYBOARD_SYMBOLS 'pc+fr:1+inet(evdev)+ru:2'
+wait_state_value keyboard_layouts 'fr|ru'
 X xprop -root -remove _DWM_KEYBOARD_SYMBOLS
 wait_state_value keyboard_layouts 'us|gr'
 wait_watch_value keyboard_layouts 'us|gr'
