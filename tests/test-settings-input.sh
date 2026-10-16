@@ -487,8 +487,10 @@ for invalid_settle in 0 0.0; do
 	grep -Fq 'hotplug settle interval must be positive' "$work/invalid-settle.err"
 done
 
+# The mock waits 0.12s between add and change; the settle window needs a clear
+# margin over that, or a busy machine applies the two events separately.
 rm -f "$work/actions.log"
-env "${env_common[@]}" DWM_INPUT_HOTPLUG_SETTLE_SECONDS=0.15 \
+env "${env_common[@]}" DWM_INPUT_HOTPLUG_SETTLE_SECONDS=0.5 \
 	TEST_UDEV_DELAY=0.12 TEST_TIMING_LOG="$work/hotplug-timing.log" "$helper" watch-apply
 [[ $(grep -Fc 'xinput set-prop 12 libinput Accel Speed 0.25' "$work/actions.log") == 1 ]]
 event_time=$(awk '$1 == "event" { print $2; exit }' "$work/hotplug-timing.log")
