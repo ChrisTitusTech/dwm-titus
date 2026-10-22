@@ -54,8 +54,8 @@ Controlled via window rules in `config.h`:
 { "Alacritty", NULL, NULL, 0, 0, 1, 0, -1 },  /* isterminal = 1 */
 ```
 
-### Fullscreen (3-State)
-Three fullscreen modes available:
+### Fullscreen and Monocle
+Two fullscreen modes plus the monocle layout:
 
 | Mode | Keys | Description |
 |------|------|-------------|

@@ -8,8 +8,10 @@ eyebrow: Stay current
 # Updates
 
 dwm-titus has two update surfaces: the **Update Center** in the panel and the
-**Desktop updates** card in Settings > System. Both preview work before it
-starts and report failures instead of claiming success.
+**Desktop updates** card in Settings > System. Both report failures instead of
+claiming success. Settings previews desktop changes before starting, and the
+Fedora flow shows DNF's transaction plan for confirmation after the terminal
+opens.
 
 ## Panel Update Center
 
@@ -39,10 +41,11 @@ reboots the machine automatically. PackageKit provides read-only update
 discovery; an existing PackageKit operation must finish before a new DNF
 transaction starts.
 
-Choosing **Recover** reattaches to desktop work that is still running. For an
-interrupted DNF update it retries the normal DNF workflow under DNF's lock with
-a fresh plan and confirmation. Recovery is not a rollback and does not prove the
-earlier attempt succeeded.
+Choosing **Recover** reattaches to or reconciles interrupted provider work,
+including a desktop update that is still running. For an interrupted DNF update
+it retries the normal DNF workflow under DNF's lock with a fresh plan and
+confirmation. Recovery is not a rollback and does not prove the earlier attempt
+succeeded.
 
 ## Desktop updates in Settings
 

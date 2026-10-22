@@ -147,8 +147,10 @@ the dwm session after updating to activate this behavior.
 | Action | Function |
 |--------|----------|
 | `Super` + Left drag | Move window |
-| `Super` + Middle click | Toggle floating |
 | `Super` + Right drag | Resize window |
+
+Middle click is unbound by default. To use it, add a `button=2` record to the
+`buttons` array in `hotkeys.toml`.
 
 ---
 
