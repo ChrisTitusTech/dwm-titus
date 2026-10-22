@@ -35,7 +35,7 @@
 #          setlayout         → switch layout                    (layout_idx=0/1/2)
 #                               0=tiling  1=floating  2=monocle
 #          togglefloating    → float or tile focused window
-#          fullscreen        → toggle monocle focus mode and bar
+#          fullscreen        → true fullscreen (hides bar)
 #          togglefakefullscreen → fullscreen look, bar still works
 #          togglebar         → show/hide the status bar
 #          focusmon          → focus next/prev monitor           (i=1 or i=-1)
@@ -114,7 +114,7 @@ keys = [
   # ── Layouts  (0=tiling  1=floating  2=monocle) ───────────────────────────────
   { mod="SUPER",            key="t",       desc="Tile layout",             func="setlayout",   layout_idx=0 },
   { mod="SUPER",            key="f",       desc="Float layout",            func="setlayout",   layout_idx=1 },
-  { mod="SUPER",            key="m",       desc="Monocle focus",           func="fullscreen" },
+  { mod="SUPER",            key="m",       desc="Fullscreen",              func="fullscreen" },
   { mod="SUPER SHIFT",      key="m",       desc="Toggle floating window",  func="togglefloating" },
   { mod="SUPER",            key="space",   desc="Toggle float/tile",       func="togglefloating" },
   { mod="SUPER SHIFT",      key="y",       desc="Fake fullscreen",         func="togglefakefullscreen" },
