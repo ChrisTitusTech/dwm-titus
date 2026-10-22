@@ -35,7 +35,7 @@
 #          setlayout         → switch layout                    (layout_idx=0/1/2)
 #                               0=tiling  1=floating  2=monocle
 #          togglefloating    → float or tile focused window
-#          fullscreen        → toggle monocle focus mode (hides bar)
+#          fullscreen        → toggle monocle focus mode and bar
 #          togglefakefullscreen → fullscreen look, bar still works
 #          togglebar         → show/hide the status bar
 #          focusmon          → focus next/prev monitor           (i=1 or i=-1)
