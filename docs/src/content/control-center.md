@@ -20,6 +20,10 @@ Bar Widgets, Quick Actions, Appearance, and Power Settings replace the menu
 contents in the same card and provide a Back control. Press <kbd>Esc</kbd> or
 click outside the card to close it from any page.
 
+The update indicator beside the clock opens the Update Center for Fedora,
+desktop, Flatpak, and mise updates. See [Updates](/updates.html) for provider
+selection, progress, and recovery.
+
 The Utilities section opens the unified Settings application directly. Phase
 1 Settings is a read-only capability overview with section search and
 keyboard/mouse navigation. It can also be opened with `dwm-settings open`.

@@ -92,6 +92,10 @@ completed. Enter passwords only in the configured terminal's `passwd` prompt.
 Cancel returns keyboard focus to the originating control. Closing Settings does
 not close a launched tool or undo its changes.
 
+The desktop update card above these controls checks official `main` and installs
+managed dwm-titus changes. See [Updates](/updates.html) for the preview,
+authorization, progress, and recovery behavior.
+
 For timezone and system locale, select **Load choices**, filter the reported
 catalog, and select with click or Enter. **Review change** reads a fresh preview;
 it does not apply the selection. Network time offers fixed enable/disable

@@ -7,9 +7,10 @@ export const navigation = [
   { href: "/configuration.html", label: "Configuration", index: "06", group: "Customize" },
   { href: "/theming.html", label: "Theming", index: "07", group: "Customize" },
   { href: "/control-center.html", label: "Control Center", index: "08", group: "Use" },
-  { href: "/settings.html", label: "Settings", index: "09", group: "Use" },
-  { href: "/patches.html", label: "How It Works", index: "10", group: "Project" },
-  { href: "/troubleshooting.html", label: "Troubleshooting", index: "11", group: "Help" }
+  { href: "/updates.html", label: "Updates", index: "09", group: "Use" },
+  { href: "/settings.html", label: "Settings", index: "10", group: "Use" },
+  { href: "/patches.html", label: "How It Works", index: "11", group: "Project" },
+  { href: "/troubleshooting.html", label: "Troubleshooting", index: "12", group: "Help" }
 ] as const;
 
 export const projectLinks = [

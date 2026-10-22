@@ -24,9 +24,13 @@ Bindings are defined in `config/hotkeys.toml` and reload instantly on save — n
 | `Super` + `X` | Alacritty terminal |
 | `Super` + `E` | File manager |
 | `Super` + `B` | Browser |
+| `Super` + `W` | Looking Glass VM client (when installed) |
+| `Super` + `Shift` + `W` | Randomize wallpaper |
 | `Super` + `/` | Keybind viewer |
 | `Super` + `F1` | Control Center |
+| `Super` + `Alt` + `F1` | Control Center (alternate) |
 | `Super` + `Shift` + `R` | Restart Quickshell |
+| `Super` + `Ctrl` + `R` | Restart Proton/Steam |
 
 ## Screenshots
 
@@ -81,11 +85,14 @@ not edit customized hotkey files.
 |------|--------|
 | `Super` + `T` | Tiling layout |
 | `Super` + `F` | Floating layout |
-| `Super` + `M` | Fullscreen (monocle) |
+| `Super` + `M` | True fullscreen (hides the bar) |
 | `Super` + `Space` | Toggle floating for window |
 | `Super` + `Shift` + `M` | Toggle floating for window |
 | `Super` + `Shift` + `Y` | Fake fullscreen (bar stays) |
 | `Super` + `Shift` + `B` | Toggle bar visibility |
+
+The monocle layout is available in the layout list but has no default binding.
+To bind it, add a `setlayout` record with `layout_idx=2` to `hotkeys.toml`.
 
 Entering floating mode with a toggle shrinks a tiled window by 15% around its
 current center, subject to the application's minimum size and resize increments.

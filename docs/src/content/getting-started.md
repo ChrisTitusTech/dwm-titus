@@ -38,12 +38,15 @@ Tags 1-9 act as workspaces. Use `Super` + a number from `1` through `9` to switc
 
 ## Layouts
 
-Three layouts are available — switch between them instantly.
+Tiling and floating layouts have direct shortcuts. `Super` + `M` is true
+fullscreen (it hides the bar and gaps) rather than a layout switch.
 
 | Layout | Keys |
 |--------|------|
 | Tiling (master + stack) | `Super` + `T` |
-| Floating | `Super` + `Shift` + `M` |
-| Fullscreen (monocle) | `Super` + `M` |
+| Floating | `Super` + `F` |
+| True fullscreen | `Super` + `M` |
+| Toggle floating for one window | `Super` + `Shift` + `M` |
 
-See [Keybindings](./keybinds.html) for the full reference.
+The monocle layout is available but has no default binding. See
+[Keybindings](./keybinds.html) for the full reference.
