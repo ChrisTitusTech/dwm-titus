@@ -87,6 +87,17 @@ grep -Fq $'check\tservices\twarn\tuser-failed-user-broken-service\tuser-broken.s
 grep -Fq $'manage-user-service|user-broken.service\tService actions\tuser' "$work/user.tsv"
 grep -Fq $'meta\toverview\tok\tscan-user-complete' "$work/user.tsv"
 
+# efivarfs is fixed-size firmware NVRAM, never a cleanable disk error.
+grep -Fq 'df -P -l -x tmpfs -x devtmpfs -x squashfs -x efivarfs' "$HELPER"
+grep -Fq 'df -Pi -l -x tmpfs -x devtmpfs -x squashfs -x efivarfs' "$HELPER"
+if findmnt -n -o FSTYPE /sys/firmware/efi/efivars 2>/dev/null | grep -qx efivarfs; then
+	grep -Fq $'check\tstorage\tinfo\tdisk-efivars' "$work/user.tsv"
+	if grep -Fq $'check\tstorage\terror\tdisk-sys-firmware-efi-efivars' "$work/user.tsv"; then
+		printf 'efivarfs storage was reported as an error\n' >&2
+		exit 1
+	fi
+fi
+
 HOME="$work/home" \
 	DWM_HEALTH_COMMAND_TIMEOUT=2 \
 	DWM_HEALTH_SYSTEMCTL_LOG="$work/systemctl.log" \
