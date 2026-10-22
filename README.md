@@ -19,7 +19,11 @@ part themselves.
 **dwm-titus is a Fedora-only distribution.** Fedora Linux is the sole supported
 platform for installation, runtime behavior, package resolution, testing, and
 release qualification. Use either the Fedora desktop image or the
-existing-system installer on Fedora Linux.
+existing-system installer on Fedora Linux. The published images and release
+qualification target Fedora 44 x86_64. Newer releases, including Fedora 45, are
+accepted by the existing-system installer but are not yet release-qualified;
+run `dwm-diagnostics` and report release-specific problems on the issue
+tracker.
 
 ## What You Get
 
@@ -97,6 +101,8 @@ cd dwm-titus
 ```
 
 The dry run shows the dependency and installation plan before anything changes.
+Run both commands from the cloned directory: `./install.sh` resolves relative to
+the current directory, so a new terminal must `cd dwm-titus` first.
 The installer requires Fedora, preserves existing personal configuration, and
 installs the managed desktop components. It accepts only Fedora's
 `/etc/os-release` identity and rejects every other operating-system identity
@@ -106,7 +112,7 @@ before making changes.
 | --- | --- |
 | `core` | The X11 session, required dependencies, and one terminal emulator. |
 | `recommended` | The complete everyday desktop, including Alacritty, Quickshell, Gear Lever for AppImages, theming, screenshots, audio, brightness, and the PackageKit, Python RPM binding, AccountsService, CUPS, and printer-tool prerequisites for Phase 6 system management. |
-| `full` | The recommended desktop plus optional file-manager, wallpaper, display-manager, and supported Fedora gaming integrations. |
+| `full` | The recommended desktop plus optional file-manager (Thunar, and Path from `christitustech/copr-fedora` when available), wallpaper, display-manager, and supported Fedora gaming integrations. |
 
 `maim` is an optional dependency used only by the screenshot hotkeys. If it is
 unavailable, installation continues and reports that the screenshot hotkeys
@@ -219,6 +225,7 @@ safe customization paths.
 - [Configuration](https://dwm.christitus.com/configuration.html)
 - [Theming](https://dwm.christitus.com/theming.html)
 - [Control Center](https://dwm.christitus.com/control-center.html)
+- [Updates](https://dwm.christitus.com/updates.html)
 - [Settings](https://dwm.christitus.com/settings.html)
 - [How dwm-titus Works](https://dwm.christitus.com/patches.html)
 - [Troubleshooting](https://dwm.christitus.com/troubleshooting.html)

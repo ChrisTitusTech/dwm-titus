@@ -24,9 +24,13 @@ Bindings are defined in `config/hotkeys.toml` and reload instantly on save — n
 | `Super` + `X` | Alacritty terminal |
 | `Super` + `E` | File manager |
 | `Super` + `B` | Browser |
+| `Super` + `W` | Looking Glass VM client (when installed) |
+| `Super` + `Shift` + `W` | Randomize wallpaper |
 | `Super` + `/` | Keybind viewer |
 | `Super` + `F1` | Control Center |
+| `Super` + `Alt` + `F1` | Control Center (alternate) |
 | `Super` + `Shift` + `R` | Restart Quickshell |
+| `Super` + `Ctrl` + `R` | Restart Proton/Steam |
 
 ## Screenshots
 
@@ -81,11 +85,18 @@ not edit customized hotkey files.
 |------|--------|
 | `Super` + `T` | Tiling layout |
 | `Super` + `F` | Floating layout |
-| `Super` + `M` | Fullscreen (monocle) |
+| `Super` + `M` | Toggle monocle focus mode and bar |
 | `Super` + `Space` | Toggle floating for window |
 | `Super` + `Shift` + `M` | Toggle floating for window |
 | `Super` + `Shift` + `Y` | Fake fullscreen (bar stays) |
 | `Super` + `Shift` + `B` | Toggle bar visibility |
+
+`Super` + `M` switches to the monocle layout and toggles the bar. It does not
+request per-window fullscreen; applications or window rules do that when
+needed. The saved pre-focus layout is shared across tags and monitors, so
+switching tags before pressing the binding again may restore a different
+layout. The monocle layout has no separate direct layout binding. To select it
+directly, add a `setlayout` record with `layout_idx=2` to `hotkeys.toml`.
 
 Entering floating mode with a toggle shrinks a tiled window by 15% around its
 current center, subject to the application's minimum size and resize increments.
@@ -140,8 +151,10 @@ the dwm session after updating to activate this behavior.
 | Action | Function |
 |--------|----------|
 | `Super` + Left drag | Move window |
-| `Super` + Middle click | Toggle floating |
 | `Super` + Right drag | Resize window |
+
+Middle click is unbound by default. To use it, add a `button=2` record to the
+`buttons` array in `hotkeys.toml`.
 
 ---
 

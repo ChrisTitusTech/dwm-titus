@@ -61,7 +61,8 @@ Or use the [Control Center](./control-center.html) -> **System Health**.
 **Black screen / returns immediately to login:**
 - Run `dwm-diagnostics` and resolve any required X11/session failures.
 - Preview required packages with `./install.sh --dry-run --profile core`.
-- Check `.xinitrc` exists and ends with `exec dwm`
+- Check that `.xinitrc` exists and launches dwm; the shipped template ends with
+  `dbus-run-session -- sh -c 'exec dwm'`
 - Run `startx` from a TTY to see error output in the terminal
 
 **`dwm: cannot open display`:**
