@@ -38,8 +38,8 @@ network triggers a fresh check; manual refresh still works offline.
 Fedora updates run the installed DNF5 directly, with its normal transaction
 plan and confirmation prompt. No automatic Yes is supplied, and nothing
 reboots the machine automatically. PackageKit provides read-only update
-discovery; an existing PackageKit operation must finish before a new DNF
-transaction starts.
+discovery; an existing PackageKit operation must finish or be recovered before
+a new DNF transaction starts.
 
 Choosing **Recover** reattaches to or reconciles interrupted provider work,
 including a desktop update that is still running. For an interrupted DNF update
@@ -68,9 +68,10 @@ the saved operation and resumes progress reporting.
 
 Updates preserve personal TOML files, application configuration, `.xinitrc`,
 and `config.h`. They replace the managed Quickshell tree and the managed
-`config` and `scripts` data trees. Development branches, tracked or untracked
-changes in managed trees, and divergent history are blocked with instructions to
-use the source workflow instead.
+`config` and `scripts` data trees. Development branches, any tracked or
+untracked checkout changes, ignored files inside `config/` or `scripts/`, linked
+worktrees, and divergent history are blocked with instructions to use the source
+workflow instead.
 
 ## Initial Fedora update
 

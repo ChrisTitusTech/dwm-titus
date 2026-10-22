@@ -367,13 +367,17 @@ Use space-separated modifiers: `"SUPER"`, `"SUPER SHIFT"`, `"SUPER CTRL"`, `"SUP
 | `setcfact` | `f=0.25` / `f=-0.25` / `f=0.00` | Resize window slot |
 | `setlayout` | `layout_idx=0/1/2` | 0=tile, 1=float, 2=monocle |
 | `togglefloating` | — | Float/tile window |
-| `fullscreen` | — | True fullscreen |
+| `fullscreen` | — | Toggle monocle focus mode and the bar |
 | `togglefakefullscreen` | — | Fullscreen with bar |
 | `togglebar` | — | Show/hide bar |
 | `focusmon` | `i=1` or `i=-1` | Focus monitor |
 | `tagmon` | `i=1` or `i=-1` | Send window to monitor |
 | `view` | `ui=-1` = all tags | Switch tag |
 | `quit` | — | Exit dwm |
+
+The `fullscreen` hotkey function toggles the monocle layout and the bar; it does
+not request EWMH fullscreen. Use a `fullscreen=1` window rule, or let the
+application request fullscreen, for real per-window fullscreen.
 
 ### Tag Bindings
 

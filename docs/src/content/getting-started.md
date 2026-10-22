@@ -38,15 +38,17 @@ Tags 1-9 act as workspaces. Use `Super` + a number from `1` through `9` to switc
 
 ## Layouts
 
-Tiling and floating layouts have direct shortcuts. `Super` + `M` is true
-fullscreen (it hides the bar and gaps) rather than a layout switch.
+Tiling and floating layouts have direct shortcuts. `Super` + `M` toggles a
+focus mode: it switches to the monocle layout and hides the bar, then restores
+the previous layout and bar on the next press. It does not make an individual
+window fullscreen.
 
 | Layout | Keys |
 |--------|------|
 | Tiling (master + stack) | `Super` + `T` |
 | Floating | `Super` + `F` |
-| True fullscreen | `Super` + `M` |
+| Monocle focus mode (bar hidden) | `Super` + `M` |
 | Toggle floating for one window | `Super` + `Shift` + `M` |
 
-The monocle layout is available but has no default binding. See
-[Keybindings](./keybinds.html) for the full reference.
+The monocle layout is used by `Super` + `M`; there is no separate direct layout
+binding. See [Keybindings](./keybinds.html) for the full reference.

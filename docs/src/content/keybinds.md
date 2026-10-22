@@ -85,14 +85,17 @@ not edit customized hotkey files.
 |------|--------|
 | `Super` + `T` | Tiling layout |
 | `Super` + `F` | Floating layout |
-| `Super` + `M` | True fullscreen (hides the bar) |
+| `Super` + `M` | Toggle monocle focus mode (hides the bar) |
 | `Super` + `Space` | Toggle floating for window |
 | `Super` + `Shift` + `M` | Toggle floating for window |
 | `Super` + `Shift` + `Y` | Fake fullscreen (bar stays) |
 | `Super` + `Shift` + `B` | Toggle bar visibility |
 
-The monocle layout is available in the layout list but has no default binding.
-To bind it, add a `setlayout` record with `layout_idx=2` to `hotkeys.toml`.
+`Super` + `M` switches to the monocle layout and hides the bar, then restores
+the previous layout and bar on the next press. It does not request per-window
+fullscreen; applications or window rules do that when needed. The monocle
+layout has no separate direct layout binding. To select it directly, add a
+`setlayout` record with `layout_idx=2` to `hotkeys.toml`.
 
 Entering floating mode with a toggle shrinks a tiled window by 15% around its
 current center, subject to the application's minimum size and resize increments.
