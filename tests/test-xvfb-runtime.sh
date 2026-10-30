@@ -1085,7 +1085,20 @@ for popup_marker in tooltip kde notification menu popup-menu dropdown-menu combo
 		grep -q "$popup_atom"
 	wait_for_top_window "$popup_win"
 	DISPLAY=$display xdotool windowfocus "$popup_win"
-	wait_for_input_focus "$above_win"
+	case $popup_marker in
+	menu | popup-menu | dropdown-menu | combo)
+		# Interactive application popups must keep focus long enough to use.
+		wait_for_input_focus "$popup_win"
+		sleep 0.2
+		wait_for_input_focus "$popup_win"
+		wait_for_active_window "$above_win"
+		DISPLAY=$display xdotool windowfocus "$above_win"
+		wait_for_input_focus "$above_win"
+		;;
+	*)
+		wait_for_input_focus "$above_win"
+		;;
+	esac
 	DISPLAY=$display xdotool key Super+t
 	wait_for_top_window "$popup_win"
 	kill "$popup_client_pid"
@@ -1167,6 +1180,32 @@ DISPLAY=$display xdotool key Super+t
 wait_for_top_window "$fullscreen_win"
 wait_for_window_above "$fullscreen_win" "$popup_win"
 DISPLAY=$display xdotool windowfocus "$popup_win"
+wait_for_input_focus "$fullscreen_win"
+kill "$popup_client_pid"
+wait "$popup_client_pid" 2>/dev/null || true
+popup_client_pid=
+
+# An application menu hidden by fullscreen must not keep keyboard focus.
+DISPLAY=$display "$work/xclient" state "$fullscreen_win" 0 _NET_WM_STATE_FULLSCREEN
+wait_for_window_state_absent "$fullscreen_win" _NET_WM_STATE_FULLSCREEN
+DISPLAY=$display "$work/xclient" override-popup-menu >"$work/application-menu-id" 2>"$work/application-menu.log" &
+popup_client_pid=$!
+i=0
+while [ "$i" -lt 100 ] && [ ! -s "$work/application-menu-id" ]; do
+	i=$((i + 1))
+	sleep 0.05
+done
+popup_win=$(cat "$work/application-menu-id")
+wait_for_top_window "$popup_win"
+DISPLAY=$display xdotool windowfocus "$popup_win"
+wait_for_input_focus "$popup_win"
+DISPLAY=$display "$work/xclient" fullscreen "$fullscreen_win"
+wait_for_window_state "$fullscreen_win" _NET_WM_STATE_FULLSCREEN
+wait_for_window_above "$fullscreen_win" "$popup_win"
+wait_for_input_focus "$fullscreen_win"
+DISPLAY=$display xdotool windowfocus "$popup_win"
+# Let dwm process the request before checking the final focus owner.
+sleep 0.2
 wait_for_input_focus "$fullscreen_win"
 kill "$popup_client_pid"
 wait "$popup_client_pid" 2>/dev/null || true

@@ -136,6 +136,7 @@ struct Client {
 struct OverrideWindow {
 	Window win;
 	int raise;
+	int ismenu;
 	int alwaysontop;
 	OverrideWindow *next;
 };
@@ -1455,11 +1456,18 @@ focusfullscreenforoverride(Window win)
 	Monitor *m;
 	OverrideWindow *ow;
 	Window trans;
+	XWindowAttributes wa;
 
 	for (ow = overridewindows; ow && ow->win != win; ow = ow->next);
-	if (!ow || !ow->raise || !XGetTransientForHint(dpy, win, &trans))
+	if (!ow || !ow->raise)
 		return 0;
-	for (m = mons; m && m->barwin != trans; m = m->next);
+	m = NULL;
+	if (XGetTransientForHint(dpy, win, &trans))
+		for (m = mons; m && m->barwin != trans; m = m->next);
+	/* Ordinary menus are stacked below fullscreen, unlike authorized overlays. */
+	if (!m && ow->ismenu && !ow->alwaysontop
+	    && XGetWindowAttributes(dpy, win, &wa) && wa.map_state == IsViewable)
+		m = recttomon(wa.x, wa.y, wa.width, wa.height);
 	if (!m || !monitorhasfullscreen(m))
 		return 0;
 	for (c = m->stack; c && !isvisiblefullscreen(c); c = c->snext);
@@ -1478,7 +1486,7 @@ focusin(XEvent *e)
 
 	for (ow = overridewindows; ow && ow->win != ev->window; ow = ow->next);
 	if (ow && (focusfullscreenforoverride(ev->window)
-	    || istransientforbar(ev->window)))
+	    || istransientforbar(ev->window) || ow->ismenu))
 		return;
 	if (selmon->sel && ev->window != selmon->sel->win)
 		setfocus(selmon->sel);
@@ -5403,6 +5411,11 @@ updateoverridewindow(Window win)
 		states, LENGTH(states), NULL);
 	ntypes = getwinatomproplist(win, netatom[NetWMWindowType],
 		types, LENGTH(types), NULL);
+	/* Menus own their input focus; taking it back dismisses Steam popups. */
+	ow->ismenu = atomlistcontains(types, ntypes, netatom[NetWMWindowTypeMenu])
+		|| atomlistcontains(types, ntypes, netatom[NetWMWindowTypePopupMenu])
+		|| atomlistcontains(types, ntypes, netatom[NetWMWindowTypeDropdownMenu])
+		|| atomlistcontains(types, ntypes, netatom[NetWMWindowTypeCombo]);
 	ow->raise = atomlistcontains(states, nstates, netatom[NetWMAbove])
 		|| atomlistcontains(states, nstates, netatom[NetWMStaysOnTop])
 		|| atomlistcontains(types, ntypes, netatom[NetWMWindowTypeTooltip])
