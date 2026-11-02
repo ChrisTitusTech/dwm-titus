@@ -1107,8 +1107,6 @@ def prepare_user(source, operation):
             staging_root = staged
             if kind.endswith(".toml"):
                 staged = staged / kind
-            elif index == 3:
-                staged = staged / "hotkeys.toml"
             prepared.append({"target": str(target), "backup": str(staged), "staging": str(staging_root), "existed": target.exists(), "swapped": False,
                              "original": original, "originalMode": original_mode, "replacement": user_manifest(staged)})
         cleanup.pop_all()
