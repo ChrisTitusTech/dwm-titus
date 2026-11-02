@@ -382,13 +382,21 @@ request_keyboard_group() {
 	# the first look; otherwise one xprop -spy waits for the delete.
 	xprop -root _DWM_KEYBOARD_GROUP_REQUEST 2>/dev/null | grep -q ' = ' || return 0
 	spy_dir=$(mktemp -d) || return 1
+	spy_pid=
+	cleanup_keyboard_spy() {
+		if [ -n "$spy_pid" ]; then
+			kill "$spy_pid" 2>/dev/null || true
+			wait "$spy_pid" 2>/dev/null || true
+		fi
+		rm -rf "$spy_dir"
+	}
+	# Arm cleanup before FIFO creation: failures and signals must not leak it.
+	trap cleanup_keyboard_spy EXIT
+	trap 'exit 143' HUP INT TERM
 	mkfifo "$spy_dir/spy" || {
 		rm -rf "$spy_dir"
 		return 1
 	}
-	# the panel stops the helper with TERM; leave nothing behind
-	spy_pid=
-	trap 'kill $spy_pid 2>/dev/null; rm -rf "$spy_dir"; exit 143' HUP INT TERM
 	# -spy prints the current value first, so a delete before it started
 	# is seen too
 	timeout 1 xprop -root -spy _DWM_KEYBOARD_GROUP_REQUEST >"$spy_dir/spy" 2>/dev/null &
@@ -402,10 +410,8 @@ request_keyboard_group() {
 			;;
 		esac
 	done <"$spy_dir/spy"
-	kill "$spy_pid" 2>/dev/null || true
-	wait "$spy_pid" 2>/dev/null || true
-	rm -rf "$spy_dir"
-	trap - HUP INT TERM
+	cleanup_keyboard_spy
+	trap - EXIT HUP INT TERM
 	# xprop prints the value before it listens, so a delete in between
 	# sends no event: look once more before giving up
 	if [ "$taken" -ne 0 ] &&
