@@ -137,6 +137,7 @@ struct Client {
 struct OverrideWindow {
 	Window win;
 	int raise;
+	int ismenu;
 	int alwaysontop;
 	OverrideWindow *next;
 };
@@ -214,6 +215,7 @@ static Monitor *dirtomon(int dir);
 static void drawbar(Monitor *m);
 static void drawbars(void);
 static void focus(Client *c);
+static OverrideWindow *overrideforwindow(Window win);
 static int focusfullscreenforoverride(Window win);
 static void focusmon(const Arg *arg);
 static void focusstack(const Arg *arg);
@@ -428,6 +430,7 @@ static Display *dpy;
 static Drw *drw;
 static Monitor *mons, *selmon;
 static OverrideWindow *overridewindows;
+static Window focusedmenu;
 static Window root, wmcheckwin;
 static xcb_connection_t *xcon;
 static Window *clientlistcache;
@@ -1466,6 +1469,28 @@ focus(Client *c)
 	drawbars();
 }
 
+/* Input focus may belong to a menu's child rather than its root window. */
+OverrideWindow *
+overrideforwindow(Window win)
+{
+	OverrideWindow *ow;
+	Window tree_root, parent, *children;
+	unsigned int count;
+	int depth;
+
+	for (depth = 0; win != None && win != PointerRoot && win != root && depth < 32; depth++) {
+		for (ow = overridewindows; ow && ow->win != win; ow = ow->next);
+		if (ow)
+			return ow;
+		children = NULL;
+		if (!XQueryTree(dpy, win, &tree_root, &parent, &children, &count))
+			return NULL;
+		XFree(children);
+		win = parent;
+	}
+	return NULL;
+}
+
 int
 focusfullscreenforoverride(Window win)
 {
@@ -1473,11 +1498,19 @@ focusfullscreenforoverride(Window win)
 	Monitor *m;
 	OverrideWindow *ow;
 	Window trans;
+	XWindowAttributes wa;
 
-	for (ow = overridewindows; ow && ow->win != win; ow = ow->next);
-	if (!ow || !ow->raise || !XGetTransientForHint(dpy, win, &trans))
+	ow = overrideforwindow(win);
+	if (!ow || !ow->raise)
 		return 0;
-	for (m = mons; m && m->barwin != trans; m = m->next);
+	m = NULL;
+	win = ow->win;
+	if (XGetTransientForHint(dpy, win, &trans))
+		for (m = mons; m && m->barwin != trans; m = m->next);
+	/* Ordinary menus are stacked below fullscreen, unlike authorized overlays. */
+	if (!m && ow->ismenu && !ow->alwaysontop
+	    && XGetWindowAttributes(dpy, win, &wa) && wa.map_state == IsViewable)
+		m = recttomon(wa.x, wa.y, wa.width, wa.height);
 	if (!m || !monitorhasfullscreen(m))
 		return 0;
 	for (c = m->stack; c && !isvisiblefullscreen(c); c = c->snext);
@@ -1494,10 +1527,16 @@ focusin(XEvent *e)
 	OverrideWindow *ow;
 	XFocusChangeEvent *ev = &e->xfocus;
 
-	for (ow = overridewindows; ow && ow->win != ev->window; ow = ow->next);
-	if (ow && (focusfullscreenforoverride(ev->window)
-	    || istransientforbar(ev->window)))
+	ow = overrideforwindow(ev->window);
+	if (ow && focusfullscreenforoverride(ev->window))
 		return;
+	if (ow && ow->ismenu) {
+		focusedmenu = ow->win;
+		return;
+	}
+	if (ow && istransientforbar(ow->win))
+		return;
+	focusedmenu = None;
 	if (selmon->sel && ev->window != selmon->sel->win)
 		setfocus(selmon->sel);
 }
@@ -4949,6 +4988,14 @@ trackoverridewindow(Window win)
 			wa.your_event_mask | FocusChangeMask | PropertyChangeMask);
 	}
 	updateoverridewindow(win);
+	if (ow->ismenu) {
+		Window focused;
+		int revert;
+
+		/* The client can map and focus before our FocusChange selection. */
+		if (XGetInputFocus(dpy, &focused, &revert) && overrideforwindow(focused) == ow)
+			focusedmenu = win;
+	}
 }
 
 void
@@ -4960,6 +5007,18 @@ untrackoverridewindow(Window win)
 	if (*ow) {
 		OverrideWindow *removed = *ow;
 
+		if (removed->ismenu && focusedmenu == win) {
+			Window focused;
+			int revert;
+
+			focusedmenu = None;
+			/* X may already have applied the closing menu's revert policy.
+			 * Never steal focus from a different live window. */
+			XGetInputFocus(dpy, &focused, &revert);
+			if (selmon && selmon->sel && (focused == win
+			    || focused == None || focused == PointerRoot || focused == root))
+				setfocus(selmon->sel);
+		}
 		*ow = removed->next;
 		free(removed);
 	}
@@ -5685,6 +5744,11 @@ updateoverridewindow(Window win)
 		states, LENGTH(states), NULL);
 	ntypes = getwinatomproplist(win, netatom[NetWMWindowType],
 		types, LENGTH(types), NULL);
+	/* Menus own their input focus; taking it back dismisses Steam popups. */
+	ow->ismenu = atomlistcontains(types, ntypes, netatom[NetWMWindowTypeMenu])
+		|| atomlistcontains(types, ntypes, netatom[NetWMWindowTypePopupMenu])
+		|| atomlistcontains(types, ntypes, netatom[NetWMWindowTypeDropdownMenu])
+		|| atomlistcontains(types, ntypes, netatom[NetWMWindowTypeCombo]);
 	ow->raise = atomlistcontains(states, nstates, netatom[NetWMAbove])
 		|| atomlistcontains(states, nstates, netatom[NetWMStaysOnTop])
 		|| atomlistcontains(types, ntypes, netatom[NetWMWindowTypeTooltip])

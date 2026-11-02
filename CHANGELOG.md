@@ -73,6 +73,9 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Preserve keyboard focus in application menus and combo popups so Steam menus
+  do not immediately dismiss. Notification and fullscreen overlay focus behavior
+  remains unchanged.
 - Report `efivarfs` firmware-variable usage as information in System Health
   instead of a storage error. The fixed-size firmware NVRAM store is not a
   cleanable filesystem, so a nearly full store no longer raises a false
