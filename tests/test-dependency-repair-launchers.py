@@ -35,6 +35,9 @@ class DependencyLaunchers(unittest.TestCase):
                 p = tools / cmd
                 p.write_text("#!/bin/sh\nexit 0\n")
                 p.chmod(0o755)
+            clean_checker = tools / "clean-checker"
+            clean_checker.write_text("#!/bin/sh\nexit 0\n")
+            clean_checker.chmod(0o755)
             log = base / "calls.jsonl"
             log.touch()
             terminal = tools / "dwm-terminal"
@@ -57,9 +60,14 @@ class DependencyLaunchers(unittest.TestCase):
                 for name, args in (("dwm-quickshell-controlcenter", ["action", "dependency-check"]),
                                    ("dwm-system-health", ["repair-user", "install-dependencies"])):
                     with self.subTest(button=name, source_exists=source_exists):
-                        pkg.write_text("#!/bin/sh\nexit 1\n")
+                        pkg.write_text("#!/bin/sh\nexit " + ("0" if name == "dwm-system-health" else "1") + "\n")
                         marker.unlink(missing_ok=True)
-                        result = subprocess.run([scripts / name, *args], input="y\n\n", env=environment,
+                        # Health must reach package repair even when the generic
+                        # checker has no required failures (e.g. only maim is missing).
+                        dispatch_env = dict(environment)
+                        if name == "dwm-system-health":
+                            dispatch_env["DWM_CHECK_DEPS_SCRIPT"] = str(clean_checker)
+                        result = subprocess.run([scripts / name, *args], input="y\n\n", env=dispatch_env,
                                                  capture_output=True, text=True, timeout=15)
                         self.assertFalse(marker.exists(), "Dependency button ran the full desktop installer")
                         self.assertEqual(result.returncode, 0, result.stderr)
@@ -131,8 +139,7 @@ class DependencyLaunchers(unittest.TestCase):
             environment = {**os.environ, "PATH": str(tools) + ":/usr/bin:/bin", "HOME": str(base),
                            "DWM_CHECK_DEPS_SCRIPT": str(base / "missing-check-deps.sh")}
             environment.pop("DWM_TEST_SYNC", None)
-            for name, args in (("dwm-quickshell-controlcenter", ["action", "dependency-check"]),
-                               ("dwm-system-health", ["repair-user", "install-dependencies"])):
+            for name, args in (("dwm-quickshell-controlcenter", ["action", "dependency-check"]),):
                 with self.subTest(button=name):
                     result = subprocess.run([scripts / name, *args], env=environment,
                                              capture_output=True, text=True, timeout=15)

@@ -1677,7 +1677,15 @@ dependency_check() {
 }
 
 install_missing_deps() {
-	dependency_check
+	if ! command -v dwm-terminal >/dev/null 2>&1 ||
+		! dwm-terminal --print-command >/dev/null 2>&1; then
+		printf 'dwm-terminal is unavailable\n' >&2
+		return 1
+	fi
+	# Health diagnostics include optional tools that the general checker does
+	# not require. Repair its package map directly instead of skipping them.
+	# shellcheck disable=SC2016 # Capture and return the inner repair status.
+	terminal_run 'dwm-desktop-update install-dependencies; result=$?; printf "\nPress enter to close..."; read -r _; exit "$result"'
 }
 
 self_heal() {

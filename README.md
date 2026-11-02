@@ -229,8 +229,9 @@ apply dwm patches to install and use the desktop.
 
 ## Troubleshooting
 
-Control Center's **Check Dependencies** and System Health's **Repair**
-open an interactive dependency check and package repair in a terminal. You can also run
+Control Center's **Check Dependencies** opens an interactive dependency check
+and package repair in a terminal. System Health's dependency **Repair** opens
+package repair directly, including optional tools reported by its scan. You can also run
 `dwm-desktop-update install-dependencies`. It uses the trusted installed package
 map, installs missing Fedora dependencies after administrator authorization and
 DNF transaction confirmation, and preserves desktop files, installation receipts,
