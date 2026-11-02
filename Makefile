@@ -467,6 +467,7 @@ check-monitor-tags:
 	tests/test-monitor-tag-switching.sh
 
 check-keyboard-layout: all
+	python3 tests/test-keyboard-refresh.py
 	tests/test-keyboard-layout-xvfb.sh
 
 check-quickshell-launcher:

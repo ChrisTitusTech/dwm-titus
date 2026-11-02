@@ -440,6 +440,7 @@ static Atom dwmfullscreenmonitorsatom, dwmtagupdateatom;
 static Atom kbgroupatom, kbnamesatom, kbsymbolsatom, kbrequestatom, kbutf8atom;
 static int xkbeventbase = -1;  /* -1: no usable XKB extension */
 static long kbpublished[2] = { -1, -1 }; /* group, group count */
+static int kbretry = 1;
 static int kbgroups;            /* group count from the keyboard controls */
 static unsigned char kbwrap;    /* groups_wrap from the keyboard controls */
 static Atom kbnamecache[XkbNumKbdGroups + 1]; /* group names + count */
@@ -5277,23 +5278,26 @@ updatekeyboard(void)
 {
 	XkbDescPtr xkb;
 	XkbStateRec st;
+	int groups;
 
+	kbretry = 1;
 	if (xkbeventbase < 0 || !(xkb = XkbAllocKeyboard()))
 		return;
-	kbgroups = 1;
-	kbwrap = XkbWrapIntoRange;
-	if (XkbGetControls(dpy, XkbAllControlsMask, xkb) == Success && xkb->ctrls) {
-		kbgroups = xkb->ctrls->num_groups;
-		kbwrap = xkb->ctrls->groups_wrap;
-	}
-	if (kbgroups < 1 || kbgroups > XkbNumKbdGroups)
-		kbgroups = kbgroups < 1 ? 1 : XkbNumKbdGroups;
-	if (XkbGetNames(dpy, XkbGroupNamesMask|XkbSymbolsNameMask, xkb) != Success)
-		XkbFreeNames(xkb, XkbAllNamesMask, True);
+	/* Publish one complete snapshot, never turn a failed read into defaults. */
+	if (XkbGetControls(dpy, XkbAllControlsMask, xkb) != Success || !xkb->ctrls
+	    || XkbGetNames(dpy, XkbGroupNamesMask|XkbSymbolsNameMask, xkb) != Success
+	    || !xkb->names || XkbGetState(dpy, XkbUseCoreKbd, &st) != Success)
+		goto done;
+	groups = xkb->ctrls->num_groups;
+	if (groups < 1 || groups > XkbNumKbdGroups)
+		goto done;
+	kbgroups = groups;
+	kbwrap = xkb->ctrls->groups_wrap;
+	kbretry = 0;
 	/* group and count first, so a reader of the names already sees the new count */
-	if (XkbGetState(dpy, XkbUseCoreKbd, &st) == Success)
-		kbpublishgroup(st.group);
+	kbpublishgroup(st.group);
 	kbpublishnames(xkb);
+done:
 	XkbFreeKeyboard(xkb, 0, True);
 }
 
@@ -5304,7 +5308,9 @@ kblock(int group, int relative)
 {
 	XkbStateRec st;
 
-	if (xkbeventbase < 0 || kbgroups < 1)
+	if (kbretry)
+		updatekeyboard();
+	if (xkbeventbase < 0 || kbretry || kbgroups < 1)
 		return;
 	if (relative) {
 		if (XkbGetState(dpy, XkbUseCoreKbd, &st) != Success)
@@ -5388,16 +5394,16 @@ keyboardsetup(void)
 	kbutf8atom = XInternAtom(dpy, "UTF8_STRING", False);
 	/* a request left over from a previous dwm is stale */
 	XDeleteProperty(dpy, root, kbrequestatom);
-	if (!XkbQueryExtension(dpy, &opcode, &xkbeventbase, &error, &major, &minor)) {
+	if (!XkbQueryExtension(dpy, &opcode, &xkbeventbase, &error, &major, &minor)
+	    || !XkbSelectEventDetails(dpy, XkbUseCoreKbd, XkbStateNotify,
+	        XkbGroupStateMask, XkbGroupStateMask)
+	    || !XkbSelectEvents(dpy, XkbUseCoreKbd, mask, mask)) {
 		xkbeventbase = -1;
 		XDeleteProperty(dpy, root, kbgroupatom);
 		XDeleteProperty(dpy, root, kbnamesatom);
 		XDeleteProperty(dpy, root, kbsymbolsatom);
 		return;
 	}
-	XkbSelectEventDetails(dpy, XkbUseCoreKbd, XkbStateNotify,
-		XkbGroupStateMask, XkbGroupStateMask);
-	XkbSelectEvents(dpy, XkbUseCoreKbd, mask, mask);
 	updatekeyboard();
 }
 
@@ -5406,7 +5412,7 @@ xkbevent(XEvent *e)
 {
 	switch (((XkbEvent *)e)->any.xkb_type) {
 	case XkbStateNotify:
-		if (kbgroups < 1)
+		if (kbretry || kbgroups < 1)
 			updatekeyboard();
 		else
 			kbpublishgroup(((XkbEvent *)e)->state.group);

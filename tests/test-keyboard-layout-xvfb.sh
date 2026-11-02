@@ -580,6 +580,14 @@ wait_state_value keyboard_layouts 'de|ru'
 # the ":1" token wins even when another part sits between it and ":2"
 X xprop -root -f _DWM_KEYBOARD_SYMBOLS 8s -set _DWM_KEYBOARD_SYMBOLS 'pc+fr:1+inet(evdev)+ru:2'
 wait_state_value keyboard_layouts 'fr|ru'
+# Explicit group one also works without a leading model component.
+X xprop -root -f _DWM_KEYBOARD_SYMBOLS 8s -set _DWM_KEYBOARD_SYMBOLS 'fr:1+inet(evdev)+ru:2'
+wait_state_value keyboard_layouts 'fr|ru'
+# Sparse groups must not discard an explicit group-one layout.
+X xprop -root -f _DWM_KEYBOARD_GROUP 32c -set _DWM_KEYBOARD_GROUP '0, 3'
+X xprop -root -f _DWM_KEYBOARD_SYMBOLS 8s -set _DWM_KEYBOARD_SYMBOLS 'pc+fr:1+inet(evdev)+ru:3'
+wait_state_value keyboard_layouts 'fr||ru'
+X xprop -root -f _DWM_KEYBOARD_GROUP 32c -set _DWM_KEYBOARD_GROUP '0, 2'
 X xprop -root -remove _DWM_KEYBOARD_SYMBOLS
 wait_state_value keyboard_layouts 'us|gr'
 wait_watch_value keyboard_layouts 'us|gr'
