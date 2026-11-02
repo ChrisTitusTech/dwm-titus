@@ -469,16 +469,18 @@ Scope {
         onSaved: root.finishSettingsWrite()
         onSaveFailed: root.settingsWriteFailed()
         onLoadFailed: error => {
-            root.settingsReady = true;
-            if (error !== 2) {
-                root.settingsSaveFailed = true;
-                root.settingsLoadFailed = true;
-                root.historyReady = true;
+            if (error === 2) {
+                settingsFile.persistenceEnabled = false;
+                root.applyLoadedSettings();
+                return;
             }
+            root.settingsReady = true;
+            root.settingsSaveFailed = true;
+            root.settingsLoadFailed = true;
+            root.historyReady = true;
             root.confirmedPersistence = false;
             root.persistenceEnabled = false;
-            if (root.settingsLoadFailed) root.flushPendingCaptures();
-            else if (root.historyLoaded) root.loadHistory();
+            root.flushPendingCaptures();
         }
 
         // qmllint disable unresolved-type

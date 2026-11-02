@@ -159,6 +159,18 @@ with tempfile.TemporaryDirectory(prefix="clipboard-runtime-") as directory, \
             settings.chmod(0o600)
             action('retry')
             wait_state(lambda state: state['confirmed'] and not state['failed'] and state['count'] == 2)
+            process.terminate()
+            process.wait(timeout=5)
+            settings.chmod(0)
+            process = subprocess.Popen(['quickshell', '--no-duplicate', '--path', str(shell / 'shell.qml')],
+                                       env=env, stdout=shell_log, stderr=subprocess.STDOUT)
+            wait_state(lambda state: state['ready'] and state['failed'])
+            action('capture', 'session retained after removing damaged settings')
+            settings.unlink()
+            action('retry')
+            wait_state(lambda state: state['ready'] and not state['failed'] and state['count'] == 1)
+            action('persist', 'true')
+            wait_state(lambda state: state['confirmed'])
         print('Clipboard opt-in, private storage, failure recovery, idle and restarted opt-out: PASS')
     except BaseException:
         shell_log.flush()
