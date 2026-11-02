@@ -842,8 +842,9 @@ for candidate in /usr/lib64/qt6/bin/qml /usr/lib/qt6/bin/qml qml6; do
 done
 if [ -n "$qml_runner" ]; then
 	QT_QPA_PLATFORM=offscreen "$qml_runner" "$repo/tests/quickshell-display-layout.qml"
+	QT_QPA_PLATFORM=offscreen "$qml_runner" "$repo/tests/quickshell-input-options.qml"
 else
-	printf 'SKIP: Qt 6 qml runner unavailable; display geometry assertions not run.\n'
+	printf 'SKIP: Qt 6 qml runner unavailable; display geometry and input option assertions not run.\n'
 fi
 
 if command -v quickshell >/dev/null 2>&1; then

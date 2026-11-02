@@ -15,7 +15,30 @@ versions from `config.mk`.
   prefer Path when installed, with Thunar otherwise; existing MIME preferences
   remain unchanged. Keep GTK as the file chooser portal until Path supports
   cancellation through the portal request API.
-
+- Add an optional seconds display to the panel clock (off by default). Toggle
+  it in Settings > Appearance > Panel widgets or the Control Center Bar Widgets
+  page; it is stored in `panel-widgets.conf` and older files keep their widget
+  choices.
+- Add a keyboard layout pill to the panel. With two or more layouts (Settings >
+  Input) it shows the active one (US, GR, ...); click or scroll to switch,
+  middle-click for the first layout, right-click for Settings > Input. It is a
+  sixth panel widget (Control Center Bar Widgets, Settings Appearance), on by
+  default; `panel-widgets.conf` files from before it keep their choices. The
+  pill is ported from the Keyboard-Layout-for-Omarchy plugin
+  (https://github.com/Somnius/Keyboard-Layout-for-Omarchy, MIT).
+- Settings > Input has Switch layout with (Alt+Shift, Ctrl+Shift, Caps Lock,
+  Shift+Caps Lock, both Shifts, Right Alt, Right Ctrl, Menu) and Layout LED
+  (Caps, Scroll or Num Lock) buttons for keyboards. They preview a Modifier
+  options value with only the `grp:` or `grp_led:` part changed.
+- dwm publishes the active keyboard layout group, the group names and the
+  keymap symbols name on the root window and switches layouts on a
+  `_DWM_KEYBOARD_GROUP_REQUEST` root property or the new `cyclelayout` hotkey
+  func. `dwm-quickshell-state` reports them as `keyboard_*` fields, streams
+  layout switches as small keyboard-only updates, and gains
+  `keyboard-group <next|prev|N>`, which returns once dwm has taken the
+  request (exit 75 after about a second if it does not). Workspace names containing commas are no
+  longer split. The design follows the Keyboard-Layout-for-Omarchy plugin
+  (https://github.com/Somnius/Keyboard-Layout-for-Omarchy, MIT).
 - Add `fullscreen=1` window rules to open matching applications across the
   entire monitor without a top bar, gaps, or window borders. Title-based rules
   also apply once when a matching title arrives after the window opens.

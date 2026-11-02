@@ -40,6 +40,7 @@
 #          togglebar         → show/hide the status bar
 #          focusmon          → focus next/prev monitor           (i=1 or i=-1)
 #          tagmon            → send window to next/prev monitor  (i=1 or i=-1)
+#          cyclelayout       → next/prev keyboard layout        (i=1 or i=-1)
 #          view              → switch to a tag  (ui=-1 = show all)
 #          tag               → send window to a tag
 #          toggleview / toggletag → also show/tag alongside current
@@ -132,6 +133,10 @@ keys = [
   { mod="SUPER CTRL",       key="q",       desc="Power menu",              func="spawn",       cmd="quickshell ipc --path \"${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/shell.qml\" call power toggle" },
   { mod="SUPER CTRL SHIFT", key="r",       desc="Reboot",                  func="spawn",       cmd="systemctl reboot" },
   { mod="SUPER CTRL SHIFT", key="s",       desc="Suspend",                 func="spawn",       cmd="systemctl suspend" },
+
+  # ── Keyboard layout ───────────────────────────────────────────────────────────
+  # Uncomment to switch to the next layout (i=-1 for the previous one).
+  # { mod="SUPER ALT",        key="k",       desc="Next keyboard layout",    func="cyclelayout", i=1 },
 
 ]
 
