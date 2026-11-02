@@ -141,7 +141,7 @@ Device 'Power Button':
 	Device Node (102): "/dev/input/event12"
 PROPS
 		;;
-	17 | 27) cat <<PROPS
+	17 | 27 | 29) cat <<PROPS
 Device 'Twin PS/2 Mouse':
 	Device Product ID (101): 2, 19
 	Device Node (102): "/dev/input/event13"
@@ -1111,6 +1111,19 @@ env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" TEST_DUPLICATE_CAPABI
 rm -f "$work/actions.log"
 env "${env_common[@]}" TEST_DEVICES="$work/devices-shared-replug" TEST_DUPLICATE_CAPABILITIES=1 TEST_TWIN_18_VALUE=0 "$helper" revert uniform-parts >/dev/null
 [[ $(cat "$work/actions.log") == $'xinput set-prop 27 libinput Natural Scrolling Enabled 0\nxinput set-prop 28 libinput Natural Scrolling Enabled 0' ]]
+
+# An additional same-signature member has no rollback snapshot.
+cp "$work/devices-shared-replug" "$work/devices-shared-extra"
+printf '| + Twin PS/2 Mouse id=29 [slave pointer (2)]\n' >>"$work/devices-shared-extra"
+env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" TEST_DUPLICATE_CAPABILITIES=1 TEST_TWIN_18_VALUE=0 "$helper" preview extra-part 10 "$twin_key" natural-scroll 1 >/dev/null
+rm -f "$work/actions.log"
+if env "${env_common[@]}" TEST_DEVICES="$work/devices-shared-extra" TEST_DUPLICATE_CAPABILITIES=1 TEST_TWIN_18_VALUE=0 "$helper" revert extra-part >/dev/null 2>&1; then
+	echo 'FAIL: rollback guessed an uncaptured member value' >&2
+	exit 1
+fi
+test ! -s "$work/actions.log"
+test -f "$work/runtime/dwm-settings-input/extra-part.state"
+env "${env_common[@]}" TEST_DEVICES="$work/devices-shared-replug" TEST_DUPLICATE_CAPABILITIES=1 TEST_TWIN_18_VALUE=0 "$helper" revert extra-part >/dev/null
 
 # A journal append failure happens before any live member is changed.
 cat >"$work/bin/stat" <<'STAT'

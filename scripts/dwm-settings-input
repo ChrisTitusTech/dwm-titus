@@ -395,7 +395,7 @@ capture_members() {
 # require a unique physical-part signature in both snapshots.
 restore_members() {
 	local token=$1 key=$2 setting=$3 previous=$4 file id value identity failed=0 status
-	local -A values=() identities=() counts=() current_identity=() signature_values=() signature_conflicts=()
+	local -A values=() identities=() counts=() current_counts=() current_identity=() signature_values=() signature_conflicts=()
 	local -a restore=()
 	file=$(token_file "$token" members)
 	if [[ $key == "$accessibility_key" || ! -s $file ]]; then
@@ -422,9 +422,11 @@ restore_members() {
 		fi
 		identity=$(member_identity "$id") || return 1
 		current_identity[$id]=$identity
+		current_counts[$identity]=$((${current_counts[$identity]:-0} + 1))
 	done
 	for id in "${!current_identity[@]}"; do
 		identity=${current_identity[$id]}
+		[[ ${current_counts[$identity]} -le ${counts[$identity]:-0} ]] || return 1
 		if [[ -n ${values[$id]+x} && ${identities[$id]:-} == "$identity" ]]; then
 			value=${values[$id]}
 		else
