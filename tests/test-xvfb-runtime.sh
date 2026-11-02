@@ -433,9 +433,12 @@ main(int argc, char **argv)
 		panel = preconfigure_panel = 1;
 	else if (argc == 2 && strcmp(argv[1], "override") == 0)
 		override_redirect = 1;
-	else if (argc == 3 && strcmp(argv[1], "override-transient") == 0) {
+	else if (argc == 3 && (strcmp(argv[1], "override-transient") == 0
+	    || strcmp(argv[1], "override-transient-menu") == 0)) {
 		override_redirect = 1;
 		transient_for = strtoul(argv[2], NULL, 0);
+		if (strcmp(argv[1], "override-transient-menu") == 0)
+			popup_type = "_NET_WM_WINDOW_TYPE_POPUP_MENU";
 	}
 	else if (argc == 2 && strcmp(argv[1], "override-tooltip") == 0) {
 		override_redirect = 1;
@@ -1194,6 +1197,24 @@ wait_for_top_window "$above_win"
 DISPLAY=$display xdotool key Super+Shift+y
 wait_for_window_state_absent "$fullscreen_win" _NET_WM_STATE_FULLSCREEN
 wait_for_fullscreen_monitors ''
+
+# A recognized menu transient for the bar also restores the selected client.
+DISPLAY=$display "$work/xclient" override-transient-menu "$panel_win" >"$work/bar-menu-id" 2>"$work/bar-menu.log" &
+popup_client_pid=$!
+i=0
+while [ "$i" -lt 100 ] && [ ! -s "$work/bar-menu-id" ]; do
+	i=$((i + 1))
+	sleep 0.05
+done
+popup_win=$(cat "$work/bar-menu-id")
+wait_for_window_above "$popup_win" "$above_win"
+DISPLAY=$display xdotool windowfocus "$popup_win"
+wait_for_input_focus "$popup_win"
+DISPLAY=$display xdotool windowunmap "$popup_win"
+wait_for_input_focus "$fullscreen_win"
+kill "$popup_client_pid"
+wait "$popup_client_pid" 2>/dev/null || true
+popup_client_pid=
 
 DISPLAY=$display "$work/xclient" override-transient "$panel_win" \
 	>"$work/popup-panel-transient-window-id" \

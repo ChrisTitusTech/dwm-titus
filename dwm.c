@@ -1510,13 +1510,14 @@ focusin(XEvent *e)
 	XFocusChangeEvent *ev = &e->xfocus;
 
 	ow = overrideforwindow(ev->window);
-	if (ow && (focusfullscreenforoverride(ev->window)
-	    || istransientforbar(ow->win)))
+	if (ow && focusfullscreenforoverride(ev->window))
 		return;
 	if (ow && ow->ismenu) {
 		focusedmenu = ow->win;
 		return;
 	}
+	if (ow && istransientforbar(ow->win))
+		return;
 	focusedmenu = None;
 	if (selmon->sel && ev->window != selmon->sel->win)
 		setfocus(selmon->sel);
