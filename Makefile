@@ -38,6 +38,7 @@ INSTALL_COMMANDS = \
 	scripts/dwm-keybinds \
 	scripts/dwm-lock \
 	scripts/dwm-lock-watch \
+	scripts/dwm-migrate-clipboard-surface \
 	scripts/dwm-migrate-update-center-window-rule \
 	scripts/dwm-panel-settings \
 	scripts/dwm-update-center \
@@ -303,6 +304,10 @@ install-user-files:
 	HOME="${USER_HOME}" XDG_CONFIG_HOME="${XDG_CONFIG_HOME}" \
 		scripts/dwm-migrate-update-center-window-rule || \
 		echo "  Preserving existing window rules after migration warning."
+	@echo "==> Migrating clipboard history configuration..."
+	HOME="${USER_HOME}" XDG_CONFIG_HOME="${XDG_CONFIG_HOME}" \
+		scripts/dwm-migrate-clipboard-surface || \
+		echo "  Preserving existing hotkeys and window rules after migration warning."
 	@echo "==> Migrating legacy graphical-session startup..."
 	HOME="${USER_HOME}" XDG_CONFIG_HOME="${XDG_CONFIG_HOME}" scripts/migrate-graphical-session.sh
 	@echo "==> Installing Meslo font aliases..."

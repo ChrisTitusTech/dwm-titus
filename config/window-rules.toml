@@ -49,6 +49,7 @@ rules = [
   { title="dwm system health",        isfloating=1, alwaysontop=1 },
   { title="dwm settings",             isfloating=1, alwaysontop=1 },
   { title="dwm notification history", isfloating=1, alwaysontop=1 },
+  { title="dwm clipboard",            isfloating=1, alwaysontop=1 },
   # Update Center uses separate window identities for its saved opening mode.
   { title="dwm updates tiled", isfloating=0, noswallow=1 },
   { title="dwm updates floating", isfloating=1, noswallow=1 },

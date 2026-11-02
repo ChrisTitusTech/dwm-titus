@@ -1,0 +1,235 @@
+#!/usr/bin/python3
+
+"""Migrate the clipboard history surface into existing user TOML files.
+
+The tracked defaults in config/hotkeys.toml and config/window-rules.toml are
+seeded only for new installs; upgrades keep user-owned files untouched. This
+migration adds the dwm clipboard window rule and the Super+V keybinding to
+existing files, idempotently, with a recovery backup per changed file. A
+conflicting Super+V binding is left alone so user customization always wins.
+"""
+
+import os
+import re
+import shutil
+import stat
+import sys
+import tempfile
+import tomllib
+from pathlib import Path
+
+
+CLIPBOARD_RULE = {"title": "dwm clipboard", "isfloating": 1, "alwaysontop": 1}
+
+CLIPBOARD_KEYBIND = {
+    "mod": "SUPER",
+    "key": "v",
+    "desc": "Clipboard history",
+    "func": "spawn",
+    "cmd": 'quickshell ipc --path "${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/shell.qml" call clipboard toggle',
+}
+
+MIGRATION_LIMIT = 4 * 1024 * 1024
+
+
+def toml_string(value):
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def entry_text(entry):
+    fields = [f"{key}={toml_string(value)}" if isinstance(value, str) else f"{key}={value}"
+              for key, value in entry.items()]
+    return "  { " + ", ".join(fields) + " },\n"
+
+
+def array_end(text, name):
+    match = re.search(rf"(?m)^[ \t]*{name}[ \t]*=[ \t]*\[", text)
+    if not match:
+        raise ValueError(f"missing top-level {name} array")
+
+    depth = 1
+    quote = None
+    escaped = False
+    comment = False
+    last_significant = None
+    for index in range(match.end(), len(text)):
+        char = text[index]
+        if comment:
+            if char == "\n":
+                comment = False
+            continue
+        if quote:
+            if quote == '"' and escaped:
+                escaped = False
+            elif quote == '"' and char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+            continue
+        if char == "#":
+            comment = True
+        elif char in "\"'":
+            quote = char
+        elif char == "[":
+            depth += 1
+            last_significant = char
+        elif char == "]":
+            depth -= 1
+            if depth == 0:
+                needs_comma = last_significant is not None and last_significant not in {"[", ","}
+                return index, needs_comma
+            last_significant = char
+        elif not char.isspace():
+            last_significant = char
+    raise ValueError(f"unterminated {name} array")
+
+
+def append_entries(path, name, text, entries):
+    end, needs_comma = array_end(text, name)
+    prefix = text[:end]
+    if needs_comma:
+        last_line = prefix.rstrip("\r\n").split("\n")[-1]
+        if "#" in last_line:
+            prefix = prefix.rstrip("\r\n") + "\n,\n"
+        else:
+            prefix = prefix.rstrip("\r\n") + ",\n"
+    elif prefix and not prefix.endswith("\n"):
+        prefix += "\n"
+    migrated = prefix + "".join(entry_text(entry) for entry in entries) + text[end:]
+    try:
+        tomllib.loads(migrated)
+    except tomllib.TOMLDecodeError as error:
+        raise ValueError(f"generated invalid TOML: {error}") from error
+    return migrated
+
+
+def load_regular_file(path):
+    if path.is_symlink():
+        raise ValueError("refusing to replace a symlink")
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(descriptor, "rb") as source:
+        info = os.fstat(source.fileno())
+        if not stat.S_ISREG(info.st_mode):
+            raise ValueError("migration targets must be regular files")
+        data = source.read(MIGRATION_LIMIT + 1)
+    if len(data) > MIGRATION_LIMIT:
+        raise ValueError("file exceeds the migration size limit")
+    original = data.decode("utf-8")
+    try:
+        document = tomllib.loads(original)
+    except tomllib.TOMLDecodeError as error:
+        raise ValueError(f"invalid TOML: {error}") from error
+    return original, document
+
+
+def write_migrated(path, migrated):
+    mode = path.stat().st_mode & 0o777
+    descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(descriptor, "w") as output:
+            output.write(migrated)
+            output.flush()
+            os.fsync(output.fileno())
+        os.chmod(temporary, mode)
+        # Keep a unique recovery copy so the user can always restore their file.
+        backup_fd, backup = tempfile.mkstemp(prefix=f"{path.name}.before-clipboard.", dir=path.parent)
+        os.close(backup_fd)
+        shutil.copy2(path, backup)
+        with open(backup, "rb") as saved:
+            os.fsync(saved.fileno())
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def migrate_window_rules(path):
+    original, document = load_regular_file(path)
+    rules = document.get("rules")
+    if not isinstance(rules, list):
+        raise ValueError("missing top-level rules array")
+    present = any(all(rule.get(key) == value for key, value in CLIPBOARD_RULE.items())
+                  for rule in rules if isinstance(rule, dict))
+    if present:
+        return False
+    write_migrated(path, append_entries(path, "rules", original, [CLIPBOARD_RULE]))
+    return True
+
+
+def super_bound(binding):
+    # dwm maps MODKEY and SUPER to the same mask and keypress() only fires
+    # entries whose whole mask matches, so exactly these sets conflict with
+    # the new binding; SUPER CTRL V and friends do not.
+    if not isinstance(binding, dict) or binding.get("key") != CLIPBOARD_KEYBIND["key"]:
+        return False
+    modifiers = binding.get("mod", "")
+    if isinstance(modifiers, str):
+        tokens = set(modifiers.split())
+    elif isinstance(modifiers, list):
+        tokens = {str(token).strip() for token in modifiers}
+    else:
+        return False
+    return tokens in ({"SUPER"}, {"MODKEY"})
+
+
+def migrate_hotkeys(path):
+    original, document = load_regular_file(path)
+    # hotkeys.toml declares [vars] before the binding arrays, so keys normally
+    # lives under vars; accept a top-level keys array for robustness.
+    vars_table = document.get("vars")
+    keys = vars_table.get("keys") if isinstance(vars_table, dict) else None
+    if not isinstance(keys, list):
+        keys = document.get("keys")
+    if not isinstance(keys, list):
+        raise ValueError("missing keys array")
+    if any(super_bound(binding) for binding in keys):
+        # A user binding already owns Super+V; customization always wins.
+        print(f"dwm-titus: Super+V is already bound in {path}; leaving it in place")
+        return False
+    write_migrated(path, append_entries(path, "keys", original, [CLIPBOARD_KEYBIND]))
+    return True
+
+
+MIGRATIONS = {
+    "window-rules.toml": (migrate_window_rules, "dwm-titus: added clipboard window rule to {path}"),
+    "hotkeys.toml": (migrate_hotkeys, "dwm-titus: added clipboard history keybinding to {path}"),
+}
+
+
+def default_path(name):
+    configured = os.environ.get("XDG_CONFIG_HOME", "")
+    config_home = Path(configured) if os.path.isabs(configured) else Path.home() / ".config"
+    return config_home / "dwm-titus" / name
+
+
+def main():
+    # With no arguments both user files are migrated in place; the desktop
+    # update flow passes staged file paths so the sandboxed copy is migrated.
+    if len(sys.argv) > 3:
+        print(f"usage: {Path(sys.argv[0]).name} [window-rules.toml] [hotkeys.toml]", file=sys.stderr)
+        return 2
+    if len(sys.argv) == 1:
+        paths = [default_path(name) for name in MIGRATIONS]
+    else:
+        paths = [Path(argument) for argument in sys.argv[1:]]
+
+    failed = False
+    for path in paths:
+        migration = MIGRATIONS.get(path.name)
+        if migration is None:
+            print(f"dwm-migrate-clipboard-surface: unknown target {path.name}", file=sys.stderr)
+            failed = True
+            continue
+        if not path.exists():
+            continue
+        try:
+            if migration[0](path):
+                print(migration[1].format(path=path))
+        except (OSError, ValueError) as error:
+            print(f"dwm-migrate-clipboard-surface: {path.name}: {error}", file=sys.stderr)
+            failed = True
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
