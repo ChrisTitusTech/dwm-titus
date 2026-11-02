@@ -165,7 +165,7 @@ from the everyday desktop:
 - **Headless smoke testing:** `xorg-x11-server-Xvfb`, `dbus-daemon`, `gawk`,
   `google-noto-sans-fonts`, `setxkbmap`, `xkbcomp`, `xmodmap`, `xinput`, and the
   build/runtime tools in the `ci-smoke` map.
-- **Image assembly:** `xorriso`, `rsync`, `squashfs-tools-ng`, `isomd5sum`,
+- **Image assembly:** `xorriso`, `mtools`, `rsync`, `squashfs-tools-ng`, `isomd5sum`,
   `python3-pillow`, `fontconfig`, and `google-noto-sans-fonts`.
 - **Image factory and VM qualification:** `qemu-system-x86`, `qemu-img`,
   `edk2-ovmf`, `libguestfs`, `pykickstart`, `xz`, `zstd`, and `time`, in addition
