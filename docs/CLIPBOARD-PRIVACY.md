@@ -38,8 +38,8 @@ No password-pattern heuristic or user-window-title guess is used.
 ## Verification before payload access
 
 1. Subscribe to XFixes ownership events, without polling. Ignore the clipboard
-   that already existed when the observer started. A copy in the exact startup
-   millisecond may also be ignored conservatively; copying again works.
+   that already existed when the observer started. Subscription initialization
+   discards startup events before the ready record; no timestamp cutoff remains.
 2. Ask XRes 1.2 for the owner's local client PID. Never trust `_NET_WM_PID`,
    `WM_CLASS`, a window title or focused application as proof of origin.
 3. Verify same-user `/proc` identity, executable inode and process start time;
