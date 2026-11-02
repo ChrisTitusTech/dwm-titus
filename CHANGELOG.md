@@ -90,9 +90,6 @@ versions from `config.mk`.
 
 ### Fixed
 
-- Upload release ISOs with the dwm-titus version in their filenames, including
-  an explicit NVIDIA variant, and generate checksums using download filenames.
-
 - Isolate test configuration, data, state, and cache directories from the
   invoking desktop. Installer preservation fixtures now keep both simulated
   homes' receipts and build configurations in their own state directories and
@@ -135,6 +132,9 @@ versions from `config.mk`.
   `nord.conf` include, makes `include active-theme.conf` the last and only
   copy, keeps every other line, and saves the original as
   `kitty.conf.dwm-titus.bak` with the same permissions.
+
+- Upload release ISOs with the dwm-titus version in their filenames, including
+  an explicit NVIDIA variant, and generate checksums using download filenames.
 
 - Require GNOME Keyring and its separate PAM module in every install profile,
   detect missing keyring packages in dependency checks and System Health, and
