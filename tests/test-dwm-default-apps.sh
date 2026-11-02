@@ -443,12 +443,26 @@ watch_descendant_pids() {
 	done
 }
 
+watch_child_has_installed_watch() {
+	local pid=$1 path=$2 inode info
+	inode=$(stat -Lc %i -- "$path" 2>/dev/null) || return 1
+	printf -v inode '%x' "$inode"
+	for info in "/proc/$pid/fdinfo/"*; do
+		[[ -r $info ]] || continue
+		if grep -Eq "^inotify .*ino:0*$inode( |$)" "$info" 2>/dev/null; then
+			return 0
+		fi
+	done
+	return 1
+}
+
 watch_child_for_path() {
 	local helper_pid=$1 path=$2 pid
 	while IFS= read -r pid; do
 		[[ -n $pid ]] || continue
 		if [[ $(cat "/proc/$pid/comm" 2>/dev/null || true) == inotifywait ]] &&
-			tr '\0' '\n' <"/proc/$pid/cmdline" 2>/dev/null | grep -Fqx -- "$path"; then
+			tr '\0' '\n' <"/proc/$pid/cmdline" 2>/dev/null | grep -Fqx -- "$path" &&
+			watch_child_has_installed_watch "$pid" "$path"; then
 			printf '%s\n' "$pid"
 			return 0
 		fi
@@ -1297,6 +1311,8 @@ if command -v inotifywait >/dev/null 2>&1; then
 	done
 	[[ -n $recovered_target_child && $recovered_target_child != "$failed_target_child" ]]
 	process_identity_is_live "$(process_identity "$watch_pid")"
+	# Recovery must refresh the missing target before any later filesystem change.
+	grep -Fqx 'REARM:export' "$work/watch-target-race.out"
 	mkdir "$raced_target/export"
 	for _ in {1..100}; do
 		recovered_leaf_child=$(watch_child_for_path "$watch_pid" "$raced_target/export" 2>/dev/null || true)

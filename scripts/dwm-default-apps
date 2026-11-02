@@ -1696,6 +1696,7 @@ watch_defaults() {
 				for dir in "${desktop_target_dirs[@]}"; do
 					if [[ ! -d $dir || ! -r $dir || ! -x $dir ]] ||
 						! path_has_no_symlink_components "$dir"; then
+						printf '%s:%s\n' 'REARM' "${dir##*/}"
 						restart=1
 						break
 					fi
