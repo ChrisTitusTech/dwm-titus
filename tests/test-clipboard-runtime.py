@@ -40,8 +40,8 @@ with tempfile.TemporaryDirectory(prefix='clipboard-privacy-', dir=tmp_root) as d
     shell = work / 'shell'
     shutil.copytree(root / 'config/quickshell', shell)
     (shell / 'shell.qml').write_text(qml)
-    tools = work / 'bin'
-    tools.mkdir()
+    tools = work / 'custom prefix $literal `literal`' / 'bin'
+    tools.mkdir(parents=True)
     fifo = work / 'events'
     os.mkfifo(fifo)
     pipe = os.open(fifo, os.O_RDWR | os.O_NONBLOCK)
@@ -51,6 +51,7 @@ with tempfile.TemporaryDirectory(prefix='clipboard-privacy-', dir=tmp_root) as d
                     'with open(os.environ["CLIPBOARD_TEST_EVENTS"]) as f:\n'
                     ' for line in f:\n'
                     '  if line.strip()=="CRASH": sys.exit(1)\n'
+                    '  if line.strip()=="OVERSIZE": print("x"*393301,flush=True); continue\n'
                     '  print(line.rstrip("\\n"),flush=True)\n')
     mock.chmod(0o755)
     config = home / '.config/dwm-titus'
@@ -155,6 +156,10 @@ with tempfile.TemporaryDirectory(prefix='clipboard-privacy-', dir=tmp_root) as d
         wait(lambda s: s['backendFailed'] and not s['capture'])
         time.sleep(.2)
         assert not json.loads(ipc('state'))['capture'], 'backend crash retried automatically'
+        ipc('capture', 'true')
+        wait(lambda s: s['backend'] and s['capture'])
+        os.write(pipe, b'OVERSIZE\n')
+        wait(lambda s: s['backendFailed'] and not s['capture'])
         if os.geteuid() != 0:
             # Both unreadable files must fail closed; explicit Clear still wins.
             process.terminate()
