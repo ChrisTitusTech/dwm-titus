@@ -128,6 +128,7 @@ ShellRoot {
     ClockModel {
         id: clock
         timezoneState: systemManagementModel.nativeStates.timezone || null
+        showSeconds: panelSettingsModel.optionEnabled("clock-seconds")
     }
 
     LauncherModel {
@@ -1062,6 +1063,14 @@ ShellRoot {
 
         function panelWidgetSet(widget: string, enabled: bool): void {
             panelSettingsModel.setWidget(widget, enabled);
+        }
+
+        function panelOptionEnabled(option: string): bool {
+            return panelSettingsModel.optionEnabled(option);
+        }
+
+        function panelOptionSet(option: string, enabled: bool): void {
+            if (panelSettingsModel.validOption(option)) panelSettingsModel.setWidget(option, enabled);
         }
 
         function panelWidgetsReset(): void {
