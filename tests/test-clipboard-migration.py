@@ -19,6 +19,11 @@ with tempfile.TemporaryDirectory(prefix="clipboard-migration-") as directory:
         keys.write_text(original)
         assert not migration["migrate_hotkeys"](keys), modifier
         assert keys.read_text() == original
+    for prefix in ["", "[vars]\n"]:
+        original = prefix + 'keys = []\ntag_keys = [{key="v", tag=1}]\n'
+        keys.write_text(original)
+        assert not migration["migrate_hotkeys"](keys)
+        assert keys.read_text() == original
     keys.write_text('keys = [{mod="SUPER CTRL", key="v", func="quit"}]\n')
     assert migration["migrate_hotkeys"](keys)
     migrated = keys.read_text()

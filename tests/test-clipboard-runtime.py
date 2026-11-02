@@ -171,6 +171,20 @@ with tempfile.TemporaryDirectory(prefix="clipboard-runtime-") as directory, \
             wait_state(lambda state: state['ready'] and not state['failed'] and state['count'] == 1)
             action('persist', 'true')
             wait_state(lambda state: state['confirmed'])
+            process.terminate()
+            process.wait(timeout=5)
+            history.write_text(json.dumps({'entries': [{'text': 'unreadable stored history', 'timestamp': 1}]}))
+            history.chmod(0)
+            process = subprocess.Popen(['quickshell', '--no-duplicate', '--path', str(shell / 'shell.qml')],
+                                       env=env, stdout=shell_log, stderr=subprocess.STDOUT)
+            wait_state(lambda state: state['ready'] and state['historyFailed'])
+            action('capture', 'memory while history unreadable')
+            wait_state(lambda state: state['count'] == 1)
+            assert history.stat().st_mode & 0o777 == 0, 'unreadable history was replaced'
+            history.chmod(0o600)
+            assert json.loads(history.read_text())['entries'][0]['text'] == 'unreadable stored history'
+            action('retry')
+            wait_state(lambda state: not state['historyFailed'] and state['count'] == 2)
         print('Clipboard opt-in, private storage, failure recovery, idle and restarted opt-out: PASS')
     except BaseException:
         shell_log.flush()

@@ -173,7 +173,7 @@ FloatingWindow {
                 }
 
                 ShellButton {
-                    label: root.clipboardModel.settingsLoadFailed ? "Retry load" : "Retry save"
+                    label: (root.clipboardModel.settingsLoadFailed || root.clipboardModel.historyLoadFailed) ? "Retry load" : "Retry save"
                     visible: root.clipboardModel.saveFailed || root.clipboardModel.settingsSaveFailed
                     enabled: root.clipboardModel.settingsReady && !root.clipboardModel.settingsWriting
                         && !root.clipboardModel.historyWiping

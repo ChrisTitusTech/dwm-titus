@@ -20,6 +20,7 @@ Scope {
     property bool persistenceEnabled: false
     property bool historyReady: false
     property bool historyLoaded: false
+    property bool historyLoadFailed: false
     property bool settingsReady: false
     property bool settingsWriting: false
     property bool requestedPersistence: false
@@ -39,6 +40,7 @@ Scope {
     readonly property string cacheDir: (Quickshell.env("XDG_CACHE_HOME") || (root.homeDir + "/.cache")) + "/dwm-titus"
     readonly property string historyPath: root.cacheDir + "/clipboard-history.json"
     readonly property string status: {
+        if (root.historyLoadFailed) return "History unreadable - session only; retry to reload";
         if (root.saveFailed) {
             return root.wipePending ? "Stored history could not be cleared - retry save"
                 : "History write failed - entries are only in memory";
@@ -258,7 +260,8 @@ Scope {
     }
 
     function retrySave() {
-        if (root.settingsLoadFailed) settingsFile.reload();
+        if (root.historyLoadFailed) historyFile.reload();
+        else if (root.settingsLoadFailed) settingsFile.reload();
         else if (root.settingsSaveFailed) root.setPersistence(root.requestedPersistence);
         else if (root.wipePending) root.flushPendingWipe();
         else root.saveHistory();
@@ -272,7 +275,7 @@ Scope {
             return;
         }
 
-        if (!root.storageReady || !root.persistenceEnabled || !root.confirmedPersistence) {
+        if (root.historyLoadFailed || !root.storageReady || !root.persistenceEnabled || !root.confirmedPersistence) {
             return;
         }
 
@@ -430,6 +433,12 @@ Scope {
         atomicWrites: true
         printErrors: false
         onLoaded: {
+            if (root.historyLoadFailed) {
+                root.pendingCaptures = root.entries.map(entry => entry.text).reverse().concat(root.pendingCaptures);
+                root.historyReady = false;
+                root.historyLoadFailed = false;
+                root.saveFailed = false;
+            }
             root.restrictHistoryFileMode();
             root.loadHistory();
         }
@@ -446,7 +455,20 @@ Scope {
         }
         onLoadFailed: error => {
             root.historyLoaded = true;
-            root.loadHistory();
+            if (error !== 2) {
+                root.historyLoadFailed = true;
+                root.saveFailed = true;
+                root.historyReady = true;
+                root.flushPendingCaptures();
+            } else {
+                if (root.historyLoadFailed) {
+                    root.pendingCaptures = root.entries.map(entry => entry.text).reverse().concat(root.pendingCaptures);
+                    root.historyReady = false;
+                    root.saveFailed = false;
+                }
+                root.historyLoadFailed = false;
+                root.loadHistory();
+            }
         }
 
         // qmllint disable unresolved-type

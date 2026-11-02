@@ -182,7 +182,14 @@ def migrate_hotkeys(path):
         keys = document.get("keys")
     if not isinstance(keys, list):
         raise ValueError("missing keys array")
-    if any(super_bound(binding) for binding in keys):
+    tag_keys = vars_table.get("tag_keys") if isinstance(vars_table, dict) else None
+    if not isinstance(tag_keys, list):
+        tag_keys = document.get("tag_keys", [])
+    if not isinstance(tag_keys, list):
+        tag_keys = []
+    tag_conflict = any(isinstance(binding, dict) and binding.get("key") == "v"
+                       for binding in tag_keys)
+    if tag_conflict or any(super_bound(binding) for binding in keys):
         # A user binding already owns Super+V; customization always wins.
         print(f"dwm-titus: Super+V is already bound in {path}; leaving it in place")
         return False
