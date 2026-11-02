@@ -73,6 +73,10 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Report `efivarfs` firmware-variable usage as information in System Health
+  instead of a storage error. The fixed-size firmware NVRAM store is not a
+  cleanable filesystem, so a nearly full store no longer raises a false
+  positive on every scan.
 - Mark panel tags that hold windows with a small corner square and draw their
   numbers brighter than empty tags. The panel state helper now reads xprop's
   window-list format, so the occupied tags and the panel's running-apps list
