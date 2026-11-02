@@ -471,6 +471,7 @@ check-quickshell-launcher:
 
 check-quickshell-network:
 	tests/test-quickshell-network.sh
+	python3 tests/test-hidden-network-model.py
 
 check-quickshell-connectivity:
 	tests/test-quickshell-connectivity.sh

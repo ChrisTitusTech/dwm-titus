@@ -53,7 +53,7 @@ Scope {
     readonly property string hiddenPasswordError: root.validateHiddenPassword(root.hiddenSecurity, root.wifiPassword)
     readonly property bool hiddenFormValid: root.hiddenSsidError.length === 0
         && root.hiddenPasswordError.length === 0 && root.hiddenSecurity !== "enterprise"
-        && root.hiddenDevice.length > 0
+        && root.wifiDevices.some(device => device.device === root.hiddenDevice)
     readonly property bool active: true
     readonly property bool actionsAvailable: (providerState === "available" || providerState === "restricted")
         && operationState === "delegated"
@@ -335,6 +335,18 @@ Scope {
         root.message = "";
     }
 
+    onWifiDevicesChanged: {
+        if (root.hiddenPromptVisible) root.selectHiddenDevice();
+    }
+
+    function selectHiddenDevice() {
+        const names = root.wifiDevices.map(device => device.device);
+        if (names.indexOf(root.hiddenDevice) < 0) {
+            const idle = root.wifiDevices.filter(device => device.state === "disconnected");
+            root.hiddenDevice = idle.length > 0 ? idle[0].device : (names[0] || "");
+        }
+    }
+
     function openHiddenPrompt(origin) {
         if (root.busy) return;
         if (snapshotProcess.running || root.providerState === "loading") {
@@ -344,18 +356,17 @@ Scope {
         }
         // Keep a pending request when the snapshot failed, so the next good
         // snapshot can still open the form; close() clears it.
-        if (!root.actionsAvailable || root.wifiDevices.length === 0) return;
+        if (!root.actionsAvailable || root.wifiDevices.length === 0) {
+            root.hiddenPromptPendingOrigin = origin || "panel";
+            return;
+        }
         root.hiddenPromptPendingOrigin = "";
         root.wifiPasswordPromptVisible = false;
         root.wifiPasswordPromptOrigin = "";
         root.selectedWifiIndex = -1;
         root.wifiPassword = "";
         root.hiddenError = "";
-        const names = root.wifiDevices.map(device => device.device);
-        if (names.indexOf(root.hiddenDevice) < 0) {
-            const idle = root.wifiDevices.filter(device => device.state === "disconnected");
-            root.hiddenDevice = idle.length > 0 ? idle[0].device : names[0];
-        }
+        root.selectHiddenDevice();
         if (root.hiddenSecurity === "enterprise" && !root.editorAvailable) root.hiddenSecurity = "wpa-psk";
         root.hiddenPromptOrigin = origin || "panel";
         root.hiddenPromptVisible = true;
