@@ -115,6 +115,10 @@ grep -Fqx 'volume	disabled' "$state_file"
 run_helper set clock-seconds disabled >/dev/null
 run_helper set bluetooth enabled >/dev/null
 
+# A truncated 1.1 file must not silently reset its missing seconds option.
+printf 'panel-settings-protocol\t1\t1\nworkspaces\tenabled\nvolume\tenabled\nbluetooth\tenabled\nnetwork\tenabled\npower\tenabled\n' >"$state_file"
+run_helper status | grep -Fqx 'state	partial	Incomplete panel settings were preserved; using all-on defaults'
+
 # Option lines are only valid in 1.1 files; malformed option lines fall back.
 printf 'panel-settings-protocol\t1\t0\nworkspaces\tenabled\nvolume\tdisabled\nbluetooth\tenabled\nnetwork\tenabled\npower\tenabled\noption\tclock-seconds\tenabled\n' \
 	>"$state_file"
@@ -133,7 +137,7 @@ printf 'panel-settings-protocol\t1\t1\nworkspaces\tenabled\nvolume\tdisabled\nbl
 	>"$state_file"
 run_helper status | grep -Fqx \
 	'state	partial	Malformed panel settings were preserved; using all-on defaults'
-printf 'panel-settings-protocol\t1\t1\nworkspaces\tenabled\nvolume\tdisabled\nbluetooth\tenabled\nnetwork\tenabled\npower\tenabled\n' \
+printf 'panel-settings-protocol\t1\t1\nworkspaces\tenabled\nvolume\tdisabled\nbluetooth\tenabled\nnetwork\tenabled\npower\tenabled\noption\tclock-seconds\tdisabled\n' \
 	>"$state_file"
 run_helper status | grep -Fqx 'widget	volume	disabled'
 

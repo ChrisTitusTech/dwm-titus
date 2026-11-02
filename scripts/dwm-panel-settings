@@ -151,6 +151,11 @@ load_config() {
 		widget_values[$widget]=$value
 		((count += 1))
 	done <"$config_file"
+	if [[ $options_allowed == true ]]; then
+		for option in $option_ids; do
+			[[ -n ${seen_options[$option]+x} ]] || count=-1
+		done
+	fi
 	if [[ $first == true || $count -ne 5 ]]; then
 		config_state=partial
 		config_detail='Incomplete panel settings were preserved; using all-on defaults'
