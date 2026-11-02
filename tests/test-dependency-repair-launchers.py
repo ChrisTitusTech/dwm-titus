@@ -11,6 +11,12 @@ import unittest
 REPO = Path(__file__).resolve().parents[1]
 
 
+def fixture_environment(base):
+    return {**os.environ, "HOME": str(base),
+            **{"XDG_" + kind + "_HOME": str(base / kind.lower())
+               for kind in ("CONFIG", "DATA", "STATE", "CACHE")}}
+
+
 class DependencyLaunchers(unittest.TestCase):
     def test_buttons_use_package_repair_with_stale_or_missing_source_installer(self):
         with tempfile.TemporaryDirectory(prefix="dependency repair ") as temporary:
@@ -34,11 +40,15 @@ class DependencyLaunchers(unittest.TestCase):
             tools = base / "bin"
             tools.mkdir()
             for cmd in ("cc", "make", "Xorg", "startx", "xrandr", "xset", "xsetroot", "xkbset",
-                        "quickshell", "picom", "feh", "xsettingsd", "bwrap", "xclip", "xdotool",
+                        "quickshell", "picom", "feh", "xsettingsd", "bwrap", "xclip", "xdotool", "maim", "rpm",
                         "dex", "amixer", "jq", "bluetoothctl", "blueman-applet", "alacritty", "xdg-open"):
                 p = tools / cmd
                 p.write_text("#!/bin/sh\nexit 0\n")
                 p.chmod(0o755)
+            # The dispatcher fixture must not depend on the desktop user's fonts.
+            fonts = tools / "fc-list"
+            fonts.write_text("#!/bin/sh\nprintf '%s\\n' 'MesloLGS Nerd Font' 'Noto Color Emoji'\n")
+            fonts.chmod(0o755)
             clean_checker = tools / "clean-checker"
             clean_checker.write_text("#!/bin/sh\nexit 0\n")
             clean_checker.chmod(0o755)
@@ -56,7 +66,7 @@ class DependencyLaunchers(unittest.TestCase):
                                "with open(os.environ['REPAIR_CALLS'],'a') as f: f.write(json.dumps(sys.argv[1:])+'\\n')\n"
                                "with open(os.environ['FIX_TARGET'],'w') as f: f.write('#!/bin/sh\\nexit 0\\n')\n")
             updater.chmod(0o755)
-            environment = {**os.environ, "PATH": str(tools) + ":/usr/bin:/bin", "HOME": str(base),
+            environment = {**fixture_environment(base), "PATH": str(tools) + ":/usr/bin:/bin",
                            "DWM_TEST_SYNC": "1", "REPAIR_CALLS": str(log), "FIX_TARGET": str(pkg)}
             for source_exists in (True, False):
                 if not source_exists:
@@ -77,7 +87,7 @@ class DependencyLaunchers(unittest.TestCase):
                         result = subprocess.run([scripts / name, *args], input="y\n\n", env=dispatch_env,
                                                  capture_output=True, text=True, timeout=15)
                         self.assertFalse(marker.exists(), "Dependency button ran the full desktop installer")
-                        self.assertEqual(result.returncode, 0, result.stderr)
+                        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                         self.assertEqual({p: p.read_bytes() for p in files}, before)
             self.assertEqual([json.loads(line) for line in log.read_text().splitlines()],
                              [["install-dependencies"]] * 4)
@@ -97,7 +107,7 @@ class DependencyLaunchers(unittest.TestCase):
             pkg = tools / "pkg-config"
             pkg.write_text("#!/bin/sh\nexit 1\n")
             pkg.chmod(0o755)
-            environment = {**os.environ, "PATH": str(tools) + ":/usr/bin:/bin", "HOME": str(base), "DWM_TEST_SYNC": "1"}
+            environment = {**fixture_environment(base), "PATH": str(tools) + ":/usr/bin:/bin", "DWM_TEST_SYNC": "1"}
             for name, args in (("dwm-quickshell-controlcenter", ["action", "dependency-check"]),
                                ("dwm-system-health", ["repair-user", "install-dependencies"])):
                 with self.subTest(button=name):
@@ -123,10 +133,10 @@ class DependencyLaunchers(unittest.TestCase):
                                 "shift\n"
                                 "echo \"$@\" >> '" + str(log) + "'\n")
             terminal.chmod(0o755)
-            environment = {**os.environ, "PATH": str(tools) + ":/usr/bin:/bin", "HOME": str(base), "DWM_TEST_SYNC": "1"}
+            environment = {**fixture_environment(base), "PATH": str(tools) + ":/usr/bin:/bin", "DWM_TEST_SYNC": "1"}
             result = subprocess.run([installed_bin / "dwm-quickshell-controlcenter", "action", "dependency-check"],
                                     env=environment, capture_output=True, text=True, timeout=15)
-            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             dispatched = log.read_text().strip()
             expected_checker = str(installed_bin / "check-deps.sh")
             self.assertIn(expected_checker, dispatched)
@@ -149,13 +159,13 @@ class DependencyLaunchers(unittest.TestCase):
             healer.write_text('#!/bin/sh\nprintf "healed\\n" >> "$REPAIR_CALLS"\n')
             healer.chmod(0o755)
             log = base / "calls"
-            env = {**os.environ, "HOME": str(base), "PATH": "/usr/bin:/bin", "DWM_TEST_SYNC": "1", "REPAIR_CALLS": str(log), "DWM_SELF_HEAL_SCRIPT": str(healer)}
+            env = {**fixture_environment(base), "PATH": "/usr/bin:/bin", "DWM_TEST_SYNC": "1", "REPAIR_CALLS": str(log), "DWM_SELF_HEAL_SCRIPT": str(healer)}
             env.pop("DWM_CHECK_DEPS_SCRIPT", None)
             for name, args in [("dwm-quickshell-controlcenter", ["action", "dependency-check"]),
                                ("dwm-system-health", ["repair-user", "install-dependencies"]),
                                ("dwm-quickshell-controlcenter", ["action", "self-heal"])]:
                 result = subprocess.run([installed / name, *args], env=env, input="\n", text=True, capture_output=True, timeout=15)
-                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertEqual(log.read_text().splitlines(), ["checker --interactive", "updater install-dependencies", "healed"])
 
     def test_buttons_fail_when_checker_is_unavailable(self):
@@ -170,7 +180,7 @@ class DependencyLaunchers(unittest.TestCase):
             terminal = tools / "dwm-terminal"
             terminal.write_text("#!/bin/sh\n[ \"$1\" = --print-command ] && { echo mock-term; exit 0; }\n[ \"$1\" = -e ] || exit 91\nshift\nexec \"$@\"\n")
             terminal.chmod(0o755)
-            environment = {**os.environ, "PATH": str(tools) + ":/usr/bin:/bin", "HOME": str(base),
+            environment = {**fixture_environment(base), "PATH": str(tools) + ":/usr/bin:/bin",
                            "DWM_CHECK_DEPS_SCRIPT": str(base / "missing-check-deps.sh")}
             environment.pop("DWM_TEST_SYNC", None)
             for name, args in (("dwm-quickshell-controlcenter", ["action", "dependency-check"]),):
