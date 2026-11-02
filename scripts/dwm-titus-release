@@ -266,6 +266,7 @@ else
 	run make release
 fi
 
+release_iso=
 assets=("$release_archive")
 if [[ -n $iso_path ]]; then
 	iso_suffix=
@@ -277,6 +278,28 @@ if [[ -n $iso_path ]]; then
 		run cp --reflink=auto -- "$iso_path" "$release_iso"
 	fi
 	assets+=("$release_iso")
+fi
+
+# Retained remote variants also need hashes when publishing from a fresh checkout.
+# Download their bytes rather than trusting a prior manifest or a stale local ISO.
+remote_assets_dir=
+trap '[[ -z $remote_assets_dir ]] || rm -rf -- "$remote_assets_dir"' EXIT
+remote_asset_names=()
+if [[ $dry_run != true ]] && remote_release_exists; then
+	release_exists=true
+	remote_names=$(gh release view "$tag" --json assets --jq '.assets[].name')
+	while IFS= read -r name; do
+		case $name in
+		"dwm-titus-$release_version.iso" | "dwm-titus-$release_version-nvidia.iso") ;;
+		*) continue ;;
+		esac
+		[[ $name != "${release_iso##*/}" ]] || continue
+		if [[ -z $remote_assets_dir ]]; then
+			remote_assets_dir=$(mktemp -d "$repo_root/release/.remote-assets.XXXXXX")
+		fi
+		gh release download "$tag" --pattern "$name" --dir "$remote_assets_dir"
+		remote_asset_names+=("$name")
+	done <<<"$remote_names"
 fi
 
 # Use download filenames, not local absolute paths, in the checksum manifest.
@@ -291,7 +314,12 @@ if [[ $dry_run == true ]]; then
 	printf ' > %q\n' "$checksums"
 else
 	mkdir -p "$(dirname "$checksums")"
-	(cd "$repo_root/release" && sha256sum "${asset_names[@]}") >"$checksums"
+	{
+		(cd "$repo_root/release" && sha256sum "${asset_names[@]}")
+		if ((${#remote_asset_names[@]} > 0)); then
+			(cd "$remote_assets_dir" && sha256sum "${remote_asset_names[@]}")
+		fi
+	} >"$checksums"
 fi
 assets+=("$checksums")
 
@@ -311,9 +339,6 @@ else
 			-f "sha=$head_sha" >/dev/null
 	fi
 
-	if remote_release_exists; then
-		release_exists=true
-	fi
 fi
 
 if [[ $release_exists == true ]]; then

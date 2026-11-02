@@ -43,6 +43,10 @@ it does not rewrite release source. The supplied ISO is preserved and staged as
 `release/dwm-titus-VERSION.iso` before upload. Add `--iso-variant nvidia` to
 stage `release/dwm-titus-VERSION-nvidia.iso` for the NVIDIA image. The variant
 option names the asset; it does not inspect or change the image contents.
+When adding the other variant to an existing release, the helper downloads and
+hashes the retained remote ISO as well, so the shared manifest covers both
+variants even from a fresh checkout. It aborts if that download fails; local
+old images or checksum manifests are not used as substitutes.
 The release checksum file uses these downloadable basenames and can be checked
 with `sha256sum --ignore-missing -c dwm-titus-VERSION-SHA256SUMS` beside the
 assets. `--dry-run` prints the copy, hashing and upload commands without writing
