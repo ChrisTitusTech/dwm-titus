@@ -102,6 +102,16 @@ class DesktopUpdate(unittest.TestCase):
                                             timeout=None, capture=False)
         self.assertEqual({p: p.read_bytes() for p in before}, before)
 
+    def test_dependency_repair_probes_sibling_terminal_without_path(self):
+        terminal = self.base / "bin/dwm-terminal"
+        terminal.write_text("#!/bin/sh\nexit 0\n")
+        terminal.chmod(0o755)
+        with patch.object(update.sys.stdin, "isatty", return_value=True), patch.object(update, "trusted_file"), \
+                patch.object(update.subprocess, "run", return_value=SimpleNamespace(returncode=0)) as probe:
+            update.install_dependencies()
+        self.assertEqual(probe.call_args.args[0], [str(terminal), "--print-command"])
+        self.assertIn("keep-terminal", self.command.call_args.args[0])
+
     def test_dependency_repair_falls_back_to_polkit_once_and_preserves_denial(self):
         for probe_error in (SimpleNamespace(returncode=1), OSError("sudo unavailable"),
                             subprocess.TimeoutExpired("sudo", 10)):

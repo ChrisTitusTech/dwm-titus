@@ -945,8 +945,11 @@ def install_dependencies():
             repair_args = []
             # Resolve user-selected terminals before elevation. Root never runs
             # the user command; this hint only preserves that installation choice.
+            terminal_helper = Path(manifest["layout"]["prefix"]) / "bin/dwm-terminal"
+            if not terminal_helper.is_file() or not os.access(terminal_helper, os.X_OK):
+                terminal_helper = "dwm-terminal"
             try:
-                terminal = subprocess.run(["dwm-terminal", "--print-command"],
+                terminal = subprocess.run([str(terminal_helper), "--print-command"],
                                           capture_output=True, timeout=10)
                 if terminal.returncode == 0:
                     repair_args = ["keep-terminal"]
