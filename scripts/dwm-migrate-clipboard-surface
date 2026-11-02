@@ -5,12 +5,10 @@
 The tracked defaults in config/hotkeys.toml and config/window-rules.toml are
 seeded only for new installs; upgrades keep user-owned files untouched. This
 migration adds the dwm clipboard window rule and the Super+V keybinding to
-existing files, idempotently, with a recovery backup per changed file. A
-conflicting Super+V binding is left alone so user customization always wins.
+existing files, idempotently, with a recovery backup per changed file. Any
+existing V binding is left alone because the compiled MODKEY may be customized.
 """
 
-import ctypes
-from functools import lru_cache
 import os
 import re
 import shutil
@@ -22,6 +20,10 @@ from pathlib import Path
 
 
 CLIPBOARD_RULE = {"title": "dwm clipboard", "isfloating": 1, "alwaysontop": 1}
+# FloatingWindow has no WM_CLASS on the supported X11 runtime; dwm uses its
+# missing-property fallback for both selectors. The native QML
+# integration test verifies this identity instead of assuming a Firefox class.
+CLIPBOARD_IDENTITY = {"title": "dwm clipboard", "class": "broken", "instance": "broken"}
 
 CLIPBOARD_KEYBIND = {
     "mod": "SUPER",
@@ -161,7 +163,8 @@ def migrate_window_rules(path):
     rules = document.get("rules")
     if not isinstance(rules, list):
         raise ValueError("missing top-level rules array")
-    present = any(isinstance(rule.get("title"), str) and rule["title"] in CLIPBOARD_RULE["title"]
+    present = any(all(not isinstance(rule.get(field), str) or rule[field] in value
+                      for field, value in CLIPBOARD_IDENTITY.items())
                   for rule in rules if isinstance(rule, dict))
     if present:
         return False
@@ -169,67 +172,11 @@ def migrate_window_rules(path):
     return True
 
 
-@lru_cache(maxsize=1)
-def numlock_masks():
-    # Mirror XGetModifierMapping in dwm. Offline migrations conservatively
-    # preserve bindings with any conventional extra modifier used for Num Lock.
-    fallback = (0, 16, 32, 128, 16 | 32 | 128)
-    if not os.environ.get("DISPLAY"):
-        return fallback
-    class ModifierMap(ctypes.Structure):
-        _fields_ = [("max_keypermod", ctypes.c_int), ("modifiermap", ctypes.POINTER(ctypes.c_ubyte))]
-    try:
-        x11 = ctypes.CDLL("libX11.so.6")
-        x11.XOpenDisplay.argtypes = [ctypes.c_char_p]
-        x11.XOpenDisplay.restype = ctypes.c_void_p
-        x11.XCloseDisplay.argtypes = [ctypes.c_void_p]
-        x11.XGetModifierMapping.argtypes = [ctypes.c_void_p]
-        x11.XGetModifierMapping.restype = ctypes.POINTER(ModifierMap)
-        x11.XFreeModifiermap.argtypes = [ctypes.POINTER(ModifierMap)]
-        x11.XKeysymToKeycode.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
-        x11.XKeysymToKeycode.restype = ctypes.c_ubyte
-        display = x11.XOpenDisplay(None)
-        if not display:
-            return fallback
-        try:
-            mapping = x11.XGetModifierMapping(display)
-            if not mapping:
-                return fallback
-            try:
-                code = x11.XKeysymToKeycode(display, 0xff7f)  # XK_Num_Lock
-                mask = 0
-                if code:
-                    for modifier in range(8):
-                        for key in range(mapping.contents.max_keypermod):
-                            if mapping.contents.modifiermap[modifier * mapping.contents.max_keypermod + key] == code:
-                                mask |= 1 << modifier
-                return (mask,)
-            finally:
-                x11.XFreeModifiermap(mapping)
-        finally:
-            x11.XCloseDisplay(display)
-    except (OSError, AttributeError):
-        return fallback
-
-
-def super_bound(binding):
-    if not isinstance(binding, dict) or binding.get("key") != CLIPBOARD_KEYBIND["key"]:
-        return False
-    modifiers = binding.get("mod", "")
-    if isinstance(modifiers, str):
-        tokens = modifiers.split()
-    elif isinstance(modifiers, list):
-        tokens = [str(token).strip() for token in modifiers]
-    else:
-        return False
-    aliases = {"SUPER": 64, "MODKEY": 64, "Mod4Mask": 64,
-               "SHIFT": 1, "ShiftMask": 1, "CTRL": 4, "ControlMask": 4,
-               "ALT": 8, "Mod1Mask": 8, "Mod2Mask": 16, "Mod3Mask": 32, "Mod5Mask": 128}
-    mask = 0
-    for token in tokens:
-        mask |= aliases.get(token, 0)
-    # CLEANMASK strips Num Lock and LockMask before comparing both bindings.
-    return any((mask & ~(numlock | 2)) == (64 & ~(numlock | 2)) for numlock in numlock_masks())
+def v_bound(binding):
+    # SUPER and MODKEY resolve to the user's compiled MODKEY, not necessarily
+    # Mod4Mask. Installed migrations cannot reliably infer that C definition.
+    # Preserve any existing V binding rather than risk adding a second action.
+    return isinstance(binding, dict) and binding.get("key") == CLIPBOARD_KEYBIND["key"]
 
 
 def migrate_hotkeys(path):
@@ -249,9 +196,9 @@ def migrate_hotkeys(path):
         tag_keys = []
     tag_conflict = any(isinstance(binding, dict) and binding.get("key") == "v"
                        for binding in tag_keys)
-    if tag_conflict or any(super_bound(binding) for binding in keys):
-        # A user binding already owns Super+V; customization always wins.
-        print(f"dwm-titus: Super+V is already bound in {path}; leaving it in place")
+    if tag_conflict or any(v_bound(binding) for binding in keys):
+        # The compiled MODKEY may differ from the stock Super modifier.
+        print(f"dwm-titus: V binding exists in {path}; leaving it unchanged (custom MODKEY may apply); bind Clipboard history manually if wanted")
         return False
     write_migrated(path, append_entries(path, "keys", original, [CLIPBOARD_KEYBIND]))
     return True

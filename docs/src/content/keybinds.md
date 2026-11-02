@@ -221,3 +221,8 @@ and sensitivity-marked copies are excluded on a best-effort basis. An unmarked
 copy made by a browser extension cannot reliably be distinguished from ordinary
 browser text, so it may enter history. Do not enable capture when that limitation
 is unacceptable. Backend failure stops capture until an explicit retry.
+
+On upgrade, migration preserves any existing `v` binding regardless of its
+modifier. `SUPER` follows the locally compiled `MODKEY`, which may differ from
+the stock Super key. If migration reports a V conflict, keep the existing action
+or add the Clipboard history command manually with a free modifier combination.

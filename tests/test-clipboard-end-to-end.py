@@ -34,6 +34,7 @@ import Quickshell.Io
 import qs.clipboard
 ShellRoot {
     ClipboardModel { id: model }
+    LazyLoader { active: model.visible; ClipboardWindow { clipboardModel: model } }
     IpcHandler {
         target: "clipboardtest"
         function state(): string { return JSON.stringify({ready:model.settingsReady && model.historyReady,
@@ -43,6 +44,8 @@ ShellRoot {
         function capture(value: bool): void { model.setCapture(value); }
         function persist(value: bool): void { model.setPersistence(value); }
         function clear(): void { model.clearAll(); }
+        function open(): void { model.open(); }
+        function close(): void { model.close(); }
     }
 }
 ''')
@@ -95,6 +98,20 @@ ShellRoot {
                 assert client.stdout.readline().strip() == 'ready'
             return requests
         wait(lambda s: s['ready'])
+        ipc('open')
+        for _ in range(100):
+            windows = subprocess.run(['xdotool', 'search', '--onlyvisible', '--name', '^dwm clipboard$'],
+                                     env=env, capture_output=True, text=True)
+            if windows.returncode == 0: break
+            time.sleep(.05)
+        assert windows.returncode == 0, 'Clipboard surface did not open'
+        time.sleep(.2)
+        identity = subprocess.check_output(['xprop', '-id', windows.stdout.splitlines()[0], 'WM_CLASS'],
+                                           env=env, text=True).strip()
+        print('Clipboard window identity: ' + identity, flush=True)
+        assert 'not found.' in identity, 'Update migration identity selectors for the new runtime WM_CLASS'
+        ipc('close')
+        time.sleep(.1)
         assert not json.loads(ipc('state'))['capture'] and not history.exists()
         requests = copy('firefox', 'plain', 'PRE-ENABLE NEVER IMPORT')
         time.sleep(.15)
