@@ -55,6 +55,37 @@ cat >"$work/devices-ascii" <<'EOF'
     + Keyboard with spaces                 id=13   [slave  keyboard (3)]
 EOF
 
+# A power button (a key device X lists as a keyboard) and one PS/2 mouse that
+# shows up as two XInput devices on the same port.
+cat >"$work/devices-shared" <<'EOF'
+⎡ Virtual core pointer                     id=2    [master pointer  (3)]
+⎜   ↳ Twin PS/2 Mouse                      id=17   [slave  pointer  (2)]
+⎜   ↳ Twin PS/2 Mouse                      id=18   [slave  pointer  (2)]
+⎣ Virtual core keyboard                    id=3    [master keyboard (2)]
+    ↳ Power Button                         id=16   [slave  keyboard (3)]
+    ↳ Keyboard with spaces                 id=13   [slave  keyboard (3)]
+EOF
+
+# The same mouse after its first part went away.
+cat >"$work/devices-shared-18" <<'EOF'
+⎡ Virtual core pointer                     id=2    [master pointer  (3)]
+⎜   ↳ Twin PS/2 Mouse                      id=18   [slave  pointer  (2)]
+EOF
+
+# The same mouse replugged: X gave both parts new ids.
+cat >"$work/devices-shared-replug" <<'EOF'
+⎡ Virtual core pointer                     id=2    [master pointer  (3)]
+⎜   ↳ Twin PS/2 Mouse                      id=27   [slave  pointer  (2)]
+⎜   ↳ Twin PS/2 Mouse                      id=28   [slave  pointer  (2)]
+EOF
+
+# Two separate same-model mice whose only identity is a shared serial.
+cat >"$work/devices-ambiguous" <<'EOF'
+⎡ Virtual core pointer                     id=2    [master pointer  (3)]
+⎜   ↳ Same Model Mouse                     id=19   [slave  pointer  (2)]
+⎜   ↳ Same Model Mouse                     id=20   [slave  pointer  (2)]
+EOF
+
 cat >"$work/bin/xinput" <<'EOF'
 #!/bin/sh
 case $1 in
@@ -100,6 +131,38 @@ Device 'Portable TouchPad':
 	libinput Tapping Enabled Default (305): 1
 PROPS
 		;;
+	16) cat <<'PROPS'
+Device 'Power Button':
+	Device Product ID (101): 0, 1
+	Device Node (102): "/dev/input/event12"
+PROPS
+		;;
+	17 | 27) cat <<PROPS
+Device 'Twin PS/2 Mouse':
+	Device Product ID (101): 2, 19
+	Device Node (102): "/dev/input/event13"
+	libinput Accel Speed (300): 0.000000
+	libinput Accel Speed Default (301): 0.000000
+	libinput Natural Scrolling Enabled (302): 0
+	libinput Natural Scrolling Enabled Default (303): ${TEST_DEFAULT_17:-0}
+PROPS
+		;;
+	18 | 28) cat <<'PROPS'
+Device 'Twin PS/2 Mouse':
+	Device Product ID (101): 2, 19
+	Device Node (102): "/dev/input/event14"
+	libinput Natural Scrolling Enabled (302): 1
+	libinput Natural Scrolling Enabled Default (303): 1
+PROPS
+		;;
+	19 | 20) cat <<PROPS
+Device 'Same Model Mouse':
+	Device Product ID (101): 7, 7
+	Device Node (102): "/dev/input/event$(($2 - 4))"
+	libinput Natural Scrolling Enabled (302): 0
+	libinput Natural Scrolling Enabled Default (303): 0
+PROPS
+		;;
 	15) cat <<'PROPS'
 Device 'Node-less Pointer':
 	Device Product ID (101): 4444, 5555
@@ -111,6 +174,12 @@ PROPS
 	;;
 set-prop)
 	[ "${TEST_FAIL_SET:-0}" != 1 ] || exit 1
+	[ "${TEST_FAIL_SET_ID:-}" != "$2" ] || exit 1
+	if [ -n "${TEST_FAIL_SET_FROM:-}" ]; then
+		calls=$(($(cat "$TEST_SET_COUNTER" 2>/dev/null || printf 0) + 1))
+		printf '%s\n' "$calls" >"$TEST_SET_COUNTER"
+		[ "$calls" -lt "$TEST_FAIL_SET_FROM" ] || exit 1
+	fi
 	if [ -n "${TEST_TIMING_LOG:-}" ]; then
 		printf 'apply %s\n' "$(date +%s%N)" >>"$TEST_TIMING_LOG"
 	fi
@@ -184,6 +253,9 @@ info)
 	*event9*) printf 'ID_PATH=pci-test-mouse\n' ;;
 	*event10*) printf 'ID_SERIAL=test-keyboard\n' ;;
 	*event11*) printf 'ID_PATH=pci-test-touchpad\n' ;;
+	*event12*) printf 'ID_INPUT=1\nID_INPUT_KEY=1\nID_PATH=platform-LNXPWRBN:00\n' ;;
+	*event15* | *event16*) printf 'ID_INPUT=1\nID_INPUT_MOUSE=1\nID_SERIAL=same-serial\n' ;;
+	*event13* | *event14*) printf 'ID_INPUT=1\nID_INPUT_MOUSE=1\nID_SERIAL=noserial\nID_PATH=platform-i8042-serio-1\n' ;;
 	esac
 	;;
 monitor)
@@ -751,5 +823,205 @@ if env "${env_common[@]}" "$helper" preview invalid 5 "$mouse_key" pointer-speed
 	exit 1
 fi
 grep -Fq 'invalid value' "$work/invalid.err"
+
+# Button-only keyboards are hidden; devices sharing an identity are one entry
+# whose reads use the first member with the setting and writes go to every
+# member that has it.
+env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" "$helper" discover >"$work/discover-shared"
+if grep -Fq 'Power Button' "$work/discover-shared"; then
+	printf 'the power button was listed as a keyboard\n' >&2
+	exit 1
+fi
+grep -Fq $'keyboard\tKeyboard with spaces' "$work/discover-shared"
+[[ $(grep -Fc $'pointer\tTwin PS/2 Mouse' "$work/discover-shared") == 1 ]]
+twin_key=$(awk -F '\t' '$1 == "device" && $5 == "Twin PS/2 Mouse" {print $2}' "$work/discover-shared")
+[[ $twin_key =~ ^[0-9a-f]{16}$ ]]
+[[ $(grep -Fc $'setting\t'"$twin_key"$'\tnatural-scroll\t' "$work/discover-shared") == 1 ]]
+[[ $(grep -Fc $'setting\t'"$twin_key"$'\tpointer-speed\t' "$work/discover-shared") == 1 ]]
+if grep -Fq $'unsupported\t'"$twin_key"$'\tpointer-speed\t' "$work/discover-shared"; then
+	printf 'a setting one member supports was reported unsupported\n' >&2
+	exit 1
+fi
+[[ $(grep -Fc $'unsupported\t'"$twin_key"$'\ttap-to-click\t' "$work/discover-shared") == 1 ]]
+rm -f "$work/actions.log"
+env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" "$helper" preview twin-scroll 5 \
+	"$twin_key" natural-scroll 1 >/dev/null
+grep -Fqx 'xinput set-prop 17 libinput Natural Scrolling Enabled 1' "$work/actions.log"
+grep -Fqx 'xinput set-prop 18 libinput Natural Scrolling Enabled 1' "$work/actions.log"
+env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" "$helper" keep twin-scroll >/dev/null
+grep -Fqx "$twin_key"$'\tnatural-scroll\t1\t0' "$work/home/.config/dwm-titus/input-settings.conf"
+rm -f "$work/actions.log"
+env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" "$helper" preview twin-speed 5 \
+	"$twin_key" pointer-speed 0.5 >/dev/null
+grep -Fqx 'xinput set-prop 17 libinput Accel Speed 0.5' "$work/actions.log"
+if grep -Fq 'xinput set-prop 18 libinput Accel Speed' "$work/actions.log"; then
+	printf 'pointer speed was set on a member without the property\n' >&2
+	exit 1
+fi
+env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" "$helper" revert twin-speed >/dev/null
+grep -Fqx 'xinput set-prop 17 libinput Accel Speed 0.000000' "$work/actions.log"
+rm -f "$work/actions.log"
+env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" "$helper" apply-saved
+grep -Fqx 'xinput set-prop 17 libinput Natural Scrolling Enabled 1' "$work/actions.log"
+grep -Fqx 'xinput set-prop 18 libinput Natural Scrolling Enabled 1' "$work/actions.log"
+rm -f "$work/home/.config/dwm-titus/input-settings.conf"
+
+# A direct pointer reset exits cleanly after restoring the driver default.
+env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" "$helper" reset "$twin_key" pointer-speed \
+	>"$work/twin-reset.out"
+grep -Fqx $'result\treset\tpointer-speed' "$work/twin-reset.out"
+
+# Reset sets each part to its own driver default (17 has 0, 18 has 1).
+rm -f "$work/actions.log"
+env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" "$helper" reset "$twin_key" natural-scroll \
+	>/dev/null
+[[ $(cat "$work/actions.log") == $'xinput set-prop 17 libinput Natural Scrolling Enabled 0\nxinput set-prop 18 libinput Natural Scrolling Enabled 1' ]]
+
+# Revert puts each member back to its own value (17 had 0, 18 had 1).
+rm -f "$work/actions.log"
+env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" "$helper" preview twin-revert 5 \
+	"$twin_key" natural-scroll 1 >/dev/null
+env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" "$helper" revert twin-revert >/dev/null
+[[ $(tail -n 2 "$work/actions.log") == $'xinput set-prop 17 libinput Natural Scrolling Enabled 0\nxinput set-prop 18 libinput Natural Scrolling Enabled 1' ]]
+test ! -e "$work/runtime/dwm-settings-input/twin-revert.members"
+
+# A write that fails on the second member puts the first one back and clears
+# the preview.
+rm -f "$work/actions.log"
+if env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" TEST_FAIL_SET_ID=18 "$helper" \
+	preview twin-partial 5 "$twin_key" natural-scroll 1 >/dev/null 2>"$work/twin-partial.err"; then
+	printf 'a partly failed merged preview reported success\n' >&2
+	exit 1
+fi
+[[ $(head -n 2 "$work/actions.log") == $'xinput set-prop 17 libinput Natural Scrolling Enabled 1\nxinput set-prop 17 libinput Natural Scrolling Enabled 0' ]]
+test ! -e "$work/runtime/dwm-settings-input/twin-partial.state"
+test ! -e "$work/runtime/dwm-settings-input/twin-partial.members"
+env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" "$helper" preview-status | grep -Fqx $'result\tnone'
+
+# The first set-prop works, the second and the undo fail: the preview prints
+# a preview-failed record (Settings needs the token for Revert), keeps its
+# recovery state, and a later Revert restores both.
+rm -f "$work/actions.log" "$work/set.count"
+env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" TEST_FAIL_SET_FROM=2 \
+	TEST_SET_COUNTER="$work/set.count" "$helper" preview twin-stuck 5 "$twin_key" natural-scroll 1 \
+	>"$work/twin-stuck.out" 2>"$work/twin-stuck.err"
+grep -Fqx $'preview-failed\ttwin-stuck\tInput preview failed part-way and could not be undone; the captured values are retained for retry.' \
+	"$work/twin-stuck.out"
+test -f "$work/runtime/dwm-settings-input/twin-stuck.state"
+env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" "$helper" preview-status twin-stuck |
+	grep -Fq $'preview-failed\ttwin-stuck'
+rm -f "$work/actions.log"
+env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" "$helper" revert twin-stuck >/dev/null
+[[ $(cat "$work/actions.log") == $'xinput set-prop 17 libinput Natural Scrolling Enabled 0\nxinput set-prop 18 libinput Natural Scrolling Enabled 1' ]]
+test ! -e "$work/runtime/dwm-settings-input/twin-stuck.state"
+
+# Keep after such a failure writes the value to every part again. While a part
+# still rejects it Keep fails and keeps the preview for Revert; once every
+# part takes it the value is saved.
+rm -f "$work/set.count"
+env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" TEST_FAIL_SET_FROM=2 \
+	TEST_SET_COUNTER="$work/set.count" "$helper" preview twin-keep 5 "$twin_key" natural-scroll 1 \
+	>"$work/twin-keep.out" 2>/dev/null
+grep -Fq $'preview-failed\ttwin-keep' "$work/twin-keep.out"
+if env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" TEST_FAIL_SET_ID=18 "$helper" \
+	keep twin-keep >/dev/null 2>"$work/twin-keep.err"; then
+	printf 'Keep accepted a value one part still rejects\n' >&2
+	exit 1
+fi
+grep -Fq 'use Revert' "$work/twin-keep.err"
+test -f "$work/runtime/dwm-settings-input/twin-keep.state"
+if grep -Fq "$twin_key"$'\tnatural-scroll' "$work/home/.config/dwm-titus/input-settings.conf" 2>/dev/null; then
+	printf 'Keep saved a value one part rejected\n' >&2
+	exit 1
+fi
+rm -f "$work/actions.log"
+env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" "$helper" keep twin-keep >/dev/null
+[[ $(cat "$work/actions.log") == $'xinput set-prop 17 libinput Natural Scrolling Enabled 1\nxinput set-prop 18 libinput Natural Scrolling Enabled 1' ]]
+grep -Fqx "$twin_key"$'\tnatural-scroll\t1\t0' "$work/home/.config/dwm-titus/input-settings.conf"
+test ! -e "$work/runtime/dwm-settings-input/twin-keep.state"
+
+# Keep after a failed preview and a replug: the parts have new ids and still
+# get the value before it is saved.
+rm -f "$work/set.count"
+env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" TEST_FAIL_SET_FROM=2 \
+	TEST_SET_COUNTER="$work/set.count" "$helper" preview twin-replug 5 "$twin_key" natural-scroll 1 \
+	>"$work/twin-replug.out" 2>/dev/null
+grep -Fq $'preview-failed\ttwin-replug' "$work/twin-replug.out"
+rm -f "$work/actions.log"
+env "${env_common[@]}" TEST_DEVICES="$work/devices-shared-replug" "$helper" keep twin-replug >/dev/null
+[[ $(cat "$work/actions.log") == $'xinput set-prop 27 libinput Natural Scrolling Enabled 1\nxinput set-prop 28 libinput Natural Scrolling Enabled 1' ]]
+grep -Fqx "$twin_key"$'\tnatural-scroll\t1\t0' "$work/home/.config/dwm-titus/input-settings.conf"
+
+# Saved values are applied to all parts or none: a part that fails puts the
+# earlier parts back.
+rm -f "$work/actions.log"
+if env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" TEST_FAIL_SET_ID=18 "$helper" \
+	apply-saved 2>/dev/null; then
+	: # apply-saved reports per setting and may still exit 0
+fi
+[[ $(cat "$work/actions.log") == $'xinput set-prop 17 libinput Natural Scrolling Enabled 1\nxinput set-prop 17 libinput Natural Scrolling Enabled 0' ]]
+
+# The same, but putting back the first part fails too: the replay says the
+# device is split instead of calling it unavailable.
+rm -f "$work/set.count"
+env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" TEST_FAIL_SET_FROM=2 \
+	TEST_SET_COUNTER="$work/set.count" "$helper" apply-saved 2>"$work/twin-replay-stuck.err" || true
+grep -Fq "$twin_key/natural-scroll reached only some parts and could not be undone" \
+	"$work/twin-replay-stuck.err"
+rm -f "$work/home/.config/dwm-titus/input-settings.conf"
+
+# A Reset that fails on a later part puts the earlier parts back and keeps
+# the saved value.
+printf '%s\tnatural-scroll\t1\t0\n' "$twin_key" >"$work/home/.config/dwm-titus/input-settings.conf"
+rm -f "$work/actions.log"
+if env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" TEST_DEFAULT_17=1 TEST_FAIL_SET_ID=18 \
+	"$helper" reset "$twin_key" natural-scroll >/dev/null 2>"$work/twin-reset-fail.err"; then
+	printf 'a partly failed reset reported success\n' >&2
+	exit 1
+fi
+[[ $(cat "$work/actions.log") == $'xinput set-prop 17 libinput Natural Scrolling Enabled 1\nxinput set-prop 17 libinput Natural Scrolling Enabled 0' ]]
+grep -Fq 'rejected the natural-scroll reset; the parts already reset were put back' "$work/twin-reset-fail.err"
+grep -Fqx "$twin_key"$'\tnatural-scroll\t1\t0' "$work/home/.config/dwm-titus/input-settings.conf"
+rm -f "$work/home/.config/dwm-titus/input-settings.conf"
+
+# The same, but putting back the first part fails too: Reset says so.
+printf '%s\tnatural-scroll\t1\t0\n' "$twin_key" >"$work/home/.config/dwm-titus/input-settings.conf"
+rm -f "$work/set.count"
+if env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" TEST_DEFAULT_17=1 TEST_FAIL_SET_FROM=2 \
+	TEST_SET_COUNTER="$work/set.count" "$helper" reset "$twin_key" natural-scroll \
+	>/dev/null 2>"$work/twin-reset-stuck.err"; then
+	printf 'a reset whose undo failed reported success\n' >&2
+	exit 1
+fi
+grep -Fq 'could not be put back' "$work/twin-reset-stuck.err"
+grep -Fqx "$twin_key"$'\tnatural-scroll\t1\t0' "$work/home/.config/dwm-titus/input-settings.conf"
+rm -f "$work/home/.config/dwm-titus/input-settings.conf"
+
+# A part that disappears during a preview is skipped on Revert; the part that
+# is left gets its own value back, not the first part's.
+env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" "$helper" preview twin-gone 5 \
+	"$twin_key" natural-scroll 1 >/dev/null
+rm -f "$work/actions.log"
+env "${env_common[@]}" TEST_DEVICES="$work/devices-shared-18" "$helper" revert twin-gone >/dev/null
+[[ $(cat "$work/actions.log") == 'xinput set-prop 18 libinput Natural Scrolling Enabled 1' ]]
+
+# Same identity without a shared port: one entry that explains itself, and no
+# change reaches either device.
+env "${env_common[@]}" TEST_DEVICES="$work/devices-ambiguous" "$helper" discover >"$work/discover-ambiguous"
+[[ $(grep -Fc $'pointer\tSame Model Mouse' "$work/discover-ambiguous") == 1 ]]
+same_key=$(awk -F '\t' '$1 == "device" && $5 == "Same Model Mouse" {print $2}' "$work/discover-ambiguous")
+grep -Fq $'unsupported\t'"$same_key"$'\tidentity\t2 devices share this name and identity' "$work/discover-ambiguous"
+if grep -Fq $'setting\t'"$same_key" "$work/discover-ambiguous"; then
+	printf 'settings were offered for indistinguishable devices\n' >&2
+	exit 1
+fi
+rm -f "$work/actions.log"
+if env "${env_common[@]}" TEST_DEVICES="$work/devices-ambiguous" "$helper" \
+	preview same-model 5 "$same_key" natural-scroll 1 >/dev/null 2>"$work/same-model.err"; then
+	printf 'a preview reached indistinguishable devices\n' >&2
+	exit 1
+fi
+grep -Fq 'stable device identity is ambiguous' "$work/same-model.err"
+test ! -e "$work/actions.log"
 
 printf 'Settings input discovery, stable IDs, preview, rollback, and persistence: PASS\n'

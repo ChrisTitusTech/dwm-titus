@@ -11,7 +11,8 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 self="$script_dir/${BASH_SOURCE[0]##*/}"
 accessibility_key=accessx
 
-declare -a device_ids=() device_keys=() device_kinds=() device_names=() device_persistable=()
+declare -a device_ids=() device_keys=() device_kinds=() device_names=() device_persistable=() device_ports=()
+declare -a member_ids=()
 watch_event_fifo=
 watch_monitor_pid=
 watch_session_guard_pid=
@@ -121,6 +122,32 @@ property_value() {
 	' "$properties"
 }
 
+# The kernel exposes power, sleep and video buttons as key devices, so X lists
+# them as keyboards. udev marks real keyboards with ID_INPUT_KEYBOARD; a key
+# device without it has no layout to set. Without udev data nothing is hidden.
+button_only_keyboard() {
+	local node=$1 properties
+	[[ -n $node ]] && command -v udevadm >/dev/null 2>&1 || return 1
+	properties=$'\n'$(udevadm info --query=property --name="$node" 2>/dev/null || true)$'\n'
+	[[ $properties == *$'\nID_INPUT_KEY=1\n'* && $properties != *$'\nID_INPUT_KEYBOARD=1\n'* ]]
+}
+
+# The physical port a device node hangs off: udev ID_PATH, else its sysfs
+# device. Empty when unknown. Only devices on the same port are merged.
+device_port() {
+	local node=$1 properties path devpath
+	[[ -n $node ]] && command -v udevadm >/dev/null 2>&1 || return 0
+	properties=$(udevadm info --query=property --name="$node" 2>/dev/null || true)
+	path=$(awk -F= '$1 == "ID_PATH" {print substr($0, index($0, "=") + 1); exit}' <<<"$properties")
+	devpath=$(awk -F= '$1 == "DEVPATH" {print substr($0, index($0, "=") + 1); exit}' <<<"$properties")
+	devpath=${devpath%/input/input[0-9]*/event[0-9]*}
+	if [[ -n $path ]]; then
+		printf 'path:%s' "$path"
+	elif [[ -n $devpath && $devpath != /devices/virtual* ]]; then
+		printf 'sysfs:%s' "$devpath"
+	fi
+}
+
 stable_device_source() {
 	local node=$1 properties serial path devpath
 	[[ -n $node ]] || return 1
@@ -154,6 +181,7 @@ scan_devices() {
 	device_kinds=()
 	device_names=()
 	device_persistable=()
+	device_ports=()
 	if ! devices=$(xinput --list --short); then
 		die "unable to query XInput devices"
 	fi
@@ -182,6 +210,10 @@ scan_devices() {
 			if [[ $kind == pointer && $name =~ ([Tt]ouch[Pp]ad|[Tt]rack[Pp]ad) ]]; then
 				kind=touchpad
 			fi
+			if [[ $kind == keyboard ]] && button_only_keyboard "$node"; then
+				rm -f "$properties"
+				continue
+			fi
 			if source=$(stable_device_source "$node"); then
 				persistable=1
 			else
@@ -195,6 +227,7 @@ scan_devices() {
 			device_kinds+=("$kind")
 			device_names+=("$name")
 			device_persistable+=("$persistable")
+			device_ports+=("$(device_port "$node")")
 			rm -f "$properties"
 		fi
 	done <<<"$devices"
@@ -212,16 +245,225 @@ device_can_persist() {
 	return 1
 }
 
-resolve_device() {
-	local wanted=$1 index found=
+# One physical device can have several XInput devices with the same stable
+# identity (a VMware PS/2 mouse has two event nodes on one port). They are one
+# entry: reads use the first member that has the setting, writes go to every
+# member that has it.
+resolve_devices() {
+	local wanted=$1
 	scan_devices
+	collect_members "$wanted"
+	((${#member_ids[@]} > 0)) || die "device is disconnected or unavailable: $wanted"
+	members_share_port "$wanted" || die "stable device identity is ambiguous"
+}
+
+collect_members() {
+	local wanted=$1 index
+	member_ids=()
+	for index in "${!device_keys[@]}"; do
+		[[ ${device_keys[$index]} != "$wanted" ]] || member_ids+=("${device_ids[$index]}")
+	done
+}
+
+# Several devices with one identity are one physical device only when they sit
+# on the same known port; two same-model devices without that proof stay
+# ambiguous and are not touched.
+members_share_port() {
+	local wanted=$1 index port='' count=0
+	for index in "${!device_keys[@]}"; do
+		[[ ${device_keys[$index]} != "$wanted" ]] || count=$((count + 1))
+	done
+	((count > 1)) || return 0
 	for index in "${!device_keys[@]}"; do
 		[[ ${device_keys[$index]} == "$wanted" ]] || continue
-		[[ -z $found ]] || die "stable device identity is ambiguous"
-		found=${device_ids[$index]}
+		[[ -n ${device_ports[$index]} ]] || return 1
+		[[ -z $port || $port == "${device_ports[$index]}" ]] || return 1
+		port=${device_ports[$index]}
 	done
-	[[ -n $found ]] || die "device is disconnected or unavailable: $wanted"
-	printf '%s\n' "$found"
+}
+
+# One member's own value of a setting, or failure when it lacks it.
+member_value() {
+	local id=$1 setting=$2 property properties value
+	case $setting in
+	keyboard-layout)
+		setxkbmap -device "$id" -query | awk '$1 == "layout:" {print $2; exit}'
+		;;
+	modifier-options)
+		setxkbmap -device "$id" -query | awk '$1 == "options:" {$1=""; sub(/^[[:space:]]+/, ""); print; exit}'
+		;;
+	*)
+		property=$(setting_property "$setting") || return 1
+		properties=$(mktemp)
+		xinput list-props "$id" >"$properties" 2>/dev/null || {
+			rm -f "$properties"
+			return 1
+		}
+		value=$(property_value "$properties" "$property")
+		rm -f "$properties"
+		[[ -n $value ]] || return 1
+		printf '%s\n' "$value"
+		;;
+	esac
+}
+
+apply_member_value() {
+	local id=$1 setting=$2 value=$3 property
+	case $setting in
+	keyboard-layout) setxkbmap -device "$id" -layout "$value" ;;
+	modifier-options) setxkbmap -device "$id" -option '' -option "$value" ;;
+	*)
+		property=$(setting_property "$setting") || return 1
+		xinput set-prop "$id" "$property" "$value"
+		;;
+	esac
+}
+
+# Saves every member's value before a preview, one "id<TAB>value" per line.
+capture_members() {
+	local token=$1 key=$2 setting=$3 file id value
+	[[ $key != "$accessibility_key" ]] || return 0
+	file=$(token_file "$token" members)
+	resolve_devices "$key"
+	: >"$file"
+	chmod 600 "$file"
+	for id in "${member_ids[@]}"; do
+		value=$(member_value "$id" "$setting") || continue
+		[[ $value != *$'\t'* ]] || die "captured value contains a tab"
+		printf '%s\t%s\n' "$id" "$value" >>"$file"
+	done
+}
+
+# Puts back what capture_members saved: every captured member still present
+# gets its own value back. A member that appeared since (a replug gives new
+# XInput ids) gets the first captured value; a member that is gone is skipped.
+restore_members() {
+	local token=$1 key=$2 setting=$3 previous=$4 file id value failed=0
+	local -A captured=()
+	file=$(token_file "$token" members)
+	if [[ $key == "$accessibility_key" || ! -s $file ]]; then
+		apply_value "$key" "$setting" "$previous"
+		return
+	fi
+	resolve_devices "$key" || return 1
+	while IFS=$'\t' read -r id value; do
+		captured[$id]=1
+		[[ " ${member_ids[*]} " == *" $id "* ]] || continue
+		apply_member_value "$id" "$setting" "$value" || failed=1
+	done <"$file"
+	for id in "${member_ids[@]}"; do
+		[[ -z ${captured[$id]:-} ]] || continue
+		member_value "$id" "$setting" >/dev/null || continue
+		apply_member_value "$id" "$setting" "$previous" || failed=1
+	done
+	return "$failed"
+}
+
+# Applies a preview member by member and lists each changed member in the
+# token's written file, so a failure part-way can undo exactly those.
+apply_preview_members() {
+	local token=$1 key=$2 setting=$3 value=$4 file written id old
+	if [[ $key == "$accessibility_key" ]]; then
+		apply_value "$key" "$setting" "$value"
+		return
+	fi
+	file=$(token_file "$token" members)
+	written=$(token_file "$token" written)
+	: >"$written"
+	chmod 600 "$written"
+	[[ -s $file ]] || die "$setting is unsupported by device $key"
+	while IFS=$'\t' read -r id old; do
+		apply_member_value "$id" "$setting" "$value" || return 1
+		printf '%s\n' "$id" >>"$written"
+	done <"$file"
+}
+
+# Keep after a failed preview: writes the value again to every present member
+# that has the setting, also one a replug gave a new XInput id. A device that
+# is gone gets it from the saved setting when it comes back.
+reapply_members() {
+	local token=$1 key=$2 setting=$3 value=$4 file id
+	file=$(token_file "$token" members)
+	[[ $key != "$accessibility_key" && -s $file ]] || return 0
+	scan_devices
+	collect_members "$key"
+	((${#member_ids[@]} > 0)) || return 0
+	members_share_port "$key" || return 1
+	for id in "${member_ids[@]}"; do
+		member_value "$id" "$setting" >/dev/null || continue
+		apply_member_value "$id" "$setting" "$value" || return 1
+	done
+}
+
+# Undoes the members apply_preview_members changed before it failed.
+undo_written_members() {
+	local token=$1 setting=$2 file written id old failed=0
+	local -A changed=()
+	file=$(token_file "$token" members)
+	written=$(token_file "$token" written)
+	[[ -s $written ]] || return 0
+	while IFS= read -r id; do
+		changed[$id]=1
+	done <"$written"
+	while IFS=$'\t' read -r id old; do
+		[[ -n ${changed[$id]:-} ]] || continue
+		apply_member_value "$id" "$setting" "$old" || failed=1
+	done <"$file"
+	return "$failed"
+}
+
+# Puts back members a multi-member write changed before a later member
+# failed. Arguments after the setting are "id<TAB>old value" pairs.
+undo_member_writes() {
+	local setting=$1 pair failed=0
+	shift
+	for pair in "$@"; do
+		apply_member_value "${pair%%$'\t'*}" "$setting" "${pair#*$'\t'}" || failed=1
+	done
+	return "$failed"
+}
+
+# Sets every member that has the setting to its own driver default; a failure
+# part-way puts the earlier members back. Returns 1 when no member has a
+# default, 2 when a member rejected the write, 3 when putting back failed too.
+apply_member_defaults() {
+	local setting=$1 default_name=$2 property id properties value old
+	local -a written=()
+	property=$(setting_property "$setting") || return 1
+	properties=$(mktemp)
+	for id in "${member_ids[@]}"; do
+		xinput list-props "$id" >"$properties" 2>/dev/null || continue
+		old=$(property_value "$properties" "$property")
+		[[ -n $old ]] || continue
+		value=$(property_value "$properties" "$default_name")
+		[[ -n $value ]] || continue
+		validate_value "$setting" "$value" || continue
+		xinput set-prop "$id" "$property" "$value" || {
+			rm -f "$properties"
+			undo_member_writes "$setting" "${written[@]}" || return 3
+			return 2
+		}
+		written+=("$id"$'\t'"$old")
+	done
+	rm -f "$properties"
+	((${#written[@]}))
+}
+
+# Prints the first member's value of an XInput property, or fails.
+member_property() {
+	local property=$1 id properties value
+	properties=$(mktemp)
+	for id in "${member_ids[@]}"; do
+		xinput list-props "$id" >"$properties" 2>/dev/null || continue
+		value=$(property_value "$properties" "$property")
+		if [[ -n $value ]]; then
+			rm -f "$properties"
+			printf '%s\n' "$value"
+			return 0
+		fi
+	done
+	rm -f "$properties"
+	return 1
 }
 
 emit_setting() {
@@ -238,6 +480,7 @@ emit_unsupported() {
 
 discover() {
 	local index id key kind name properties value default layout options keyboard_query accessibility_query setting label
+	local -A emitted=()
 	scan_devices
 	printf 'input-protocol\t1\n'
 	printf 'device\t%s\tsession\taccessibility\tKeyboard accessibility\n' "$accessibility_key"
@@ -266,33 +509,39 @@ discover() {
 		key=${device_keys[$index]}
 		kind=${device_kinds[$index]}
 		name=${device_names[$index]}
+		# Devices sharing a stable identity are one entry (see resolve_devices).
+		[[ -z ${emitted[$key]:-} ]] || continue
+		emitted[$key]=1
+		collect_members "$key"
 		properties=$(mktemp)
 		if ! xinput list-props "$id" >"$properties" 2>/dev/null; then
 			rm -f "$properties"
 			continue
 		fi
 		printf 'device\t%s\t%s\t%s\t%s\n' "$key" "$id" "$kind" "$(clean_field "$name")"
+		if ! members_share_port "$key"; then
+			emit_unsupported "$key" identity "${#member_ids[@]} devices share this name and identity and cannot be told apart"
+			rm -f "$properties"
+			continue
+		fi
 		if [[ ${device_persistable[$index]} != 1 ]]; then
 			emit_unsupported "$key" persistence "No stable udev serial, path, or physical sysfs identity; changes are session-only"
 		fi
 		if [[ $kind == pointer || $kind == touchpad ]]; then
-			value=$(property_value "$properties" "libinput Accel Speed")
-			default=$(property_value "$properties" "libinput Accel Speed Default")
-			if [[ -n $value ]]; then
+			if value=$(member_property "libinput Accel Speed"); then
+				default=$(member_property "libinput Accel Speed Default" || true)
 				emit_setting "$key" pointer-speed "Pointer acceleration / speed" number "$value" "${default:-0}" -1 1
 			else
 				emit_unsupported "$key" pointer-speed "The X11 driver does not expose libinput acceleration"
 			fi
-			value=$(property_value "$properties" "libinput Natural Scrolling Enabled")
-			default=$(property_value "$properties" "libinput Natural Scrolling Enabled Default")
-			if [[ -n $value ]]; then
+			if value=$(member_property "libinput Natural Scrolling Enabled"); then
+				default=$(member_property "libinput Natural Scrolling Enabled Default" || true)
 				emit_setting "$key" natural-scroll "Natural scrolling" boolean "$value" "${default:-0}" 0 1
 			else
 				emit_unsupported "$key" natural-scroll "The X11 driver does not expose natural scrolling"
 			fi
-			value=$(property_value "$properties" "libinput Tapping Enabled")
-			default=$(property_value "$properties" "libinput Tapping Enabled Default")
-			if [[ -n $value ]]; then
+			if value=$(member_property "libinput Tapping Enabled"); then
+				default=$(member_property "libinput Tapping Enabled Default" || true)
 				emit_setting "$key" tap-to-click "Tap to click" boolean "$value" "${default:-0}" 0 1
 			else
 				emit_unsupported "$key" tap-to-click "The X11 driver does not expose tap-to-click"
@@ -351,12 +600,13 @@ validate_value() {
 }
 
 read_value() {
-	local key=$1 setting=$2 id properties property value
+	local key=$1 setting=$2 id property value
 	if [[ $key == "$accessibility_key" ]]; then
 		accessibility_value "$setting"
 		return
 	fi
-	id=$(resolve_device "$key") || return 1
+	resolve_devices "$key"
+	id=${member_ids[0]}
 	case $setting in
 	keyboard-layout)
 		need_setxkbmap
@@ -368,36 +618,64 @@ read_value() {
 		;;
 	*)
 		property=$(setting_property "$setting") || die "unsupported setting: $setting"
-		properties=$(mktemp)
-		trap 'rm -f "$properties"' RETURN
-		xinput list-props "$id" >"$properties"
-		value=$(property_value "$properties" "$property")
-		[[ -n $value ]] || die "$setting is unsupported by device $key"
+		value=$(member_property "$property") || die "$setting is unsupported by device $key"
 		printf '%s\n' "$value"
 		;;
 	esac
 }
 
+# Returns 3 when a merged device failed part-way and the parts already written
+# could not be put back.
 apply_value() {
-	local key=$1 setting=$2 value=$3 id property
+	local key=$1 setting=$2 value=$3 id property properties old index
+	local -a written=() olds=()
 	validate_value "$setting" "$value" || die "invalid value for $setting"
 	if [[ $key == "$accessibility_key" ]]; then
 		apply_accessibility_value "$setting" "$value"
 		return
 	fi
-	id=$(resolve_device "$key") || return 1
+	# Callers run this under `if !`, where set -e is off: every step returns
+	# its own failure.
+	resolve_devices "$key" || return 1
 	case $setting in
-	keyboard-layout)
+	keyboard-layout | modifier-options)
 		need_setxkbmap
-		setxkbmap -device "$id" -layout "$value"
-		;;
-	modifier-options)
-		need_setxkbmap
-		setxkbmap -device "$id" -option '' -option "$value"
+		# setxkbmap -device writes the shared rules names that the query reads,
+		# so every old value is read before the first write
+		for id in "${member_ids[@]}"; do
+			old=$(member_value "$id" "$setting") || old=
+			olds+=("$old")
+		done
+		for index in "${!member_ids[@]}"; do
+			id=${member_ids[$index]}
+			old=${olds[$index]}
+			apply_member_value "$id" "$setting" "$value" || {
+				undo_member_writes "$setting" "${written[@]}" || return 3
+				return 1
+			}
+			# an unknown layout cannot be put back
+			if [[ -n $old || $setting == modifier-options ]]; then
+				written+=("$id"$'\t'"$old")
+			fi
+		done
 		;;
 	*)
 		property=$(setting_property "$setting") || die "unsupported setting: $setting"
-		xinput set-prop "$id" "$property" "$value"
+		properties=$(mktemp)
+		for id in "${member_ids[@]}"; do
+			xinput list-props "$id" >"$properties" 2>/dev/null || continue
+			old=$(property_value "$properties" "$property")
+			[[ -n $old ]] || continue
+			xinput set-prop "$id" "$property" "$value" || {
+				rm -f "$properties"
+				# a merged device is changed on all parts or none
+				undo_member_writes "$setting" "${written[@]}" || return 3
+				return 1
+			}
+			written+=("$id"$'\t'"$old")
+		done
+		rm -f "$properties"
+		((${#written[@]})) || die "$setting is unsupported by device $key"
 		;;
 	esac
 }
@@ -482,7 +760,8 @@ token_file() {
 	printf '%s/%s.%s\n' "$state_dir" "$1" "$2"
 }
 cleanup_preview() {
-	rm -f "$(token_file "$1" state)" "$(token_file "$1" failed)" "$state_dir/current"
+	rm -f "$(token_file "$1" state)" "$(token_file "$1" failed)" "$(token_file "$1" members)" \
+		"$(token_file "$1" written)" "$state_dir/current"
 	rmdir "$(token_file "$1" claim)" 2>/dev/null || true
 }
 
@@ -520,9 +799,22 @@ preview_value() {
 		rm -f "$state"
 		die "another input preview is active"
 	fi
-	if ! (apply_value "$key" "$setting" "$value"); then
+	if ! (capture_members "$token" "$key" "$setting"); then
 		cleanup_preview "$token"
 		die "input preview failed; recovery state was cleared"
+	fi
+	if ! (apply_preview_members "$token" "$key" "$setting" "$value"); then
+		# A merged device can fail on a later member after earlier ones changed.
+		if (undo_written_members "$token" "$setting"); then
+			cleanup_preview "$token"
+			die "input preview failed; recovery state was cleared"
+		fi
+		printf 'Input preview failed part-way and could not be undone; the captured values are retained for retry.\n' \
+			>"$(token_file "$token" failed)"
+		chmod 600 "$(token_file "$token" failed)"
+		# Settings learns the token from this record and offers Revert.
+		printf 'preview-failed\t%s\t%s\n' "$token" "$(clean_field "$(<"$(token_file "$token" failed)")")"
+		return 0
 	fi
 	(
 		exec 7>&-
@@ -539,9 +831,15 @@ finish_preview() {
 	claim=$(claim_preview "$token")
 	trap 'rmdir "$claim" 2>/dev/null || true' RETURN
 	IFS='|' read -r key setting previous value persistable <"$state"
+	if [[ $action == keep && -f $(token_file "$token" failed) ]] &&
+		! (reapply_members "$token" "$key" "$setting" "$value"); then
+		# A merged preview stopped part-way: Keep only once every part has it.
+		rmdir "$claim" 2>/dev/null || true
+		die "not every part of the input device accepted the value; use Revert"
+	fi
 	if [[ $action == keep ]]; then
 		persist_value "$key" "$setting" "$value" "$previous" "$persistable"
-	elif ! (apply_value "$key" "$setting" "$previous"); then
+	elif ! (restore_members "$token" "$key" "$setting" "$previous"); then
 		printf 'Input rollback failed; the captured value is retained for retry.\n' >"$(token_file "$token" failed)"
 		chmod 600 "$(token_file "$token" failed)"
 		rmdir "$claim" 2>/dev/null || true
@@ -565,7 +863,7 @@ watchdog() {
 		claim=$(token_file "$token" claim)
 		mkdir "$claim" 2>/dev/null || return 0
 		IFS='|' read -r key setting previous value persistable <"$state"
-		if (apply_value "$key" "$setting" "$previous"); then
+		if (restore_members "$token" "$key" "$setting" "$previous"); then
 			cleanup_preview "$token"
 			apply_pending_hotplug "$key" "$setting"
 		else
@@ -600,7 +898,7 @@ preview_status() {
 }
 
 reset_setting() {
-	local key=$1 setting=$2 id properties default_name default
+	local key=$1 setting=$2 default_name default status
 	if [[ $key == "$accessibility_key" ]]; then
 		case $setting in
 		accessx-shortcuts | sticky-keys | slow-keys | bounce-keys | mouse-keys) ;;
@@ -626,20 +924,25 @@ reset_setting() {
 	*) die "unsupported setting: $setting" ;;
 	esac
 	if [[ -z ${default+x} ]]; then
-		id=$(resolve_device "$key") || return 1
-		properties=$(mktemp)
-		trap 'rm -f "$properties"' RETURN
-		xinput list-props "$id" >"$properties"
-		default=$(property_value "$properties" "$default_name")
-		[[ -n $default ]] || die "default is unavailable for $setting"
+		# Parts of a merged device can have different driver defaults.
+		resolve_devices "$key" || die "input device $key is not available"
+		status=0
+		apply_member_defaults "$setting" "$default_name" || status=$?
+		case $status in
+		0) ;;
+		2) die "a part of device $key rejected the $setting reset; the parts already reset were put back" ;;
+		3) die "a part of device $key rejected the $setting reset and the parts already reset could not be put back" ;;
+		*) die "default is unavailable for $setting" ;;
+		esac
+	else
+		apply_value "$key" "$setting" "$default"
 	fi
-	apply_value "$key" "$setting" "$default"
 	remove_persisted_value "$key" "$setting"
 	printf 'result\treset\t%s\n' "$setting"
 }
 
 apply_saved() {
-	local skip_key=${1:-} skip_setting=${2:-} line key setting value baseline remainder pending
+	local skip_key=${1:-} skip_setting=${2:-} line key setting value baseline remainder pending status
 	pending=$state_dir/hotplug-replay.pending
 	if [[ -f $state_dir/current ]]; then
 		: >"$pending"
@@ -663,8 +966,14 @@ apply_saved() {
 		fi
 		[[ -n $key && -n $setting ]] || continue
 		[[ $key != "$skip_key" || $setting != "$skip_setting" ]] || continue
-		(apply_value "$key" "$setting" "$value") ||
-			printf 'dwm-settings-input: skipped unavailable %s/%s\n' "$key" "$setting" >&2
+		status=0
+		(apply_value "$key" "$setting" "$value") || status=$?
+		case $status in
+		0) ;;
+		3) printf 'dwm-settings-input: %s/%s reached only some parts and could not be undone; it is applied again on replug or next login\n' \
+			"$key" "$setting" >&2 ;;
+		*) printf 'dwm-settings-input: skipped unavailable %s/%s\n' "$key" "$setting" >&2 ;;
+		esac
 	done 3<"$settings_file"
 }
 
