@@ -8,6 +8,10 @@ versions from `config.mk`.
 
 ### Added
 
+- Enable automatic time synchronization with systemd-timesyncd on new Fedora
+  installations and both image variants; preserve existing time providers and
+  explicit service masks when rerunning the installer.
+
 - Add an optional, unprivileged X11 clipboard observer that rejects password
   manager applications and sensitivity-marked copies before reading text.
   Browser and terminal history remain available; unmarked secrets may be retained.

@@ -252,7 +252,10 @@ The supported installation flow must:
 10. Set ownership to the invoking user for files in that user's home.
 11. Support repeated execution without destructive side effects.
 12. Print a summary, skipped optional features, and actionable next steps.
-13. Offer interactive Xorg display setup when installation runs inside an
+13. Provide automatic time synchronization through systemd-timesyncd by default.
+    Preserve an existing enabled or active alternative provider and explicit
+    systemd-timesyncd masks on existing systems. Dedicated images use timesyncd.
+14. Offer interactive Xorg display setup when installation runs inside an
     active X11 session. The setup must support resolution, refresh rate,
     position, rotation, primary-output selection, and compatible TearFree
     drivers; preview changes with rollback; and preserve existing system Xorg

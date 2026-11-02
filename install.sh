@@ -306,6 +306,7 @@ print_install_summary() {
 	printf '  Profile: %s\n' "$INSTALL_PROFILE"
 	printf '  Mode: %s\n' "$([[ $NON_INTERACTIVE == true ]] && echo non-interactive || echo interactive)"
 	print_summary_profile "Required packages" required
+	printf '  Time synchronization: enable/start timesyncd unless another provider or a mask is present\n'
 	if install_recommended_profile; then
 		print_summary_profile "Recommended packages" recommended
 		printf '  Gear Lever: user-scoped Flathub install (%s)\n' 'it.mijorus.gearlever'
@@ -579,6 +580,9 @@ dwm_install_package_profile build
 dwm_install_package_profile x11
 dwm_install_package_profile runtime-required
 dwm_install_package_profile media
+
+info "Configuring automatic time synchronization (preserving existing providers)..."
+bash "$REPO_DIR/scripts/configure-timesync.sh"
 ok "Required build and runtime dependencies installed."
 
 # ── Recommended desktop dependencies ─────────────────────
