@@ -325,15 +325,18 @@ contract, restart behavior, and interrupted-operation recovery.
 
 Before a source update, save the current checkout and user configuration. Run
 this from the checkout as your regular user in Bash, with desktop settings
-closed so they cannot change during the backup:
+closed so they cannot change during the backup. Use a terminal in the desktop
+session so its effective XDG roots are recorded:
 
 ```bash
 repo_dir=$(pwd -P)
 backup_dir=$(mktemp -d "$HOME/dwm-titus-backup.XXXXXX") || exit 1
 chmod 700 "$backup_dir" || exit 1
 tar -C "$repo_dir" -cpf "$backup_dir/source.tar" . || exit 1
-printf 'export XDG_CONFIG_HOME=%q\nexport XDG_DATA_HOME=%q\n' \
-    "${XDG_CONFIG_HOME:-$HOME/.config}" "${XDG_DATA_HOME:-$HOME/.local/share}" \
+state_home=${XDG_STATE_HOME:-$HOME/.local/state}
+case "$state_home" in /*) ;; *) state_home=$HOME/.local/state ;; esac
+printf 'export XDG_CONFIG_HOME=%q\nexport XDG_DATA_HOME=%q\nexport XDG_STATE_HOME=%q\n' \
+    "${XDG_CONFIG_HOME:-$HOME/.config}" "${XDG_DATA_HOME:-$HOME/.local/share}" "$state_home" \
     >"$backup_dir/xdg.env"
 python3 - "$backup_dir/theme-paths.nul" "$repo_dir/config.h" "${XDG_CONFIG_HOME:-$HOME/.config}" \
     "$HOME/.xinitrc" "$HOME/.gtkrc-2.0" "${XDG_DATA_HOME:-$HOME/.local/share}/applications" \
