@@ -119,11 +119,20 @@ install-herdr
 
 ## Manual Install
 
-Run the commands in this section from the cloned `dwm-titus` directory.
-`./install.sh` refers to the copy in the directory you are currently in, so a
-new terminal must `cd` into the checkout first.
+### 1. Clone the checkout
 
-### 1. Dependencies
+For a first-time source install:
+
+```bash
+git clone https://github.com/ChrisTitusTech/dwm-titus.git
+cd dwm-titus
+```
+
+If you already have a checkout, enter that directory instead of cloning again.
+Run the remaining commands from it; a new terminal must `cd` into the checkout
+first.
+
+### 2. Dependencies
 
 The supported dependency path is the installer because it resolves Fedora
 package names from the shared map:
@@ -177,12 +186,13 @@ to use GTK: the current Path package opens a chooser but does not implement
 caller cancellation through `org.freedesktop.portal.Request.Close`. Using Path
 for folder browsing does not require its file chooser portal.
 
-### 2. Clone and Build
+### 3. Build and synchronize
+
+The installer above already builds and installs the desktop. For later source
+changes, preserve an existing compile-time configuration and synchronize with:
 
 ```bash
-git clone https://github.com/ChrisTitusTech/dwm-titus.git
-cd dwm-titus
-cp config.def.h config.h
+test -f config.h || cp config.def.h config.h
 ./scripts/dev-sync-install.sh
 ```
 

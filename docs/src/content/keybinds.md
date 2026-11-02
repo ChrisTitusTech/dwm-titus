@@ -30,7 +30,10 @@ Bindings are defined in `config/hotkeys.toml` and reload instantly on save — n
 | `Super` + `F1` | Control Center |
 | `Super` + `Alt` + `F1` | Control Center (alternate) |
 | `Super` + `Shift` + `R` | Restart Quickshell |
-| `Super` + `Ctrl` + `R` | Restart Proton/Steam |
+| `Super` + `Ctrl` + `R` | Force-stop Steam, Wine/Proton, and Windows applications |
+
+`Super` + `Ctrl` + `R` force-kills matching processes without relaunching them.
+Unsaved application or game progress can be lost.
 
 ## Screenshots
 
