@@ -380,7 +380,7 @@ static int initialize(void)
     int screen_number, i, ok;
     int64_t deadline;
     const char *display = getenv("DISPLAY");
-    const char *markers[] = {"x-kde-passwordManagerHint", "application/x-keepassxc", 
+    const char *markers[] = {"x-kde-passwordManagerHint", "application/x-keepassxc",
         "application/x-nspasteboard-concealed-type", "ExcludeClipboardContentFromMonitorProcessing",
         "application/x-dwm-clipboard-private"};
     if (!display || display[0] != ':') return 0;
