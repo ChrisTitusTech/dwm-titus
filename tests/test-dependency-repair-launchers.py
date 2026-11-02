@@ -145,14 +145,18 @@ class DependencyLaunchers(unittest.TestCase):
                 helper = installed / name
                 helper.write_text('#!/bin/sh\nprintf "%s %s\\n" ' + label + ' "$1" >> "$REPAIR_CALLS"\n')
                 helper.chmod(0o755)
+            healer = base / "healer $literal `literal`.sh"
+            healer.write_text('#!/bin/sh\nprintf "healed\\n" >> "$REPAIR_CALLS"\n')
+            healer.chmod(0o755)
             log = base / "calls"
-            env = {**os.environ, "HOME": str(base), "PATH": "/usr/bin:/bin", "DWM_TEST_SYNC": "1", "REPAIR_CALLS": str(log)}
+            env = {**os.environ, "HOME": str(base), "PATH": "/usr/bin:/bin", "DWM_TEST_SYNC": "1", "REPAIR_CALLS": str(log), "DWM_SELF_HEAL_SCRIPT": str(healer)}
             env.pop("DWM_CHECK_DEPS_SCRIPT", None)
             for name, args in [("dwm-quickshell-controlcenter", ["action", "dependency-check"]),
-                               ("dwm-system-health", ["repair-user", "install-dependencies"])]:
+                               ("dwm-system-health", ["repair-user", "install-dependencies"]),
+                               ("dwm-quickshell-controlcenter", ["action", "self-heal"])]:
                 result = subprocess.run([installed / name, *args], env=env, input="\n", text=True, capture_output=True, timeout=15)
                 self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(log.read_text().splitlines(), ["checker --interactive", "updater install-dependencies"])
+            self.assertEqual(log.read_text().splitlines(), ["checker --interactive", "updater install-dependencies", "healed"])
 
     def test_buttons_fail_when_checker_is_unavailable(self):
         with tempfile.TemporaryDirectory(prefix="dependency repair no checker ") as temporary:

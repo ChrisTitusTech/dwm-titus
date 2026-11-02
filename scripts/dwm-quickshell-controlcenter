@@ -1748,7 +1748,7 @@ self_heal() {
 	# The script is an argv value, never shell source. It owns any confirmation
 	# and privilege prompts; the Quickshell frontend stays unprivileged.
 	# shellcheck disable=SC2016 # Expand positional arguments in the terminal shell.
-	launch_background dwm-terminal -e sh -c '
+	launch_background "$dependency_terminal" -e sh -c '
 		"$1"
 		status=$?
 		printf "\nSelf-Heal exited with status %s. Press Enter to close..." "$status"

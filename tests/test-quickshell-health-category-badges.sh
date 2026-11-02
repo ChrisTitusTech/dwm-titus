@@ -69,9 +69,9 @@ ShellRoot {
                 }
             }
 
-            // Category "boot" has 3 warnings, 1 error
+            // Category "boot" has 3 warnings, 1 error and 1 restricted row
             assertEq(healthModel.categoryWarningCount("boot"), 3, "boot warning count");
-            assertEq(healthModel.categoryErrorCount("boot"), 1, "boot error count");
+            assertEq(healthModel.categoryErrorCount("boot"), 2, "boot error count");
 
             // Category "services" has 1 warning, 0 errors
             assertEq(healthModel.categoryWarningCount("services"), 1, "services warning count");
@@ -85,10 +85,12 @@ ShellRoot {
             assertEq(healthModel.categoryWarningCount("storage"), 0, "storage warning count");
             assertEq(healthModel.categoryErrorCount("storage"), 0, "storage error count");
 
-            // Category "overview" aggregates all warnings (4) and errors (2)
+            // Category "overview" aggregates all warnings (4) and errors/restricted (3)
             assertEq(healthModel.categoryWarningCount("overview"), 4, "overview warning count");
-            assertEq(healthModel.categoryErrorCount("overview"), 2, "overview error count");
+            assertEq(healthModel.categoryErrorCount("overview"), 3, "overview error count");
 
+            healthModel.rows = [{id: "auth", category: "overview", status: "restricted", kind: "check"}];
+            assertEq(healthModel.categoryErrorCount("overview"), 1, "restricted-only overview badge");
             console.log("All health badge model assertions passed.");
             Qt.quit();
         }
