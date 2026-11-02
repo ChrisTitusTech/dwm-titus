@@ -128,6 +128,7 @@ ShellRoot {
     ClockModel {
         id: clock
         timezoneState: systemManagementModel.nativeStates.timezone || null
+        showSeconds: panelSettingsModel.optionEnabled("clock-seconds")
     }
 
     LauncherModel {
@@ -1069,6 +1070,14 @@ ShellRoot {
             panelSettingsModel.setWidget(widget, enabled);
         }
 
+        function panelOptionEnabled(option: string): bool {
+            return panelSettingsModel.optionEnabled(option);
+        }
+
+        function panelOptionSet(option: string, enabled: bool): void {
+            if (panelSettingsModel.validOption(option)) panelSettingsModel.setWidget(option, enabled);
+        }
+
         function panelWidgetsReset(): void {
             panelSettingsModel.reset();
         }
@@ -1191,6 +1200,7 @@ ShellRoot {
             updateCenterModel: updateCenterModel
             primaryPanel: modelData === Quickshell.screens[0]
             onPopupRequested: (panel, popupId) => root.requestPanelPopup(panel, popupId)
+            onSettingsSectionRequested: (panel, section) => root.runCommandMenuAction("settings", "select", section, panel.screen)
         }
     }
 

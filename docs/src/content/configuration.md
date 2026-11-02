@@ -373,6 +373,7 @@ Use space-separated modifiers: `"SUPER"`, `"SUPER SHIFT"`, `"SUPER CTRL"`, `"SUP
 | `focusmon` | `i=1` or `i=-1` | Focus monitor |
 | `tagmon` | `i=1` or `i=-1` | Send window to monitor |
 | `view` | `ui=-1` = all tags | Switch tag |
+| `cyclelayout` | `i=1` or `i=-1` | Next/previous keyboard layout |
 | `quit` | — | Exit dwm |
 
 ### Tag Bindings
