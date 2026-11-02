@@ -335,33 +335,49 @@ tar -C "$repo_dir" -cpf "$backup_dir/source.tar" . || exit 1
 printf 'export XDG_CONFIG_HOME=%q\nexport XDG_DATA_HOME=%q\n' \
     "${XDG_CONFIG_HOME:-$HOME/.config}" "${XDG_DATA_HOME:-$HOME/.local/share}" \
     >"$backup_dir/xdg.env"
-python3 - "$repo_dir/config.h" "${XDG_CONFIG_HOME:-$HOME/.config}" \
+python3 - "$backup_dir/theme-paths.nul" "$repo_dir/config.h" "${XDG_CONFIG_HOME:-$HOME/.config}" \
     "$HOME/.xinitrc" "$HOME/.gtkrc-2.0" "${XDG_DATA_HOME:-$HOME/.local/share}/applications" \
     >"$backup_dir/user-paths.nul" <<'PYTHON' || exit 1
 import os
 import sys
 
-pending = [os.path.abspath(p) for p in sys.argv[1:] if os.path.lexists(p)]
-seen = set()
-while pending:
-    original = pending.pop()
-    # Canonicalize parents, retaining a final symlink as its own archive entry.
-    path = os.path.join(os.path.realpath(os.path.dirname(original)), os.path.basename(original))
-    if path in seen:
-        continue
-    seen.add(path)
-    if os.path.islink(path):
-        target = os.path.realpath(path)
-        if not os.path.exists(target) or not os.access(target, os.W_OK):
-            sys.exit("Back up this missing or read-only link target separately: " + path)
-        pending.append(target)
-    elif os.path.isdir(path):
-        pending.extend(entry.path for entry in os.scandir(path))
-for path in sorted(seen):
-    sys.stdout.buffer.write(os.fsencode(path.lstrip("/")) + b"\0")
+def archive_paths(roots):
+    pending = [os.path.abspath(p) for p in roots if os.path.lexists(p)]
+    seen = set()
+    while pending:
+        original = pending.pop()
+        # Retain a final symlink as an entry and archive its writable target.
+        path = os.path.join(os.path.realpath(os.path.dirname(original)), os.path.basename(original))
+        if path in seen:
+            continue
+        seen.add(path)
+        if os.path.islink(path):
+            target = os.path.realpath(path)
+            if not os.path.exists(target) or not os.access(target, os.W_OK):
+                sys.exit("Back up this missing or read-only link target separately: " + path)
+            pending.append(target)
+        elif os.path.isdir(path):
+            pending.extend(entry.path for entry in os.scandir(path))
+    return seen
+
+def manifest(paths):
+    return b"".join(os.fsencode(p.lstrip("/")) + b"\0" for p in sorted(paths))
+
+config_root = sys.argv[3]
+theme_roots = [os.path.join(config_root, name) for name in
+               ("alacritty", "kitty", "gtk-3.0", "gtk-4.0", "qt5ct", "qt6ct")]
+theme_paths = archive_paths(theme_roots + [sys.argv[5]])
+managed_shell = os.path.realpath(os.path.join(config_root, "quickshell"))
+if any(os.path.commonpath([path, managed_shell]) == managed_shell for path in theme_paths):
+    sys.exit("A theme path targets managed Quickshell; back it up separately before updating")
+with open(sys.argv[1], "wb") as output:
+    output.write(manifest(theme_paths))
+sys.stdout.buffer.write(manifest(archive_paths(sys.argv[2:])))
 PYTHON
 tar -C / --null --no-recursion -cpf "$backup_dir/user.tar" \
     -T "$backup_dir/user-paths.nul" || exit 1
+tar -C / --null --no-recursion -cpf "$backup_dir/themes.tar" \
+    -T "$backup_dir/theme-paths.nul" || exit 1
 printf 'Recovery backup: %s\n' "$backup_dir"
 ```
 
@@ -371,7 +387,11 @@ source and configuration, not Fedora packages or all personal data. The user
 archive records the effective XDG paths, symlink layout, and the contents of
 referenced writable targets, including dotfiles outside the checkout. A missing
 or read-only link target stops the recipe; resolve it or back it up separately
-before updating. Keep the XDG parent-directory layout unchanged during recovery.
+before updating. Keep the XDG parent-directory layout unchanged during recovery. The separate
+`themes.tar` archive captures existing GTK2, GTK3/4, Qt5/6, Alacritty, and Kitty
+configuration and writable symlink targets for selective post-install restoration.
+It does not include the managed Quickshell tree. Theme preferences held by running
+services or D-Bus are outside this file backup; close the session as instructed.
 
 For a clean tracked checkout, update and synchronize the installed files:
 
@@ -383,7 +403,8 @@ git pull --ff-only || exit 1
 ```
 
 Resolve local source changes before pulling. The installer preserves existing
-user TOML files, `config.h`, `.xinitrc`, and application configuration. It
+user TOML files, `config.h`, and `.xinitrc`. It reapplies theme integration
+keys in GTK/Qt and terminal configuration while preserving unrelated values. It
 replaces the managed Quickshell directory to match the installed helpers.
 Log out and select dwm again, then run:
 
@@ -403,14 +424,18 @@ recorded paths and builds the saved source in a separate directory, leaving the
 failed checkout available for inspection:
 
 ```bash
-test -f "$backup_dir/source.tar" && test -f "$backup_dir/user.tar" || exit 1
+test -f "$backup_dir/source.tar" && test -f "$backup_dir/user.tar" \
+    && test -f "$backup_dir/themes.tar" || exit 1
 restore_dir=$(mktemp -d "$HOME/dwm-titus-restored.XXXXXX") || exit 1
 tar -C "$restore_dir" -xpf "$backup_dir/source.tar" || exit 1
 tar -C / --keep-directory-symlink -xpf "$backup_dir/user.tar" || exit 1
 source "$backup_dir/xdg.env"
 cd "$restore_dir" || exit 1
 ./install.sh --non-interactive --yes --profile recommended || exit 1
-./scripts/dev-sync-install.sh
+./scripts/dev-sync-install.sh || exit 1
+# Reapply saved application theme files after install-time theme convergence.
+# This archive includes writable symlink targets, but excludes managed Quickshell.
+tar -C / --keep-directory-symlink -xpf "$backup_dir/themes.tar" || exit 1
 ```
 
 Log in again and run `./scripts/dev-sync-install.sh --check` from the restored
