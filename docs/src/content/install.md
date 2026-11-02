@@ -433,14 +433,30 @@ source "$backup_dir/xdg.env"
 cd "$restore_dir" || exit 1
 ./install.sh --non-interactive --yes --profile recommended || exit 1
 ./scripts/dev-sync-install.sh || exit 1
-# Reapply saved application theme files after install-time theme convergence.
-# This archive includes writable symlink targets, but excludes managed Quickshell.
+# Keep the next startup's automatic theme apply from rewriting restored files.
+# This uses the same source-hash suppression as Settings theme rollback.
+state_home=${XDG_STATE_HOME:-$HOME/.local/state}
+case "$state_home" in /*) ;; *) state_home=$HOME/.local/state ;; esac
+appearance_state=$state_home/dwm-titus/appearance
+mkdir -p -- "$appearance_state" || exit 1
+chmod 700 -- "$appearance_state" || exit 1
+theme_hash=$(sha256sum -- "$XDG_CONFIG_HOME/dwm-titus/themes.toml") || exit 1
+suppression=$(umask 077; mktemp "$appearance_state/.integration-suppress.XXXXXX") || exit 1
+printf '%s\n' "${theme_hash%% *}" >"$suppression" || exit 1
+mv -f -- "$suppression" "$appearance_state/integration-suppress" || exit 1
+# Reapply saved files after installation; managed Quickshell is excluded.
 tar -C / --keep-directory-symlink -xpf "$backup_dir/themes.tar" || exit 1
 ```
 
 Log in again and run `./scripts/dev-sync-install.sh --check` from the restored
-checkout. Keep both directories until runtime verification passes. This
-procedure does not downgrade RPMs, remove files created after the backup, or
+checkout. The suppression marker prevents automatic integration-file writes
+while `themes.toml` has the restored hash, including on first login; it does not
+freeze dwm's runtime theme. Selecting a theme in Settings, changing the theme
+source, or manually running `theme-apply.sh` can replace the restored integration
+values again. To explicitly resume automatic convergence without changing the
+source, remove `$appearance_state/integration-suppress` (reconstruct that path
+from the recovery block in a new shell). Keep both directories until runtime
+verification passes. This procedure does not downgrade RPMs, remove files created after the backup, or
 undo external service and firmware changes. Package update recovery is a
 separate operation in Settings; follow its recorded transaction guidance.
 
