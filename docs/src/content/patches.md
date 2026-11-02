@@ -125,5 +125,6 @@ Save the file to apply a new theme instantly across supported apps.
 
 ## Multi-Monitor
 
-Xinerama support keeps tags independent per monitor. Windows can be moved
+Xinerama support splits tags across monitors (for example 1-4 and 5-9 with
+two monitors); each panel shows its monitor's tags. Windows can be moved
 between monitors with `Super` + `Shift` + `,`/`.`.
