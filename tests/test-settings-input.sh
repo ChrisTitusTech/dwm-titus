@@ -1118,7 +1118,7 @@ cat >"$work/bin/stat" <<'STAT'
 /usr/bin/stat "$@" || exit
 if [ "${TEST_JOURNAL_FAIL:-0}" = 1 ]; then
     for path in "$@"; do
-        case $path in *.written) chmod 400 -- "$path" ;; esac
+        case $path in *.written) rm -- "$path"; ln -s /dev/full "$path" ;; esac
     done
 fi
 STAT

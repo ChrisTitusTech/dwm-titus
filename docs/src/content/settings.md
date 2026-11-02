@@ -71,7 +71,12 @@ per-device properties remain visible with an explanation. Power, sleep and
 video buttons, which X lists as keyboards, are not shown. A device that X
 splits into several XInput devices with the same identity on the same port (a
 VMware PS/2 mouse, for example) is one entry: a change applies to every part
-that supports it, and Revert puts each part back to its own value. Devices that
+that supports it, and Revert puts each identifiable part back to its own value.
+After re-enumeration, parts with the same signature can be restored together
+when their captured values agree. If identities or old values cannot be
+resolved safely (including a new part without a snapshot), Revert retains
+recovery and changes no parts; reconnect the original device before retrying.
+It does not guess a value for an uncaptured part. Devices that
 share an identity without sharing a port cannot be told apart, so they are
 listed once with an explanation and are not changed.
 
