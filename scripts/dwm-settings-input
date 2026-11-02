@@ -319,42 +319,84 @@ apply_member_value() {
 	esac
 }
 
+# A physical port plus supported property names survives XInput ID changes.
+# Equal signatures stay ambiguous after a replug; never guess their old values.
+member_identity() {
+	local id=$1 properties node port signature
+	properties=$(mktemp) || return 1
+	xinput list-props "$id" >"$properties" 2>/dev/null || {
+		rm -f "$properties"
+		return 1
+	}
+	node=$(property_value "$properties" "Device Node")
+	node=${node#\"}
+	node=${node%\"}
+	port=$(device_port "$node")
+	signature=$(awk '/^[[:space:]]+libinput / { sub(/ \([0-9]+\):.*/, ""); sub(/^[[:space:]]+/, ""); print }' "$properties" | sort | sha256sum)
+	rm -f "$properties"
+	printf '%s:%s\n' "${port:-xid:$id}" "${signature%% *}"
+}
+
 # Saves every member's value before a preview, one "id<TAB>value" per line.
 capture_members() {
-	local token=$1 key=$2 setting=$3 file id value
+	local token=$1 key=$2 setting=$3 file identities id value identity
 	[[ $key != "$accessibility_key" ]] || return 0
 	file=$(token_file "$token" members)
 	resolve_devices "$key"
-	: >"$file"
-	chmod 600 "$file"
+	identities=$(token_file "$token" identities)
+	: >"$file" || return 1
+	: >"$identities" || return 1
+	chmod 600 "$file" "$identities" || return 1
 	for id in "${member_ids[@]}"; do
 		value=$(member_value "$id" "$setting") || continue
 		[[ $value != *$'\t'* ]] || die "captured value contains a tab"
-		printf '%s\t%s\n' "$id" "$value" >>"$file"
+		identity=$(member_identity "$id") || return 1
+		printf '%s\t%s\n' "$id" "$value" >>"$file" || return 1
+		printf '%s\t%s\n' "$id" "$identity" >>"$identities" || return 1
 	done
 }
 
-# Puts back what capture_members saved: every captured member still present
-# gets its own value back. A member that appeared since (a replug gives new
-# XInput ids) gets the first captured value; a member that is gone is skipped.
+# Resolve the complete rollback plan before writing. Re-enumerated members
+# require a unique physical-part signature in both snapshots.
 restore_members() {
-	local token=$1 key=$2 setting=$3 previous=$4 file id value failed=0
-	local -A captured=()
+	local token=$1 key=$2 setting=$3 previous=$4 file id value identity old failed=0
+	local -A values=() identities=() counts=() current_counts=() current_identity=()
+	local -a restore=()
 	file=$(token_file "$token" members)
 	if [[ $key == "$accessibility_key" || ! -s $file ]]; then
 		apply_value "$key" "$setting" "$previous"
 		return
 	fi
 	resolve_devices "$key" || return 1
-	while IFS=$'\t' read -r id value; do
-		captured[$id]=1
-		[[ " ${member_ids[*]} " == *" $id "* ]] || continue
-		apply_member_value "$id" "$setting" "$value" || failed=1
-	done <"$file"
+	while IFS=$'\t' read -r id value; do values[$id]=$value; done <"$file"
+	while IFS=$'\t' read -r id identity; do
+		identities[$id]=$identity
+		counts[$identity]=$((${counts[$identity]:-0} + 1))
+	done <"$(token_file "$token" identities)"
 	for id in "${member_ids[@]}"; do
-		[[ -z ${captured[$id]:-} ]] || continue
 		member_value "$id" "$setting" >/dev/null || continue
-		apply_member_value "$id" "$setting" "$previous" || failed=1
+		identity=$(member_identity "$id") || return 1
+		current_identity[$id]=$identity
+		current_counts[$identity]=$((${current_counts[$identity]:-0} + 1))
+	done
+	for id in "${!current_identity[@]}"; do
+		identity=${current_identity[$id]}
+		if [[ -n ${values[$id]+x} && ${identities[$id]:-} == "$identity" ]]; then
+			value=${values[$id]}
+		else
+			[[ ${counts[$identity]:-0} == 1 && ${current_counts[$identity]} == 1 ]] || return 1
+			value=
+			for old in "${!identities[@]}"; do
+				[[ ${identities[$old]} != "$identity" ]] || value=${values[$old]}
+			done
+		fi
+		restore+=("$id"$'\t'"$value")
+	done
+	# Preserve scan order for predictable multi-member rollback.
+	for id in "${member_ids[@]}"; do
+		for value in "${restore[@]}"; do
+			[[ ${value%%$'\t'*} != "$id" ]] || apply_member_value "$id" "$setting" "${value#*$'\t'}" || failed=1
+		done
 	done
 	return "$failed"
 }
@@ -362,19 +404,27 @@ restore_members() {
 # Applies a preview member by member and lists each changed member in the
 # token's written file, so a failure part-way can undo exactly those.
 apply_preview_members() {
-	local token=$1 key=$2 setting=$3 value=$4 file written id old
+	local token=$1 key=$2 setting=$3 value=$4 file written id old journal_size
 	if [[ $key == "$accessibility_key" ]]; then
 		apply_value "$key" "$setting" "$value"
 		return
 	fi
 	file=$(token_file "$token" members)
 	written=$(token_file "$token" written)
-	: >"$written"
-	chmod 600 "$written"
+	: >"$written" || return 1
+	chmod 600 "$written" || return 1
 	[[ -s $file ]] || die "$setting is unsupported by device $key"
 	while IFS=$'\t' read -r id old; do
-		apply_member_value "$id" "$setting" "$value" || return 1
-		printf '%s\n' "$id" >>"$written"
+		# Journal first: if storage is full, nothing has changed yet.
+		journal_size=$(stat -c %s -- "$written") || return 1
+		printf '%s\n' "$id" >>"$written" || return 1
+		apply_member_value "$id" "$setting" "$value" || {
+			# A rejected write did not change this member; retain only the
+			# successful writes. If truncation fails, conservative undo keeps
+			# the attempted member in the recovery plan.
+			truncate -s "$journal_size" -- "$written" || true
+			return 1
+		}
 	done <"$file"
 }
 
@@ -771,7 +821,7 @@ token_file() {
 }
 cleanup_preview() {
 	rm -f "$(token_file "$1" state)" "$(token_file "$1" failed)" "$(token_file "$1" members)" \
-		"$(token_file "$1" written)" "$state_dir/current"
+		"$(token_file "$1" written)" "$(token_file "$1" identities)" "$state_dir/current"
 	rmdir "$(token_file "$1" claim)" 2>/dev/null || true
 }
 
@@ -841,7 +891,7 @@ finish_preview() {
 	claim=$(claim_preview "$token")
 	trap 'rmdir "$claim" 2>/dev/null || true' RETURN
 	IFS='|' read -r key setting previous value persistable <"$state"
-	if [[ $action == keep && -f $(token_file "$token" failed) ]] &&
+	if [[ $action == keep ]] &&
 		! (reapply_members "$token" "$key" "$setting" "$value"); then
 		# A merged preview stopped part-way: Keep only once every part has it.
 		rmdir "$claim" 2>/dev/null || true
@@ -856,11 +906,8 @@ finish_preview() {
 		die "input device is unavailable; preview state was retained for rollback retry"
 	fi
 	cleanup_preview "$token"
-	if [[ $action == keep ]]; then
-		apply_pending_hotplug
-	else
-		apply_pending_hotplug "$key" "$setting"
-	fi
+	# Keep already reapplied this setting; replay only other pending changes.
+	apply_pending_hotplug "$key" "$setting"
 	printf 'result\t%s\t%s\n' "$action" "$token"
 }
 

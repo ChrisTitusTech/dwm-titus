@@ -154,6 +154,9 @@ Device 'Twin PS/2 Mouse':
 	libinput Natural Scrolling Enabled (302): 1
 	libinput Natural Scrolling Enabled Default (303): 1
 PROPS
+		if [ "${TEST_DUPLICATE_CAPABILITIES:-0}" = 1 ]; then
+			printf '\tlibinput Accel Speed (300): 0.000000\n\tlibinput Accel Speed Default (301): 0.000000\n'
+		fi
 		;;
 	19 | 20) cat <<PROPS
 Device 'Same Model Mouse':
@@ -1025,5 +1028,48 @@ if env "${env_common[@]}" TEST_DEVICES="$work/devices-ambiguous" "$helper" \
 fi
 grep -Fq 'stable device identity is ambiguous' "$work/same-model.err"
 test ! -e "$work/actions.log"
+
+# Re-enumerated members retain their own distinct pre-preview values.
+rm -f "$work/actions.log"
+env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" "$helper" preview part-restore 10 "$twin_key" natural-scroll 1 >/dev/null
+rm -f "$work/actions.log"
+env "${env_common[@]}" TEST_DEVICES="$work/devices-shared-replug" "$helper" revert part-restore >/dev/null
+[[ $(cat "$work/actions.log") == $'xinput set-prop 27 libinput Natural Scrolling Enabled 0\nxinput set-prop 28 libinput Natural Scrolling Enabled 1' ]]
+
+# A successful preview also reapplies Keep after X assigns new IDs.
+env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" "$helper" preview part-keep 10 "$twin_key" natural-scroll 1 >/dev/null
+rm -f "$work/actions.log"
+env "${env_common[@]}" TEST_DEVICES="$work/devices-shared-replug" "$helper" keep part-keep >/dev/null
+[[ $(cat "$work/actions.log") == $'xinput set-prop 27 libinput Natural Scrolling Enabled 1\nxinput set-prop 28 libinput Natural Scrolling Enabled 1' ]]
+
+# Indistinguishable parts after replug retain recovery instead of guessing.
+env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" TEST_DUPLICATE_CAPABILITIES=1 "$helper" preview part-ambiguous 10 "$twin_key" natural-scroll 1 >/dev/null
+rm -f "$work/actions.log"
+if env "${env_common[@]}" TEST_DEVICES="$work/devices-shared-replug" TEST_DUPLICATE_CAPABILITIES=1 "$helper" revert part-ambiguous >/dev/null 2>"$work/part-ambiguous.err"; then
+	printf 'Rollback guessed a value for indistinguishable replugged parts\n' >&2
+	exit 1
+fi
+test ! -s "$work/actions.log"
+test -f "$work/runtime/dwm-settings-input/part-ambiguous.state"
+env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" TEST_DUPLICATE_CAPABILITIES=1 "$helper" revert part-ambiguous >/dev/null
+
+# A journal append failure happens before any live member is changed.
+cat >"$work/bin/stat" <<'STAT'
+#!/bin/sh
+/usr/bin/stat "$@" || exit
+if [ "${TEST_JOURNAL_FAIL:-0}" = 1 ]; then
+    for path in "$@"; do
+        case $path in *.written) chmod 400 -- "$path" ;; esac
+    done
+fi
+STAT
+chmod +x "$work/bin/stat"
+rm -f "$work/actions.log"
+if env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" TEST_JOURNAL_FAIL=1 "$helper" preview part-journal 10 "$twin_key" natural-scroll 1 >/dev/null 2>"$work/journal.err"; then
+	printf 'Preview succeeded despite an unwritable journal\n' >&2
+	exit 1
+fi
+test ! -s "$work/actions.log"
+test ! -e "$work/runtime/dwm-settings-input/part-journal.state"
 
 printf 'Settings input discovery, stable IDs, preview, rollback, and persistence: PASS\n'
