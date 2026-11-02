@@ -45,6 +45,8 @@ cp -a \
 	"$test_repo/"
 printf '%s\n' 'test dwm binary' >"$test_repo/dwm"
 chmod 755 "$test_repo/dwm"
+printf '%s\n' 'test clipboard observer binary' >"$test_repo/dwm-clipboard-observer"
+chmod 755 "$test_repo/dwm-clipboard-observer"
 
 # shellcheck disable=SC2016
 make -s -C "$test_repo" --no-print-directory \
