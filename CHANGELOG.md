@@ -90,6 +90,9 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Upload release ISOs with the dwm-titus version in their filenames, including
+  an explicit NVIDIA variant, and generate checksums using download filenames.
+
 - Isolate test configuration, data, state, and cache directories from the
   invoking desktop. Installer preservation fixtures now keep both simulated
   homes' receipts and build configurations in their own state directories and

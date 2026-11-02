@@ -39,7 +39,14 @@ unless `--no-bump` is provided.
 
 The helper validates and hashes local artifacts before it creates a remote tag
 or release. `--version` confirms the version already committed in `config.mk`;
-it does not rewrite release source.
+it does not rewrite release source. The supplied ISO is preserved and staged as
+`release/dwm-titus-VERSION.iso` before upload. Add `--iso-variant nvidia` to
+stage `release/dwm-titus-VERSION-nvidia.iso` for the NVIDIA image. The variant
+option names the asset; it does not inspect or change the image contents.
+The release checksum file uses these downloadable basenames and can be checked
+with `sha256sum --ignore-missing -c dwm-titus-VERSION-SHA256SUMS` beside the
+assets. `--dry-run` prints the copy, hashing and upload commands without writing
+artifacts or contacting GitHub.
 
 `make release-check` builds the archive twice and verifies identical bytes,
 the generated desktop-session path, required archive entries, and the absence
@@ -152,13 +159,25 @@ architecture, package-resolution result, first-boot result, and untested
 hardware. A container can validate package availability and ISO contents, but
 it cannot replace the required boot and first-session VM qualification.
 
+## Versioned release downloads
+
+GitHub release ISO assets include the release version in the filename, so saved
+images from different releases remain distinguishable. For example, the helper
+uploads `dwm-titus-0.7.2.iso` for a standard image, or
+`dwm-titus-0.7.2-nvidia.iso` with `--iso-variant nvidia`, even when the supplied
+local image has a legacy unversioned name. Download these assets from the
+corresponding GitHub release when retaining a particular release locally.
+Existing historical release assets are not renamed by this change.
+
 ## Stable Cloudflare download names
 
 Publish the standard and NVIDIA images at `iso/dwm-titus.iso` and
 `iso/dwm-titus-nvidia.iso`, with matching `iso/SHA256SUMS`,
 `iso/BUILD-MANIFEST.json` and `iso/BUILD-NOTES.md`. Keep versions, sizes, hashes
 and qualification evidence in the manifest and build notes instead of renaming
-the public URLs. The checksum entries must use these same universal filenames.
+the public URLs. These stable mirror names are separate from the versioned
+GitHub release assets; publishing them remains a separate hosting operation.
+The checksum entries must use these same universal filenames.
 
 Stage and verify both replacement images before updating the canonical objects.
 Verify complete public downloads against SHA-256 and test byte-range requests
