@@ -184,7 +184,9 @@ echo ""
 # ── Terminal emulators ──────────────────────────────────
 echo "Terminal Emulators (at least one required):"
 TERM_FOUND=0
-if command -v dwm-terminal >/dev/null 2>&1 && dwm-terminal --print-command >/dev/null 2>&1; then
+terminal_helper=$(command -v dwm-terminal 2>/dev/null || true)
+[[ -n $terminal_helper ]] || terminal_helper=$SCRIPT_DIR/dwm-terminal
+if [[ -x $terminal_helper ]] && "$terminal_helper" --print-command >/dev/null 2>&1; then
 	printf '  Configured terminal is available\n'
 	TERM_FOUND=1
 fi
