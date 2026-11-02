@@ -107,7 +107,7 @@ keyboard_codes() {
 				n = split(symbols, tokens, "+")
 				for (i = 1; i <= n; i++) {
 					token = tokens[i]
-					if (token ~ /:1$/ && explicit == "" && first == "" && i > 1) {
+					if (token ~ /:1$/ && explicit == "" && first == "") {
 						explicit = base(token)
 					}
 					if (match(token, /:[2-4]$/)) {
@@ -122,9 +122,6 @@ keyboard_codes() {
 				}
 				# Without a second group: skip the leading model part.
 				fallback = (n > 1 && (tokens[1] == "pc" || tokens[1] ~ /\//)) ? tokens[2] : tokens[1]
-				if (first == "") {
-					explicit = ""
-				}
 				codes[1] = explicit != "" ? explicit : (first != "" ? first : base(fallback))
 			} else if (hint != "") {
 				split(hint, layouts, ",")
