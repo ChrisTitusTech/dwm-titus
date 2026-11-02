@@ -120,7 +120,7 @@ if [[ ! -f $input_iso ]]; then
 	exit 1
 fi
 
-for command in xorriso rsync implantisomd5 checkisomd5; do
+for command in xorriso rsync implantisomd5 checkisomd5 mcopy; do
 	if ! command -v "$command" >/dev/null 2>&1; then
 		err "missing required command: $command"
 		exit 1
@@ -224,13 +224,20 @@ rsync -a --delete \
 	--exclude='*.iso' \
 	"$repo_dir/" "$payload_dir/"
 
-# Fedora x86_64 has separate UEFI and BIOS menus. Patch each in place so
-# both firmware paths select the requested Kickstart and variant arguments.
-grub_xorriso_args=()
-for grub_path in /EFI/BOOT/grub.cfg /boot/grub2/grub.cfg; do
-	grub_cfg="$work_dir/${grub_path//\//_}"
-	patched_grub_cfg="$grub_cfg.patched"
-	xorriso -osirrox on -indev "$input_iso" -extract "$grub_path" "$grub_cfg" >/dev/null 2>&1
+# Patch the FAT ESP as well as the ISO9660 menus: UEFI USB boot reads the
+# appended partition, not /EFI/BOOT/grub.cfg in the ISO filesystem.
+boot_dir="$work_dir/boot"
+xorriso -osirrox on -indev "$input_iso" -extract_boot_images "$boot_dir" >/dev/null 2>&1
+efi_image="$boot_dir/gpt_part2_efi.img"
+if [[ ! -s $efi_image || ! -s $boot_dir/eltorito_img2_uefi.img ]] ||
+	! cmp -s "$efi_image" "$boot_dir/eltorito_img2_uefi.img"; then
+	err "expected Fedora x86_64 media with one shared GPT partition 2 / El Torito EFI image"
+	exit 1
+fi
+
+patch_grub() {
+	local grub_cfg=$1
+	local patched_grub_cfg=$2
 	awk -v extra_linux_args="$extra_linux_args" -v offline="$system_image" '
 	function append_arg(arg) {
 		if (arg != "" && index($0, arg) == 0) {
@@ -256,8 +263,19 @@ for grub_path in /EFI/BOOT/grub.cfg /boot/grub2/grub.cfg; do
 	{ print }
 ' "$grub_cfg" >"$patched_grub_cfg"
 
+}
+
+grub_xorriso_args=()
+for grub_path in /EFI/BOOT/grub.cfg /boot/grub2/grub.cfg; do
+	grub_cfg="$work_dir/${grub_path//\//_}"
+	patched_grub_cfg="$grub_cfg.patched"
+	xorriso -osirrox on -indev "$input_iso" -extract "$grub_path" "$grub_cfg" >/dev/null 2>&1
+	patch_grub "$grub_cfg" "$patched_grub_cfg"
 	grub_xorriso_args+=(-map "$patched_grub_cfg" "$grub_path")
 done
+mcopy -i "$efi_image" ::/EFI/BOOT/grub.cfg "$work_dir/esp-grub.cfg"
+patch_grub "$work_dir/esp-grub.cfg" "$work_dir/esp-grub.cfg.patched"
+mcopy -o -i "$efi_image" "$work_dir/esp-grub.cfg.patched" ::/EFI/BOOT/grub.cfg
 
 branding_dir="$repo_dir/branding/anaconda"
 if [[ ! -f $branding_dir/etc/anaconda/conf.d/90-dwm-storage.conf ]]; then
@@ -287,6 +305,7 @@ fi
 
 xorriso -indev "$input_iso" -outdev "$tmp_output" \
 	-boot_image any replay \
+	-append_partition 2 0xef "$efi_image" \
 	-map "$ks_file" /dwm-fedora.ks \
 	"${grub_xorriso_args[@]}" \
 	-map "$payload_dir" /dwm-titus \

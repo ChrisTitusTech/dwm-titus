@@ -56,6 +56,7 @@ set -euo pipefail
 extract_to=
 extract_path=
 outdev=
+efi_image=
 ks_map=
 grub_map=
 bios_grub_map=
@@ -65,6 +66,18 @@ rootfs_map=
 
 while (($# > 0)); do
 	case "$1" in
+	-extract_boot_images)
+		mkdir -p "$2"
+		printf 'EFI fixture\n' >"$2/gpt_part2_efi.img"
+		cp "$2/gpt_part2_efi.img" "$2/eltorito_img2_uefi.img"
+		[[ ${DWM_TEST_BAD_ESP:-} != 1 ]] || printf 'different\n' >>"$2/gpt_part2_efi.img"
+		exit 0
+		;;
+	-append_partition)
+		[[ $2 == 2 && $3 == 0xef ]]
+		efi_image=$4
+		shift 4
+		;;
 	-extract)
 		if [[ ${2:-} == /EFI/BOOT/grub.cfg || ${2:-} == /boot/grub2/grub.cfg ]]; then
 			extract_path=$2
@@ -109,7 +122,9 @@ OUT
 fi
 
 if [[ -n $outdev ]]; then
-	[[ -s $product_map ]]
+	[[ -s $product_map && -s $efi_image ]]
+	grep -Fq 'inst.ks=hd:LABEL=Fedora-S-dvd-x86_64-44:/dwm-fedora.ks' "$efi_image"
+	cp "$efi_image" "$DWM_TEST_ESP_MENU"
 	[[ -s $payload_map/payload-marker && -s $payload_map/nested/deeper/keep.txt ]]
 	if [[ -n $(find "$payload_map" \( -name '.env' -o -name '.env.*' -o -name '.envrc' \) -print -quit) ]]; then
 		printf 'dotenv file reached ISO payload\n' >&2
@@ -153,6 +168,30 @@ grep -Fqx 'media checksum' "$1"
 SH
 chmod +x "$work/bin/implantisomd5" "$work/bin/checkisomd5"
 
+# Keep the ESP menu independent from the ISO tree to catch tree-only patches.
+cat >"$work/bin/mcopy" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ $1 == -i ]]; then
+	[[ $3 == ::/EFI/BOOT/grub.cfg ]]
+	cat >"$4" <<'MENU'
+set default="1"
+# original ESP menu
+menuentry 'Install Fedora' {
+	linux /images/pxeboot/vmlinuz inst.stage2=hd:LABEL=Fedora-S-dvd-x86_64-44 quiet
+}
+menuentry 'Test this media & install Fedora' {
+	linux /images/pxeboot/vmlinuz inst.stage2=hd:LABEL=Fedora-S-dvd-x86_64-44 rd.live.check quiet
+}
+MENU
+else
+	[[ $1 == -o && $2 == -i && $5 == ::/EFI/BOOT/grub.cfg ]]
+	cp "$4" "$3"
+fi
+SH
+chmod +x "$work/bin/mcopy"
+export DWM_TEST_ESP_MENU="$work/esp-menu"
+
 input_iso="$work/Fedora-Server-netinst.iso"
 standard_iso="$work/dwm-titus.iso"
 nvidia_iso="$work/dwm-titus-nvidia.iso"
@@ -175,7 +214,7 @@ run_builder() {
 	grep -Fqx 'mock iso' "$output"
 	grep -Fqx 'media checksum' "$output"
 	# Verify each actual menu independently, including its original content.
-	for firmware in uefi bios; do
+	for firmware in uefi bios esp; do
 		start=grub-content-start
 		end=grub-content-end
 		menu_path=/EFI/BOOT/grub.cfg
@@ -184,9 +223,20 @@ run_builder() {
 			end=bios-grub-content-end
 			menu_path=/boot/grub2/grub.cfg
 		fi
-		awk -v start="$start" -v end="$end" '$0 == start { active=1; next } $0 == end { active=0 } active' \
-			"$DWM_TEST_XORRISO_LOG" >"$work/menu"
-		grep -Fqx "# original menu: $menu_path" "$work/menu"
+		if [[ $firmware == esp ]]; then
+			cp "$DWM_TEST_ESP_MENU" "$work/menu"
+			grep -Fqx '# original ESP menu' "$work/menu"
+		else
+			awk -v start="$start" -v end="$end" '$0 == start { active=1; next } $0 == end { active=0 } active' \
+				"$DWM_TEST_XORRISO_LOG" >"$work/menu"
+			grep -Fqx "# original menu: $menu_path" "$work/menu"
+		fi
+		if [[ " $* " == *' --system-image '* ]]; then
+			grep -Fqx 'set default="0"' "$work/menu"
+			[[ $(grep -c 'ip=none.*systemd.mask=NetworkManager-wait-online.service.*rd.systemd.mask=nm-wait-online-initrd.service' "$work/menu") == 2 ]]
+		else
+			grep -Fqx 'set default="1"' "$work/menu"
+		fi
 		[[ $(grep -c 'inst.ks=hd:LABEL=Fedora-S-dvd-x86_64-44:/dwm-fedora.ks' "$work/menu") == 2 ]]
 		if [[ $variant == nvidia ]]; then
 			[[ $(grep -c 'rd.driver.blacklist=nouveau modprobe.blacklist=nouveau nvidia-drm.modeset=1' "$work/menu") == 2 ]]
@@ -255,6 +305,17 @@ cmp "$DWM_TEST_BRANDING/usr/share/anaconda/pixmaps/sidebar-logo.png" "$work/orig
 cmp "$DWM_TEST_BRANDING/usr/share/anaconda/pixmaps/server/sidebar-logo.png" "$work/original-logo.png"
 run_builder standard "$standard_iso"
 cmp "$DWM_TEST_PACKED_LOGO" "$work/original-logo.png"
+
+# Reject an unsupported EFI topology before replacing a published image.
+printf 'previous image\n' >"$standard_iso"
+if DWM_TEST_BAD_ESP=1 PATH="$work/bin:$PATH" \
+	"$repo/scripts/build-dwm-fedora-installer-iso.sh" --input "$input_iso" \
+	--output "$standard_iso" >"$work/bad-esp.out" 2>"$work/bad-esp.err"; then
+	echo 'accepted mismatched EFI images' >&2
+	exit 1
+fi
+grep -Fq 'expected Fedora x86_64 media' "$work/bad-esp.err"
+[[ $(cat "$standard_iso") == 'previous image' ]]
 
 # A failed checksum implant or verification must preserve an existing image,
 # return the failing command's status, and remove the temporary output.
