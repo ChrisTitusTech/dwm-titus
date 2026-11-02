@@ -259,7 +259,7 @@ require_cmd Xvfb awk cc pkg-config xdotool xprop sed grep tail
 pkg-config --exists x11
 
 work=$(mktemp -d)
-trap 'set +e; [ -n "${swallow_client_pid:-}" ] && kill "$swallow_client_pid" 2>/dev/null; [ -n "${many_state_client_pid:-}" ] && kill "$many_state_client_pid" 2>/dev/null; [ -n "${fullscreen_client_pid:-}" ] && kill "$fullscreen_client_pid" 2>/dev/null; [ -n "${panel_pid:-}" ] && kill "$panel_pid" 2>/dev/null; [ -n "${popup_client_pid:-}" ] && kill "$popup_client_pid" 2>/dev/null; [ -n "${second_above_client_pid:-}" ] && kill "$second_above_client_pid" 2>/dev/null; [ -n "${stack_client_pid:-}" ] && kill "$stack_client_pid" 2>/dev/null; [ -n "${above_client_pid:-}" ] && kill "$above_client_pid" 2>/dev/null; [ -n "${floating_peer_pid:-}" ] && kill "$floating_peer_pid" 2>/dev/null; [ -n "${second_client_pid:-}" ] && kill "$second_client_pid" 2>/dev/null; [ -n "${client_pid:-}" ] && kill "$client_pid" 2>/dev/null; [ -n "${dwm_pid:-}" ] && kill "$dwm_pid" 2>/dev/null; [ -n "${xvfb_pid:-}" ] && kill "$xvfb_pid" 2>/dev/null; rm -rf "$work"' EXIT HUP INT TERM
+trap 'set +e; [ -n "${swallow_client_pid:-}" ] && kill "$swallow_client_pid" 2>/dev/null; [ -n "${many_state_client_pid:-}" ] && kill "$many_state_client_pid" 2>/dev/null; [ -n "${fullscreen_client_pid:-}" ] && kill "$fullscreen_client_pid" 2>/dev/null; [ -n "${panel_pid:-}" ] && kill "$panel_pid" 2>/dev/null; [ -n "${popup_client_pid:-}" ] && kill "$popup_client_pid" 2>/dev/null; [ -n "${second_above_client_pid:-}" ] && kill "$second_above_client_pid" 2>/dev/null; [ -n "${stack_client_pid:-}" ] && kill "$stack_client_pid" 2>/dev/null; [ -n "${above_client_pid:-}" ] && kill "$above_client_pid" 2>/dev/null; [ -n "${floating_peer_pid:-}" ] && kill "$floating_peer_pid" 2>/dev/null; [ -n "${second_client_pid:-}" ] && kill "$second_client_pid" 2>/dev/null; [ -n "${client_pid:-}" ] && kill "$client_pid" 2>/dev/null; [ -n "${dwm_pid:-}" ] && kill -CONT "$dwm_pid" 2>/dev/null; [ -n "${dwm_pid:-}" ] && kill "$dwm_pid" 2>/dev/null; [ -n "${xvfb_pid:-}" ] && kill "$xvfb_pid" 2>/dev/null; rm -rf "$work"' EXIT HUP INT TERM
 
 home="$work/home"
 # A separate X display still inherits the caller's notification bus. Capture
@@ -313,6 +313,8 @@ main(int argc, char **argv)
 	int initial_above = 0;
 	int initial_many_states = 0;
 	int override_redirect = 0;
+	int popup_focus = 0;
+	Window focus_child = None;
 	int rewards_overlay = 0;
 	int panel = 0;
 	int preconfigure_panel = 0;
@@ -451,6 +453,12 @@ main(int argc, char **argv)
 		override_redirect = 1;
 		popup_type = "_NET_WM_WINDOW_TYPE_MENU";
 	}
+	else if (argc == 2 && (strcmp(argv[1], "override-popup-menu-focus") == 0
+	    || strcmp(argv[1], "override-popup-menu-child") == 0)) {
+		override_redirect = 1;
+		popup_focus = strcmp(argv[1], "override-popup-menu-child") == 0 ? 2 : 1;
+		popup_type = "_NET_WM_WINDOW_TYPE_POPUP_MENU";
+	}
 	else if (argc == 2 && strcmp(argv[1], "override-popup-menu") == 0) {
 		override_redirect = 1;
 		popup_type = "_NET_WM_WINDOW_TYPE_POPUP_MENU";
@@ -566,9 +574,16 @@ main(int argc, char **argv)
 		usleep(100000);
 	}
 	XMapWindow(dpy, win);
-	XFlush(dpy);
+	if (popup_focus == 2) {
+		focus_child = XCreateSimpleWindow(dpy, win, 0, 0, 100, 100, 0, 0, 0);
+		XMapWindow(dpy, focus_child);
+	}
+	if (popup_focus)
+		XSetInputFocus(dpy, focus_child ? focus_child : win, RevertToPointerRoot, CurrentTime);
+	XSync(dpy, False);
 
 	printf("0x%lx\n", win);
+	if (focus_child) printf("0x%lx\n", focus_child);
 	fflush(stdout);
 	if (swallow_terminal && (child_pid = fork()) == 0) {
 		Atom states[1];
@@ -1112,6 +1127,28 @@ for popup_marker in tooltip kde notification menu popup-menu dropdown-menu combo
 	wait_for_input_focus "$above_win"
 done
 
+# A client may map and focus before dwm selects focus events on its menu.
+for menu_mode in focus child; do
+	kill -STOP "$dwm_pid"
+	DISPLAY=$display "$work/xclient" "override-popup-menu-$menu_mode" >"$work/early-menu-id" 2>"$work/early-menu.log" &
+	popup_client_pid=$!
+	i=0
+	while [ "$i" -lt 100 ] && [ ! -s "$work/early-menu-id" ]; do
+		i=$((i + 1))
+		sleep 0.05
+	done
+	popup_win=$(sed -n '1p' "$work/early-menu-id")
+	popup_focus_win=$(tail -n 1 "$work/early-menu-id")
+	kill -CONT "$dwm_pid"
+	wait_for_top_window "$popup_win"
+	wait_for_input_focus "$popup_focus_win"
+	kill "$popup_client_pid"
+	wait "$popup_client_pid" 2>/dev/null || true
+	popup_client_pid=
+	wait_for_input_focus "$above_win"
+	rm -f "$work/early-menu-id"
+done
+
 DISPLAY=$display "$work/xclient" state "$above_win" 0 _NET_WM_STATE_STAYS_ON_TOP
 wait_for_window_state_absent "$above_win" _NET_WM_STATE_STAYS_ON_TOP
 wait_for_top_window "$above_win"
@@ -1194,17 +1231,18 @@ popup_client_pid=
 # An application menu hidden by fullscreen must not keep keyboard focus.
 DISPLAY=$display "$work/xclient" state "$fullscreen_win" 0 _NET_WM_STATE_FULLSCREEN
 wait_for_window_state_absent "$fullscreen_win" _NET_WM_STATE_FULLSCREEN
-DISPLAY=$display "$work/xclient" override-popup-menu >"$work/application-menu-id" 2>"$work/application-menu.log" &
+DISPLAY=$display "$work/xclient" override-popup-menu-child >"$work/application-menu-id" 2>"$work/application-menu.log" &
 popup_client_pid=$!
 i=0
 while [ "$i" -lt 100 ] && [ ! -s "$work/application-menu-id" ]; do
 	i=$((i + 1))
 	sleep 0.05
 done
-popup_win=$(cat "$work/application-menu-id")
+popup_win=$(sed -n '1p' "$work/application-menu-id")
+popup_focus_win=$(tail -n 1 "$work/application-menu-id")
 wait_for_top_window "$popup_win"
-DISPLAY=$display xdotool windowfocus "$popup_win"
-wait_for_input_focus "$popup_win"
+DISPLAY=$display xdotool windowfocus "$popup_focus_win"
+wait_for_input_focus "$popup_focus_win"
 DISPLAY=$display "$work/xclient" fullscreen "$fullscreen_win"
 wait_for_window_state "$fullscreen_win" _NET_WM_STATE_FULLSCREEN
 wait_for_window_above "$fullscreen_win" "$popup_win"

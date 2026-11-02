@@ -214,6 +214,7 @@ static Monitor *dirtomon(int dir);
 static void drawbar(Monitor *m);
 static void drawbars(void);
 static void focus(Client *c);
+static OverrideWindow *overrideforwindow(Window win);
 static int focusfullscreenforoverride(Window win);
 static void focusmon(const Arg *arg);
 static void focusstack(const Arg *arg);
@@ -1450,6 +1451,28 @@ focus(Client *c)
 	drawbars();
 }
 
+/* Input focus may belong to a menu's child rather than its root window. */
+OverrideWindow *
+overrideforwindow(Window win)
+{
+	OverrideWindow *ow;
+	Window tree_root, parent, *children;
+	unsigned int count;
+	int depth;
+
+	for (depth = 0; win != None && win != PointerRoot && win != root && depth < 32; depth++) {
+		for (ow = overridewindows; ow && ow->win != win; ow = ow->next);
+		if (ow)
+			return ow;
+		children = NULL;
+		if (!XQueryTree(dpy, win, &tree_root, &parent, &children, &count))
+			return NULL;
+		XFree(children);
+		win = parent;
+	}
+	return NULL;
+}
+
 int
 focusfullscreenforoverride(Window win)
 {
@@ -1459,10 +1482,11 @@ focusfullscreenforoverride(Window win)
 	Window trans;
 	XWindowAttributes wa;
 
-	for (ow = overridewindows; ow && ow->win != win; ow = ow->next);
+	ow = overrideforwindow(win);
 	if (!ow || !ow->raise)
 		return 0;
 	m = NULL;
+	win = ow->win;
 	if (XGetTransientForHint(dpy, win, &trans))
 		for (m = mons; m && m->barwin != trans; m = m->next);
 	/* Ordinary menus are stacked below fullscreen, unlike authorized overlays. */
@@ -1485,12 +1509,12 @@ focusin(XEvent *e)
 	OverrideWindow *ow;
 	XFocusChangeEvent *ev = &e->xfocus;
 
-	for (ow = overridewindows; ow && ow->win != ev->window; ow = ow->next);
+	ow = overrideforwindow(ev->window);
 	if (ow && (focusfullscreenforoverride(ev->window)
-	    || istransientforbar(ev->window)))
+	    || istransientforbar(ow->win)))
 		return;
 	if (ow && ow->ismenu) {
-		focusedmenu = ev->window;
+		focusedmenu = ow->win;
 		return;
 	}
 	focusedmenu = None;
@@ -4938,6 +4962,14 @@ trackoverridewindow(Window win)
 			wa.your_event_mask | FocusChangeMask | PropertyChangeMask);
 	}
 	updateoverridewindow(win);
+	if (ow->ismenu) {
+		Window focused;
+		int revert;
+
+		/* The client can map and focus before our FocusChange selection. */
+		if (XGetInputFocus(dpy, &focused, &revert) && overrideforwindow(focused) == ow)
+			focusedmenu = win;
+	}
 }
 
 void
