@@ -73,6 +73,12 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Keep dependency-install actions limited to missing Fedora packages with DNF
+  confirmation, preserving desktop files, receipts, and Update Center status.
+- Preserve surviving managed-file records during source reinstalls and recover
+  exact matching omitted files without replacing unrelated destinations.
+- Release rejected desktop update preparations and avoid session restart
+  requirements after recovery when the active desktop was unchanged.
 - Settings > Input no longer lists power, sleep and video buttons as keyboards,
   and shows a device that X splits into several XInput devices on one port
   (same identity) once instead of one card per part with doubled rows. Changes

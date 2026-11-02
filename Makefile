@@ -639,6 +639,7 @@ check-fedora-platform:
 	@$(call run_managed_test,tests/test-fedora-platform.sh)
 
 check-fedora-packages:
+	tests/test-package-provider-policy.sh
 	tests/test-fedora-packages.sh
 
 check-install: check-install-manifest
@@ -707,6 +708,7 @@ check-install-preservation:
 check-desktop-update: dwm
 	@python3 tests/test-desktop-update-sandbox.py
 	python3 tests/test-desktop-update.py
+	python3 tests/test-dependency-repair-launchers.py
 	tests/test-desktop-update-ui.sh
 	dbus-run-session -- xvfb-run -a /usr/bin/python3 tests/test-desktop-update-progress.py
 	dbus-run-session -- xvfb-run -a /usr/bin/python3 tests/test-desktop-update-focus.py

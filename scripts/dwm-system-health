@@ -488,9 +488,9 @@ scan_desktop() {
 		if quickshell_compatible "$version" "$detail"; then
 			emit_check desktop ok quickshell-version "Quickshell" "Available" "$detail" restart-quickshell "Restart Quickshell" user
 		elif [[ -n $version ]]; then
-			emit_check desktop error quickshell-version "Quickshell" "Outdated" "$detail; version 0.3.0 or the supported Fedora 44 snapshot is required" install-dependencies "Open dependency installer" user
+			emit_check desktop error quickshell-version "Quickshell" "Outdated" "$detail; version 0.3.0 or the supported Fedora 44 snapshot is required" "" "" none
 		else
-			emit_check desktop error quickshell-version "Quickshell" "Version unavailable" "Could not verify Quickshell 0.3.0 or the supported Fedora 44 snapshot" install-dependencies "Open dependency installer" user
+			emit_check desktop error quickshell-version "Quickshell" "Version unavailable" "Could not verify Quickshell 0.3.0 or the supported Fedora 44 snapshot" "" "" none
 		fi
 	else
 		emit_check desktop error quickshell-version "Quickshell" "Missing" "The managed shell requires Quickshell 0.3.0 or the supported Fedora 44 snapshot" install-dependencies "Open dependency installer" user
@@ -930,14 +930,9 @@ repair_user() {
 		systemctl --user restart "${units[@]}"
 		;;
 	install-dependencies)
-		local installer=$SCRIPT_DIR/../install.sh
-		if [[ -x $installer ]] && command -v dwm-terminal >/dev/null 2>&1; then
-			local quoted_dir
-			printf -v quoted_dir '%q' "${installer%/*}"
-			dwm-terminal -e bash -lc "cd $quoted_dir && exec ./install.sh"
-		else
-			control_helper_action dependency-check
-		fi
+		control_helper_action install-missing-deps || return 1
+		emit_record repair overview launched "$action" "Dependency repair launched" "Package repair opened in terminal" "Complete the prompts in the terminal"
+		return 0
 		;;
 	*)
 		printf 'unsupported user repair: %s\n' "$action" >&2

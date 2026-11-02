@@ -102,6 +102,8 @@ grep -Fq $'check\tdesktop\tok\tquickshell-version\tQuickshell\tAvailable' "$work
 grep -Fq $'check\tservices\twarn\tuser-failed-user-broken-service\tuser-broken.service (user)' "$work/user.tsv"
 grep -Fq $'manage-user-service|user-broken.service\tService actions\tuser' "$work/user.tsv"
 grep -Fq $'meta\toverview\tok\tscan-user-complete' "$work/user.tsv"
+# Missing user files cannot be repaired by the package-only action.
+awk -F '\t' '$4 == "xinitrc" || $4 == "quickshell-config" { found++; if ($8 != "") exit 1 } END { if (found != 2) exit 1 }' "$work/user.tsv"
 
 # efivarfs is fixed-size firmware NVRAM, never a cleanable disk error.
 grep -Fq 'df -P -l -x tmpfs -x devtmpfs -x squashfs -x efivarfs' "$HELPER"

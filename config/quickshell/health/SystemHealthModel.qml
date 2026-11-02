@@ -11,6 +11,7 @@ Scope {
     property bool repairRunning: false
     property bool shareRunning: false
     property bool repairSucceeded: false
+    property bool repairLaunched: false
     property bool confirming: false
     property bool showIssuesOnly: false
     property string selectedCategory: "overview"
@@ -85,6 +86,7 @@ Scope {
         root.repairMessage = "";
         root.repairError = "";
         root.repairSucceeded = false;
+        root.repairLaunched = false;
         root.userRunning = true;
         root.systemRunning = true;
         userScanProcess.running = true;
@@ -295,6 +297,7 @@ Scope {
         root.pendingRepair = null;
         root.repairRunning = true;
         root.repairSucceeded = false;
+        root.repairLaunched = false;
         root.repairMessage = "Running " + row.repairLabel + "...";
         root.repairError = "";
         repairProcess.command = Commands.systemHealthHelperCommand(
@@ -386,6 +389,8 @@ Scope {
                 if (root.repairSucceeded) {
                     root.repairMessage = "Repair completed; rescanning...";
                     Qt.callLater(root.refresh);
+                } else if (root.repairLaunched) {
+                    // The package terminal is still owned by the user.
                 } else {
                     root.repairMessage = root.repairError.length > 0 ? root.repairError : "Repair failed";
                 }
@@ -394,7 +399,11 @@ Scope {
 
         stdout: SplitParser {
             onRead: function(data) {
-                if (data.indexOf("repair\t") === 0) {
+                const parts = data.split("\t");
+                if (parts[0] === "repair" && parts[2] === "launched") {
+                    root.repairLaunched = true;
+                    root.repairMessage = parts[4] || "Package repair opened in terminal";
+                } else if (parts[0] === "repair" && parts[2] === "ok") {
                     root.repairSucceeded = true;
                 }
             }

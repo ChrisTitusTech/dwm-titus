@@ -1400,10 +1400,14 @@ launch_background() {
 }
 
 terminal_run() {
-	if command -v dwm-terminal >/dev/null 2>&1; then
-		launch_background dwm-terminal -e sh -c "$1"
+	terminal_cmd=$1
+	shift
+	if [ -n "${dependency_terminal:-}" ]; then
+		launch_background "$dependency_terminal" -e sh -c "$terminal_cmd" sh "$@"
+	elif command -v dwm-terminal >/dev/null 2>&1; then
+		launch_background dwm-terminal -e sh -c "$terminal_cmd" sh "$@"
 	else
-		sh -c "$1"
+		sh -c "$terminal_cmd" sh "$@"
 	fi
 }
 
@@ -1643,12 +1647,48 @@ restart_networkmanager() {
 	fi
 }
 
+dependency_helper() {
+	dependency_name=$1
+	dependency_dir=$(
+		unset CDPATH
+		cd -- "$(dirname -- "$0")" && pwd
+	)
+	# Source/data copies cannot discover a custom installation manifest.
+	if [ "$dependency_name" = dwm-desktop-update ] &&
+		[ ! -f "$dependency_dir/../share/dwm-titus/desktop-install.json" ]; then
+		if command -v "$dependency_name" 2>/dev/null; then
+			return 0
+		fi
+	fi
+	for dependency_candidate in "$dependency_dir/$dependency_name" \
+		"$repo_dir/scripts/$dependency_name"; do
+		if [ -x "$dependency_candidate" ]; then
+			printf '%s\n' "$dependency_candidate"
+			return 0
+		fi
+	done
+	command -v "$dependency_name" 2>/dev/null
+}
+
 dependency_check() {
 	terminal_run "$repo_dir/scripts/check-deps.sh; printf '\\nPress enter to close...'; read -r _"
 }
 
 install_missing_deps() {
-	terminal_run "cd '$repo_dir' && ./install.sh; printf '\\nPress enter to close...'; read -r _"
+	dependency_terminal=$(dependency_helper dwm-terminal) || dependency_terminal=
+	if [ -z "$dependency_terminal" ] ||
+		! "$dependency_terminal" --print-command >/dev/null 2>&1; then
+		printf 'No supported terminal; run dwm-desktop-update install-dependencies from a text console.\n' >&2
+		return 1
+	fi
+	dependency_updater=$(dependency_helper dwm-desktop-update) || {
+		printf 'dwm-desktop-update is unavailable\n' >&2
+		return 1
+	}
+	# Health diagnostics include optional tools that the general checker does
+	# not require. Repair its package map directly instead of skipping them.
+	# shellcheck disable=SC2016 # Capture and return the inner repair status.
+	terminal_run '"$1" install-dependencies; result=$?; printf "\nPress enter to close..."; read -r _; exit "$result"' "$dependency_updater"
 }
 
 self_heal() {
