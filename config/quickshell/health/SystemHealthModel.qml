@@ -11,6 +11,7 @@ Scope {
     property bool repairRunning: false
     property bool shareRunning: false
     property bool repairSucceeded: false
+    property bool repairLaunched: false
     property bool confirming: false
     property bool showIssuesOnly: false
     property string selectedCategory: "overview"
@@ -184,6 +185,29 @@ Scope {
         return count;
     }
 
+    function categoryWarningCount(category) {
+        let count = 0;
+        for (let i = 0; i < root.rows.length; i++) {
+            const row = root.rows[i];
+            if ((category === "overview" || row.category === category) && row.status === "warn") {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    function categoryErrorCount(category) {
+        let count = 0;
+        for (let i = 0; i < root.rows.length; i++) {
+            const row = root.rows[i];
+            if ((category === "overview" || row.category === category)
+                    && row.status === "error") {
+                count++;
+            }
+        }
+        return count;
+    }
+
     function overallLabel() {
         if (root.countStatus("error") > 0) {
             return "Critical";
@@ -295,6 +319,7 @@ Scope {
         root.pendingRepair = null;
         root.repairRunning = true;
         root.repairSucceeded = false;
+        root.repairLaunched = false;
         root.repairMessage = "Running " + row.repairLabel + "...";
         root.repairError = "";
         repairProcess.command = Commands.systemHealthHelperCommand(
@@ -386,6 +411,8 @@ Scope {
                 if (root.repairSucceeded) {
                     root.repairMessage = "Repair completed; rescanning...";
                     Qt.callLater(root.refresh);
+                } else if (root.repairLaunched) {
+                    // Do not prematurely rescan while user interacts with terminal
                 } else {
                     root.repairMessage = root.repairError.length > 0 ? root.repairError : "Repair failed";
                 }
@@ -394,8 +421,14 @@ Scope {
 
         stdout: SplitParser {
             onRead: function(data) {
-                if (data.indexOf("repair\t") === 0) {
-                    root.repairSucceeded = true;
+                const parts = data.split("\t");
+                if (parts[0] === "repair") {
+                    if (parts[2] === "launched") {
+                        root.repairLaunched = true;
+                        root.repairMessage = parts[4] || "Interactive repair opened in terminal";
+                    } else if (parts[2] === "ok") {
+                        root.repairSucceeded = true;
+                    }
                 }
             }
         }
