@@ -32,6 +32,40 @@ there so the tray host starts before tray clients. Use
 
 ---
 
+## What survives updates
+
+`make install` and the GUI Desktop Update keep user-owned files and replace
+managed ones.
+
+| User-owned (preserved) | Managed (replaced) |
+|------|---------|
+| `${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/` (TOML files and other settings) | `${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/` |
+| Other application configs under `${XDG_CONFIG_HOME:-$HOME/.config}/` (unrelated settings preserved; see theme exception below) | `${XDG_DATA_HOME:-$HOME/.local/share}/dwm-titus/config` and `scripts` |
+| `.xinitrc` and `config.h` | Installed `dwm-*` commands |
+
+Source installs also apply the selected theme: `make install` regenerates
+Dwmterm colors and Alacritty/Kitty active-theme files, updates their theme imports/includes,
+and writes managed GTK/Qt appearance keys. Unrelated application settings are
+preserved, but these theme integration values are not. Back up your effective
+XDG configuration directory and `$HOME/.gtkrc-2.0` (including its target if it
+is a symlink) before installing if you need to restore them. GTK2 keeps its
+appearance settings outside the XDG configuration directory. The
+GUI Desktop Update preserves application configuration.
+
+`${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/` is replaced on purpose by both `make install` and
+Desktop Update, so local edits there are lost. A symlink there is not
+supported: `make install` removes it and puts a real directory in its place,
+and Desktop Update refuses to run. To keep shell changes, commit them on a
+branch of your dwm-titus checkout and update with the source workflow
+instead of the GUI, which reports the changed tree as needing a sync.
+
+Backed up is not the same as preserved: the pre-update backup in
+[Source Updates and Recovery](/install.html) archives the whole XDG config
+directory, including `${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/`, so edits made there can be
+copied back by hand from that backup, but no update keeps them in place.
+
+---
+
 ## Picom opacity and backend
 
 Open **Settings > Appearance > Compositor** to change foreground (active) and
@@ -373,6 +407,7 @@ Use space-separated modifiers: `"SUPER"`, `"SUPER SHIFT"`, `"SUPER CTRL"`, `"SUP
 | `focusmon` | `i=1` or `i=-1` | Focus monitor |
 | `tagmon` | `i=1` or `i=-1` | Send window to monitor |
 | `view` | `ui=-1` = all tags | Switch tag |
+| `cyclelayout` | `i=1` or `i=-1` | Next/previous keyboard layout |
 | `quit` | — | Exit dwm |
 
 The `fullscreen` hotkey function toggles the monocle layout and the bar; it does
