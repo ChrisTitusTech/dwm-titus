@@ -7,7 +7,10 @@ CHECK_DEPS="$REPO_DIR/scripts/check-deps.sh"
 work=$(mktemp -d "${TMPDIR:-/tmp}/test-check-deps.XXXXXX")
 trap 'rm -rf -- "$work"' EXIT
 
-mkdir -p "$work/bin" "$work/home"
+mkdir -p "$work/bin" "$work/home" "$work/checker"
+# Keep source-tree siblings and the invoking user's installed helpers out of fixtures.
+cp "$CHECK_DEPS" "$REPO_DIR/scripts/dwm-utils.sh" "$REPO_DIR/scripts/dwm-packages.sh" "$work/checker/"
+CHECK_DEPS=$work/checker/check-deps.sh
 
 # Mock all required commands
 for cmd in cc make pkg-config Xorg startx xrandr xset xsetroot xkbset dwm-status \

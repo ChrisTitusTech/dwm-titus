@@ -184,8 +184,8 @@ echo ""
 # ── Terminal emulators ──────────────────────────────────
 echo "Terminal Emulators (at least one required):"
 TERM_FOUND=0
-terminal_helper=$(command -v dwm-terminal 2>/dev/null || true)
-[[ -n $terminal_helper ]] || terminal_helper=$SCRIPT_DIR/dwm-terminal
+terminal_helper=$SCRIPT_DIR/dwm-terminal
+[[ -x $terminal_helper ]] || terminal_helper=$(command -v dwm-terminal 2>/dev/null || true)
 if [[ -x $terminal_helper ]] && "$terminal_helper" --print-command >/dev/null 2>&1; then
 	printf '  Configured terminal is available\n'
 	TERM_FOUND=1
@@ -270,10 +270,10 @@ else
 			case "$choice" in
 			[yY] | [yY][eE][sS])
 				repair_status=0
-				if command -v dwm-desktop-update >/dev/null 2>&1; then
-					dwm-desktop-update install-dependencies || repair_status=$?
-				elif [ -x "$SCRIPT_DIR/dwm-desktop-update" ]; then
+				if [ -x "$SCRIPT_DIR/dwm-desktop-update" ]; then
 					"$SCRIPT_DIR/dwm-desktop-update" install-dependencies || repair_status=$?
+				elif command -v dwm-desktop-update >/dev/null 2>&1; then
+					dwm-desktop-update install-dependencies || repair_status=$?
 				else
 					printf "${RED}Automated dependency installer not found.${NC}\n"
 					printf "Press any key to quit.\n"
