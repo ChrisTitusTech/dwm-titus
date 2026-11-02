@@ -9,6 +9,7 @@ existing files, idempotently, with a recovery backup per changed file. Any
 existing V binding is left alone because the compiled MODKEY may be customized.
 """
 
+import ctypes
 import os
 import re
 import shutil
@@ -88,14 +89,15 @@ def array_end(text, name):
     raise ValueError(f"unterminated {name} array")
 
 
-def append_entries(path, name, text, entries):
+def append_entries(path, name, text, entries, allow_missing=False):
     if not re.search(rf"(?m)^[ \t]*{name}[ \t]*=[ \t]*\[", text):
         header = re.search(rf"(?m)^[ \t]*\[\[((?:vars\.)?{name})\]\][ \t]*(?:#.*)?$", text)
-        if not header:
+        if not header and not allow_missing:
             raise ValueError(f"missing {name} array")
+        table_name = header.group(1) if header else name
         migrated = text.rstrip() + "\n"
         for entry in entries:
-            migrated += "\n[[" + header.group(1) + "]]\n"
+            migrated += "\n[[" + table_name + "]]\n"
             for key, value in entry.items():
                 migrated += key + " = " + (toml_string(value) if isinstance(value, str) else str(value)) + "\n"
         tomllib.loads(migrated)
@@ -172,35 +174,44 @@ def migrate_window_rules(path):
     return True
 
 
+_xstring_to_keysym = None
+
+
 def v_bound(binding):
-    # SUPER and MODKEY resolve to the user's compiled MODKEY, not necessarily
-    # Mod4Mask. Installed migrations cannot reliably infer that C definition.
-    # Preserve any existing V binding rather than risk adding a second action.
-    return isinstance(binding, dict) and binding.get("key") == CLIPBOARD_KEYBIND["key"]
+    # Use the same resolver as dwm, including numeric and Unicode spellings.
+    # No display connection is needed; libX11 is already required by dwm.
+    global _xstring_to_keysym
+    if not isinstance(binding, dict) or not isinstance(binding.get("key"), str):
+        return False
+    if _xstring_to_keysym is None:
+        try:
+            _xstring_to_keysym = ctypes.CDLL("libX11.so.6").XStringToKeysym
+        except OSError as error:
+            raise ValueError("X11 keysym resolver unavailable; preserving hotkeys") from error
+        _xstring_to_keysym.argtypes = [ctypes.c_char_p]
+        _xstring_to_keysym.restype = ctypes.c_ulong
+    # Compiled MODKEY is unknown; preserve any binding for the lowercase keysym.
+    return _xstring_to_keysym(binding["key"].encode("utf-8")) == 0x76
 
 
 def migrate_hotkeys(path):
     original, document = load_regular_file(path)
-    # hotkeys.toml declares [vars] before the binding arrays, so keys normally
-    # lives under vars; accept a top-level keys array for robustness.
-    vars_table = document.get("vars")
-    keys = vars_table.get("keys") if isinstance(vars_table, dict) else None
-    if not isinstance(keys, list):
-        keys = document.get("keys")
-    if not isinstance(keys, list):
-        raise ValueError("missing keys array")
-    tag_keys = vars_table.get("tag_keys") if isinstance(vars_table, dict) else None
-    if not isinstance(tag_keys, list):
-        tag_keys = document.get("tag_keys", [])
-    if not isinstance(tag_keys, list):
-        tag_keys = []
-    tag_conflict = any(isinstance(binding, dict) and binding.get("key") == "v"
-                       for binding in tag_keys)
-    if tag_conflict or any(v_bound(binding) for binding in keys):
-        # The compiled MODKEY may differ from the stock Super modifier.
+    # Accept compact arrays under [vars] and standard top-level array tables.
+    # Inspect both scopes so a conflict in either representation is preserved.
+    scopes = [document]
+    if isinstance(document.get("vars"), dict):
+        scopes.append(document["vars"])
+    key_arrays = [scope["keys"] for scope in scopes if "keys" in scope]
+    if any(not isinstance(keys, list) for keys in key_arrays):
+        raise ValueError("invalid keys array")
+    tag_arrays = [scope["tag_keys"] for scope in scopes if isinstance(scope.get("tag_keys"), list)]
+    if not key_arrays and not tag_arrays:
+        raise ValueError("missing keys or tag_keys array")
+    if any(v_bound(binding) for bindings in key_arrays + tag_arrays for binding in bindings):
         print(f"dwm-titus: V binding exists in {path}; leaving it unchanged (custom MODKEY may apply); bind Clipboard history manually if wanted")
         return False
-    write_migrated(path, append_entries(path, "keys", original, [CLIPBOARD_KEYBIND]))
+    write_migrated(path, append_entries(path, "keys", original, [CLIPBOARD_KEYBIND],
+                                       allow_missing=not key_arrays))
     return True
 
 
