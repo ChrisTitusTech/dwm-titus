@@ -633,6 +633,7 @@ check-fedora-platform:
 	@$(call run_managed_test,tests/test-fedora-platform.sh)
 
 check-fedora-packages:
+	tests/test-package-provider-policy.sh
 	tests/test-fedora-packages.sh
 
 check-install: check-install-manifest

@@ -410,7 +410,7 @@ raise SystemExit(17)
             if args[0] == "/usr/bin/bash":
                 self.assertEqual(args[:3], ["/usr/bin/bash", str(mapping), "fedora"])
                 self.assertIn(args[3], ("required", "source-update", "desktop", "system-management", "theme", "fonts",
-                                        "terminal-primary", "screenshot-optional", "theme-gtk"))
+                                        "terminal-primary", "screenshot-optional", "theme-gtk", "provider-policy"))
                 profiles.append(args[3])
                 return real_run(args, **kwargs)
             if args[0] == "/usr/bin/rpm":
@@ -438,7 +438,7 @@ raise SystemExit(17)
                 patch.object(sys.stdin, "isatty", return_value=True):
             perform(["repair-dependencies", generation], 1000)
             perform(["repair-dependencies", generation], 1000)
-        expected_profiles = ["required", "source-update", "desktop", "system-management", "theme", "fonts", "screenshot-optional", "theme-gtk"]
+        expected_profiles = ["provider-policy", "required", "source-update", "desktop", "system-management", "theme", "fonts", "screenshot-optional", "theme-gtk"]
         self.assertEqual(profiles, expected_profiles * 2)
         self.assertIn("quickshell", packages)
         self.assertIn("xkbset", packages)

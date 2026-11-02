@@ -195,18 +195,27 @@ def supported_terminal_installed(uid=None):
         "dwmterm", "alacritty", "kitty", "st", "warp-terminal", "xterm"))
 
 
-def power_profiles_provider_installed():
-    return subprocess.run(
-        ["/usr/bin/rpm", "-q", "--whatprovides", "ppd-service"],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL,
-        timeout=10).returncode == 0
-
-
-def xserver_installed():
-    return any(shutil.which(cmd, path="/usr/local/bin:/usr/bin:/bin") for cmd in ("Xorg", "Xlibre")) or subprocess.run(
-        ["/usr/bin/rpm", "-q", "--whatprovides", "xserver"],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL,
-        timeout=10).returncode == 0
+def installed_provider_packages(mapping):
+    """Read provider policy from the trusted shared map, never duplicate names."""
+    result = subprocess.run(["/usr/bin/bash", str(mapping), "fedora", "provider-policy"],
+                            check=True, capture_output=True, text=True, stdin=subprocess.DEVNULL,
+                            env={"PATH": "/usr/bin:/bin", "HOME": "/root", "LANG": "C.UTF-8"},
+                            cwd="/", timeout=10)
+    installed = set()
+    for line in result.stdout.splitlines():
+        fields = line.split("\t")
+        if len(fields) != 3 or any(not re.fullmatch(r"[A-Za-z0-9+_.-]+", field) for field in fields[:2]):
+            fail("Invalid provider policy in installed package map")
+        package, capability, commands = fields
+        alternatives = [] if commands == "-" else commands.split(",")
+        if any(not re.fullmatch(r"[A-Za-z0-9+_.-]+", command) for command in alternatives):
+            fail("Invalid provider command in installed package map")
+        if (any(shutil.which(command, path="/usr/local/bin:/usr/bin:/bin") for command in alternatives)
+                or subprocess.run(["/usr/bin/rpm", "-q", "--whatprovides", capability],
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                  stdin=subprocess.DEVNULL, timeout=10).returncode == 0):
+            installed.add(package)
+    return installed
 
 
 def validate_packages(packages):
@@ -545,6 +554,7 @@ def perform(args, uid):
                 trusted(mapping)
                 if fingerprint(mapping) != manifest["files"].get(str(mapping)):
                     fail("Installed package map changed; update or restore the managed helper first")
+                provider_packages = installed_provider_packages(mapping)
                 required_profiles = ["required", "source-update", "desktop", "system-management", "theme", "fonts"]
                 if "keep-terminal" not in args[2:] and not supported_terminal_installed(uid):
                     required_profiles.append("terminal-primary")
@@ -555,10 +565,7 @@ def perform(args, uid):
                                             env={"PATH": "/usr/bin:/bin", "HOME": "/root", "LANG": "C.UTF-8"},
                                             cwd="/", timeout=10)
                     required_packages.extend(result.stdout.splitlines())
-                if "power-profiles-daemon" in required_packages and power_profiles_provider_installed():
-                    required_packages = [pkg for pkg in required_packages if pkg != "power-profiles-daemon"]
-                if "xorg-x11-server-Xorg" in required_packages and xserver_installed():
-                    required_packages = [pkg for pkg in required_packages if pkg != "xorg-x11-server-Xorg"]
+                required_packages = [pkg for pkg in required_packages if pkg not in provider_packages]
 
                 optional_profiles = ["screenshot-optional", "theme-gtk"]
                 optional_packages = []
@@ -568,8 +575,7 @@ def perform(args, uid):
                                             env={"PATH": "/usr/bin:/bin", "HOME": "/root", "LANG": "C.UTF-8"},
                                             cwd="/", timeout=10)
                     optional_packages.extend(result.stdout.splitlines())
-                if "power-profiles-daemon" in optional_packages and power_profiles_provider_installed():
-                    optional_packages = [pkg for pkg in optional_packages if pkg != "power-profiles-daemon"]
+                optional_packages = [pkg for pkg in optional_packages if pkg not in provider_packages]
 
                 required_set = set(required_packages)
                 optional_packages = [pkg for pkg in optional_packages if pkg not in required_set]
