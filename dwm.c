@@ -422,6 +422,7 @@ static Display *dpy;
 static Drw *drw;
 static Monitor *mons, *selmon;
 static OverrideWindow *overridewindows;
+static Window focusedmenu;
 static Window root, wmcheckwin;
 static xcb_connection_t *xcon;
 static Window *clientlistcache;
@@ -1486,8 +1487,13 @@ focusin(XEvent *e)
 
 	for (ow = overridewindows; ow && ow->win != ev->window; ow = ow->next);
 	if (ow && (focusfullscreenforoverride(ev->window)
-	    || istransientforbar(ev->window) || ow->ismenu))
+	    || istransientforbar(ev->window)))
 		return;
+	if (ow && ow->ismenu) {
+		focusedmenu = ev->window;
+		return;
+	}
+	focusedmenu = None;
 	if (selmon->sel && ev->window != selmon->sel->win)
 		setfocus(selmon->sel);
 }
@@ -4943,6 +4949,18 @@ untrackoverridewindow(Window win)
 	if (*ow) {
 		OverrideWindow *removed = *ow;
 
+		if (removed->ismenu && focusedmenu == win) {
+			Window focused;
+			int revert;
+
+			focusedmenu = None;
+			/* X may already have applied the closing menu's revert policy.
+			 * Never steal focus from a different live window. */
+			XGetInputFocus(dpy, &focused, &revert);
+			if (selmon && selmon->sel && (focused == win
+			    || focused == None || focused == PointerRoot || focused == root))
+				setfocus(selmon->sel);
+		}
 		*ow = removed->next;
 		free(removed);
 	}

@@ -1092,18 +1092,24 @@ for popup_marker in tooltip kde notification menu popup-menu dropdown-menu combo
 		sleep 0.2
 		wait_for_input_focus "$popup_win"
 		wait_for_active_window "$above_win"
-		DISPLAY=$display xdotool windowfocus "$above_win"
+		# Closing a focused root-child menu must restore application input.
+		DISPLAY=$display xdotool windowunmap "$popup_win"
 		wait_for_input_focus "$above_win"
+		DISPLAY=$display xdotool windowmap "$popup_win"
+		wait_for_top_window "$popup_win"
+		DISPLAY=$display xdotool windowfocus "$popup_win"
+		wait_for_input_focus "$popup_win"
 		;;
 	*)
 		wait_for_input_focus "$above_win"
+		DISPLAY=$display xdotool key Super+t
+		wait_for_top_window "$popup_win"
 		;;
 	esac
-	DISPLAY=$display xdotool key Super+t
-	wait_for_top_window "$popup_win"
 	kill "$popup_client_pid"
 	wait "$popup_client_pid" 2>/dev/null || true
 	popup_client_pid=
+	wait_for_input_focus "$above_win"
 done
 
 DISPLAY=$display "$work/xclient" state "$above_win" 0 _NET_WM_STATE_STAYS_ON_TOP
