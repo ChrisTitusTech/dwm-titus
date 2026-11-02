@@ -164,8 +164,10 @@ See the comments in `hotkeys.toml` for a full list of `func` values and modifier
 
 Set two or more layouts in Settings -> Input -> Keyboard layout (for example
 `us,gr`). Keep a Latin layout first: dwm matches hotkeys against the first
-layout's keys. To switch with a key chord, add a `grp:` option to Modifier
-options, for example `grp:alt_shift_toggle` for Alt+Shift. To switch with a
+layout's keys. To switch with a key, pick one under Settings -> Input ->
+Switch layout with (Alt+Shift, Caps Lock, ...), or type any `grp:` option into
+Modifier options. Avoid the Space chords such as `grp:win_space_toggle`: XKB
+switches the layout and dwm still runs Super+Space (toggle floating). To switch with a
 dwm hotkey instead, bind the `cyclelayout` func; there is no default binding:
 
 ```toml

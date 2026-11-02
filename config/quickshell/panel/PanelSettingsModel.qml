@@ -23,7 +23,8 @@ Scope {
         "volume": true,
         "bluetooth": true,
         "network": true,
-        "power": true
+        "power": true,
+        "keyboard-layout": true
     })
     property var optionValues: ({
         "clock-seconds": false
@@ -39,7 +40,8 @@ Scope {
         { "id": "volume", "label": "Volume" },
         { "id": "bluetooth", "label": "Bluetooth" },
         { "id": "network", "label": "Network" },
-        { "id": "power", "label": "Power" }
+        { "id": "power", "label": "Power" },
+        { "id": "keyboard-layout", "label": "Keyboard layout" }
     ]
     readonly property var options: [
         { "id": "clock-seconds", "label": "Clock: show seconds" }
@@ -47,7 +49,7 @@ Scope {
 
     function validWidget(id) {
         return id === "workspaces" || id === "volume" || id === "bluetooth"
-            || id === "network" || id === "power";
+            || id === "network" || id === "power" || id === "keyboard-layout";
     }
 
     function widgetEnabled(id) {
@@ -68,7 +70,8 @@ Scope {
             "volume": true,
             "bluetooth": true,
             "network": true,
-            "power": true
+            "power": true,
+            "keyboard-layout": true
         });
         root.optionValues = ({
             "clock-seconds": false
@@ -90,26 +93,30 @@ Scope {
         // 1.1 adds one option line before "complete"; 1.0 has none.
         const optionCount = lines[0] === "panel-settings-protocol\t1\t1" ? root.options.length
             : lines[0] === "panel-settings-protocol\t1\t0" ? 0 : -1;
-        if (optionCount < 0 || lines.length !== 8 + optionCount
+        if (optionCount < 0 || lines.length < 8 + optionCount
                 || lines[lines.length - 1] !== "complete\tstatus") return;
         const state = lines[1].split("\t");
         if (state.length !== 3 || state[0] !== "state"
                 || ["available", "defaults", "partial", "unavailable"].indexOf(state[1]) < 0)
             return;
+        // Widget lines run up to the options. A helper from before
+        // keyboard-layout prints only the other five; it then stays on.
         const parsed = {};
-        for (let index = 2; index < 7; index++) {
+        let index = 2;
+        for (; index < lines.length - 1 - optionCount; index++) {
             const fields = lines[index].split("\t");
             if (fields.length !== 3 || fields[0] !== "widget" || !root.validWidget(fields[1])
                     || (fields[2] !== "enabled" && fields[2] !== "disabled")
                     || parsed[fields[1]] !== undefined) return;
             parsed[fields[1]] = fields[2] === "enabled";
         }
+        if (parsed["keyboard-layout"] === undefined) parsed["keyboard-layout"] = true;
         for (const widget of root.widgets) {
             if (parsed[widget.id] === undefined) return;
         }
         const parsedOptions = { "clock-seconds": false };
         const seenOptions = {};
-        for (let index = 7; index < 7 + optionCount; index++) {
+        for (; index < lines.length - 1; index++) {
             const fields = lines[index].split("\t");
             if (fields.length !== 3 || fields[0] !== "option" || !root.validOption(fields[1])
                     || (fields[2] !== "enabled" && fields[2] !== "disabled")

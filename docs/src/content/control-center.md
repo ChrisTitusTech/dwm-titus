@@ -45,7 +45,8 @@ paired device, and disconnect a connected device through `bluetoothctl`.
 ## Panel Widgets
 
 The Bar Widgets page can show or hide the workspace, volume, Bluetooth,
-network, and power widgets. Those choices are stored in the project-owned
+network, power, and keyboard layout widgets. The keyboard layout pill only
+appears when two or more layouts are set (Settings > Input). Those choices are stored in the project-owned
 `~/.config/dwm-titus/panel-widgets.conf` state and apply to every monitor and
 future Quickshell session. The Clock seconds row adds seconds to the panel
 clock; it is off by default. Settings Appearance exposes the same shared

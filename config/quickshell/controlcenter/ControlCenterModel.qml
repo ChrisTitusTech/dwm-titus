@@ -17,7 +17,8 @@ Scope {
         "Volume": "volume",
         "Bluetooth": "bluetooth",
         "Network": "network",
-        "Power": "power"
+        "Power": "power",
+        "Keyboard layout": "keyboard-layout"
     })
     readonly property bool showVolumeWidget: root.panelSettingsModel
         ? root.panelSettingsModel.widgetEnabled("volume") : true
