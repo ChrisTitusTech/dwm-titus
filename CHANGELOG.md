@@ -40,6 +40,10 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Preserve keyboard focus in application menus and combo popups so Steam menus
+  do not immediately dismiss. Notification and fullscreen overlay focus behavior
+  remains unchanged.
+
 - Make Kitty follow the selected theme instead of Nord. The shipped
   `kitty.conf` no longer sets its own palette or includes `nord.conf`. Theme
   apply, including from Settings, updates an existing `kitty.conf` once: it
