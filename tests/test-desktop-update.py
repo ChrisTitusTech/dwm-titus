@@ -97,7 +97,7 @@ class DesktopUpdate(unittest.TestCase):
         probe.assert_called_once_with(["/usr/bin/sudo", "-n", "true"], capture_output=True, timeout=10)
         self.command.assert_called_once_with(["/usr/bin/sudo", "-n", self.base / "libexec/dwm-titus/dwm-desktop-update-root",
                                              "repair-dependencies", update.digest(self.manifest_path)],
-                                            timeout=1800, capture=False)
+                                            timeout=None, capture=False)
         self.assertEqual({p: p.read_bytes() for p in before}, before)
 
     def test_dependency_repair_falls_back_to_polkit_once_and_preserves_denial(self):
@@ -113,7 +113,7 @@ class DesktopUpdate(unittest.TestCase):
                     update.install_dependencies()
                 self.command.assert_called_once_with(["/usr/bin/pkexec", self.base / "libexec/dwm-titus/dwm-desktop-update-root",
                                                      "repair-dependencies", update.digest(self.manifest_path)],
-                                                    timeout=1800, capture=False)
+                                                    timeout=None, capture=False)
 
     def test_dependency_repair_rejects_noninteractive_and_untrusted_requests(self):
         with patch.object(update.sys.stdin, "isatty", return_value=False), \

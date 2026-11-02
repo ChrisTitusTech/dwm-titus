@@ -943,7 +943,10 @@ def install_dependencies():
             except (OSError, subprocess.TimeoutExpired):
                 pass
             print("Install missing desktop dependencies. Review and confirm DNF's package transaction.", flush=True)
-            run([*authorization, helper, "repair-dependencies", digest(manifest_path)], timeout=1800, capture=False)
+            # The privileged helper bounds each map/RPM/DNF operation. Wait for
+            # its final exit, including both transactions, so this lock cannot
+            # be released while a timed-out pkexec leaves package work behind.
+            run([*authorization, helper, "repair-dependencies", digest(manifest_path)], timeout=None, capture=False)
     except BlockingIOError as error:
         raise RuntimeError("Desktop update is active; finish or recover it before repairing dependencies") from error
 
