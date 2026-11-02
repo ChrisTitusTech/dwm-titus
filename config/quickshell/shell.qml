@@ -6,6 +6,7 @@ import Quickshell.Io
 import Quickshell.Services.SystemTray
 import qs.accessibility
 import qs.appearance
+import qs.clipboard
 import qs.controlcenter
 import qs.controls
 import qs.core
@@ -43,6 +44,7 @@ ShellRoot {
 
         commandMenuModel.close();
         launcherModel.close();
+        clipboardModel.close();
         notificationModel.closeHistory();
         controlCenterModel.closeUtility();
         if (popupId !== "bluetooth") bluetoothModel.close();
@@ -72,6 +74,7 @@ ShellRoot {
         controlsModel.close();
         powerMenuModel.close("panel");
         launcherModel.close();
+        clipboardModel.close();
         if (screen) commandMenuModel.openOnScreen(screen); else commandMenuModel.open();
     }
 
@@ -115,6 +118,8 @@ ShellRoot {
             systemHealthModel.openOnScreen(screen);
         } else if (target === "controlcenter" && action === "keybindings") {
             controlCenterModel.openKeybindsOnScreen(screen);
+        } else if (target === "clipboard" && action === "open") {
+            clipboardModel.openOnScreen(screen);
         } else if (target === "power" && action === "open") {
             if (panel) root.selectPanelPopup(panel, "power");
             powerMenuModel.open("panel");
@@ -137,6 +142,7 @@ ShellRoot {
         onVisibleChanged: {
             if (visible) {
                 commandMenuModel.close();
+                clipboardModel.close();
                 updateCenterModel.close();
             }
         }
@@ -145,7 +151,7 @@ ShellRoot {
     CommandMenuModel {
         id: commandMenuModel
         launcherModel: launcherModel
-        onVisibleChanged: if (visible) updateCenterModel.close()
+        onVisibleChanged: if (visible) { updateCenterModel.close(); clipboardModel.close(); }
         currentEntryIds: {
             const ids = [];
 
@@ -165,6 +171,7 @@ ShellRoot {
             if (networkModel.visible) ids.push("network");
             if (bluetoothModel.visible) ids.push("bluetooth");
             if (controlsModel.visible) ids.push("audio");
+            if (clipboardModel.visible) ids.push("clipboard");
             if (systemHealthModel.visible) ids.push("health");
             if (controlCenterModel.utilityVisible && controlCenterModel.utilityPage === "keybinds") ids.push("keybindings");
             if (powerMenuModel.visible) {
@@ -177,10 +184,27 @@ ShellRoot {
         onIpcActionRequested: (target, action, argument, screen) => root.runCommandMenuAction(target, action, argument, screen)
     }
 
+    ClipboardModel {
+        id: clipboardModel
+
+        onVisibleChanged: {
+            if (visible) {
+                launcherModel.close();
+                commandMenuModel.close();
+                updateCenterModel.close();
+                networkModel.close();
+                bluetoothModel.close();
+                controlsModel.close();
+                controlCenterModel.close();
+                powerMenuModel.close("panel");
+            }
+        }
+    }
+
     PowerMenuModel {
         id: powerMenuModel
         powerModel: powerModel
-        onVisibleChanged: if (visible) updateCenterModel.close()
+        onVisibleChanged: if (visible) { updateCenterModel.close(); clipboardModel.close(); }
     }
 
     PowerModel {
@@ -209,25 +233,25 @@ ShellRoot {
 
     NetworkModel {
         id: networkModel
-        onVisibleChanged: if (visible) updateCenterModel.close()
+        onVisibleChanged: if (visible) { updateCenterModel.close(); clipboardModel.close(); }
     }
 
     ControlsModel {
         id: controlsModel
-        onVisibleChanged: if (visible) updateCenterModel.close()
+        onVisibleChanged: if (visible) { updateCenterModel.close(); clipboardModel.close(); }
     }
 
     BluetoothModel {
         id: bluetoothModel
-        onVisibleChanged: if (visible) updateCenterModel.close()
+        onVisibleChanged: if (visible) { updateCenterModel.close(); clipboardModel.close(); }
     }
 
     ControlCenterModel {
         id: controlCenterModel
         powerModel: powerModel
         panelSettingsModel: panelSettingsModel
-        onVisibleChanged: if (visible) updateCenterModel.close()
-        onUtilityVisibleChanged: if (utilityVisible) updateCenterModel.close()
+        onVisibleChanged: if (visible) { updateCenterModel.close(); clipboardModel.close(); }
+        onUtilityVisibleChanged: if (utilityVisible) { updateCenterModel.close(); clipboardModel.close(); }
     }
 
     SystemHealthModel {
@@ -286,7 +310,7 @@ ShellRoot {
 
     NotificationModel {
         id: notificationModel
-        onHistoryVisibleChanged: if (historyVisible) updateCenterModel.close()
+        onHistoryVisibleChanged: if (historyVisible) { updateCenterModel.close(); clipboardModel.close(); }
     }
 
     IpcHandler {
@@ -310,6 +334,42 @@ ShellRoot {
 
         function toggle(): void {
             launcherModel.toggle();
+        }
+    }
+
+    IpcHandler {
+        target: "clipboard"
+
+        function clear(): void {
+            clipboardModel.clearAll();
+        }
+
+        function close(): void {
+            clipboardModel.close();
+        }
+
+        function count(): int {
+            return clipboardModel.entries.length;
+        }
+
+        function open(): void {
+            clipboardModel.open();
+        }
+
+        function persistence(): bool {
+            return clipboardModel.persistenceEnabled;
+        }
+
+        function setPersistence(enabled: bool): void {
+            clipboardModel.setPersistence(enabled);
+        }
+
+        function status(): string {
+            return clipboardModel.status;
+        }
+
+        function toggle(): void {
+            clipboardModel.toggle();
         }
     }
 
@@ -1172,6 +1232,10 @@ ShellRoot {
 
     CommandMenuWindow {
         commandMenuModel: commandMenuModel
+    }
+
+    ClipboardWindow {
+        clipboardModel: clipboardModel
     }
 
     PowerMenuWindow {

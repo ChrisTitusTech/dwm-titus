@@ -70,6 +70,7 @@ cleanup() {
 		[ ! -f "$work/quickshell.log" ] || tail -80 "$work/quickshell.log" >&2
 		[ ! -f "$work/dwm.log" ] || tail -40 "$work/dwm.log" >&2
 	fi
+	[ -n "${clipboard_client_pid:-}" ] && kill "$clipboard_client_pid" 2>/dev/null
 	[ -n "${title_client_pid:-}" ] && kill "$title_client_pid" 2>/dev/null
 	[ -n "${quickshell_pid:-}" ] && kill "$quickshell_pid" 2>/dev/null
 	[ -n "${dwm_pid:-}" ] && kill "$dwm_pid" 2>/dev/null
@@ -563,6 +564,33 @@ done
 ipc notifications clear >/dev/null
 ipc notifications resetPolicy >/dev/null
 
+test_stage='validating clipboard history surface and capture'
+ipc launcher open >/dev/null
+wait_window '^dwm launcher$' >/dev/null
+ipc clipboard open >/dev/null
+clipboard_window=$(wait_window '^dwm clipboard$')
+capture_window clipboard "$clipboard_window"
+if DISPLAY=$display xdotool search --onlyvisible --name '^dwm launcher$' >/dev/null 2>&1; then
+	printf 'Clipboard history left the launcher open\n' >&2
+	exit 1
+fi
+# Opening the surface must not opt in or import the current clipboard.
+[ "$(ipc clipboard count)" -eq 0 ]
+[ "$(ipc clipboard persistence)" = false ]
+[ ! -e "$home/.cache/dwm-titus/clipboard-history.json" ]
+[ ! -e "$home/.cache/dwm-titus/clipboard-history-v2.json" ]
+DISPLAY=$display xdotool windowactivate --sync "$clipboard_window"
+DISPLAY=$display xdotool key Escape
+i=0
+while [ "$i" -lt 100 ]; do
+	if ! DISPLAY=$display xdotool search --onlyvisible --name '^dwm clipboard$' >/dev/null 2>&1; then break; fi
+	i=$((i + 1))
+	sleep 0.05
+done
+if DISPLAY=$display xdotool search --onlyvisible --name '^dwm clipboard$' >/dev/null 2>&1; then
+	printf 'Escape did not close clipboard history\n' >&2
+	exit 1
+fi
 test_stage='settling an oversized active title'
 cat >"$work/title-client.c" <<'C'
 #include <X11/Xlib.h>

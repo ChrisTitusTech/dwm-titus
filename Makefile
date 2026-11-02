@@ -38,6 +38,7 @@ INSTALL_COMMANDS = dwm-clipboard-observer \
 	scripts/dwm-keybinds \
 	scripts/dwm-lock \
 	scripts/dwm-lock-watch \
+	scripts/dwm-migrate-clipboard-surface \
 	scripts/dwm-migrate-update-center-window-rule \
 	scripts/dwm-panel-settings \
 	scripts/dwm-update-center \
@@ -316,6 +317,10 @@ install-user-files:
 	HOME="${USER_HOME}" XDG_CONFIG_HOME="${XDG_CONFIG_HOME}" \
 		scripts/dwm-migrate-update-center-window-rule || \
 		echo "  Preserving existing window rules after migration warning."
+	@echo "==> Migrating clipboard history configuration..."
+	HOME="${USER_HOME}" XDG_CONFIG_HOME="${XDG_CONFIG_HOME}" \
+		scripts/dwm-migrate-clipboard-surface || \
+		echo "  Preserving existing hotkeys and window rules after migration warning."
 	@echo "==> Migrating legacy graphical-session startup..."
 	HOME="${USER_HOME}" XDG_CONFIG_HOME="${XDG_CONFIG_HOME}" scripts/migrate-graphical-session.sh
 	@echo "==> Installing Meslo font aliases..."
@@ -480,6 +485,10 @@ check-status:
 check-monitor-tags:
 	tests/test-monitor-tag-switching.sh
 
+check-clipboard: dwm-clipboard-observer
+	python3 tests/test-clipboard-migration.py
+	python3 tests/test-clipboard-runtime.py
+	python3 tests/test-clipboard-end-to-end.py
 check-keyboard-layout: all
 	python3 tests/test-keyboard-refresh.py
 	tests/test-keyboard-layout-xvfb.sh
@@ -792,6 +801,7 @@ check: check-picom check-picom-xvfb
 	$(MAKE) check-display-profile
 	$(MAKE) check-display-setup
 	$(MAKE) check-monitor-tags
+	$(MAKE) check-clipboard
 	$(MAKE) check-clipboard-observer
 	$(MAKE) check-keyboard-layout
 	$(MAKE) check-quickshell-launcher
@@ -859,4 +869,5 @@ check: check-picom check-picom-xvfb
 	check-quickshell-launcher check-quickshell-controls check-quickshell-audio check-quickshell-controlcenter check-quickshell-power check-quickshell-power-backend check-quickshell-power-model check-quickshell-session-actions check-quickshell-defaults-model check-quickshell-appearance-model check-quickshell-design-system check-quickshell-large-surfaces check-quickshell-large-surfaces-xvfb check-quickshell-panel-menus check-quickshell-panel-settings check-quickshell-command-menu check-quickshell-notifications check-quickshell-tray check-quickshell-health-xvfb check-quickshell-settings-xvfb check-quickshell-settings-responsiveness-xvfb check-quickshell-network check-quickshell-connectivity check-quickshell-qml check-lightdm-config check-terminal check-xvfb-runtime check-keyboard-layout install install-system install-user \
 	install-cursors install-app-themes check-app-themes native release release-check uninstall uninstall-files
 
+.PHONY: check-clipboard
 .PHONY: check-clipboard-observer

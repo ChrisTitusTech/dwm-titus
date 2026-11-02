@@ -20,6 +20,18 @@ versions from `config.mk`.
   prefer Path when installed, with Thunar otherwise; existing MIME preferences
   remain unchanged. Keep GTK as the file chooser portal until Path supports
   cancellation through the portal request API.
+
+- Add the Super+V clipboard history menu: a floating `dwm clipboard` window
+  that records the last 50 clipboard texts with search, per-entry delete,
+  clear-all, duplicate promotion to the top, and copy timestamps. Selecting an
+  entry copies it back to the clipboard and closes the menu. Capture is off by default and requires explicit consent to discard older
+  history; only sensitivity-backend events can enter history. Disk persistence
+  is a separate opt-in from the window and
+  stores a private (0600) history file under the user cache; disabling
+  persistence wipes the stored copy. Upgrades and desktop updates migrate the
+  window rule and the keybinding into existing user TOML files with per-file
+  recovery backups, skipping an existing Super+V binding.
+
 - Add an optional seconds display to the panel clock (off by default). Toggle
   it in Settings > Appearance > Panel widgets or the Control Center Bar Widgets
   page; it is stored in `panel-widgets.conf` and older files keep their widget
