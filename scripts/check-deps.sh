@@ -275,6 +275,8 @@ else
 					exit 1
 				fi
 				if [ $repair_status -ne 0 ]; then
+					printf "Dependency repair failed (exit %s). Press any key to quit.\n" "$repair_status"
+					read -r -s -n 1 _ || true
 					exit "$repair_status"
 				fi
 				echo ""

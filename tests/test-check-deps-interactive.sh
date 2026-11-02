@@ -237,3 +237,18 @@ if ! grep -Fq "Required dependencies are still missing after repair." <<<"$outpu
 fi
 
 echo "test-check-deps-interactive: PASS"
+
+# A failed repair must preserve its status and leave its explanation visible.
+rm -f "$work/bin/startx"
+cat >"$work/bin/dwm-desktop-update" <<'SH'
+#!/bin/sh
+printf 'fixture: authorization denied\n'
+exit 7
+SH
+chmod +x "$work/bin/dwm-desktop-update"
+exit_code=0
+output=$(printf 'y\nx' | env HOME="$work/home" PATH="$work/bin" \
+	bash "$CHECK_DEPS" --interactive) || exit_code=$?
+[[ $exit_code == 7 ]]
+grep -Fq 'fixture: authorization denied' <<<"$output"
+grep -Fq 'Dependency repair failed (exit 7). Press any key to quit.' <<<"$output"
