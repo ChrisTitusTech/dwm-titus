@@ -1653,6 +1653,13 @@ dependency_helper() {
 		unset CDPATH
 		cd -- "$(dirname -- "$0")" && pwd
 	)
+	# Source/data copies cannot discover a custom installation manifest.
+	if [ "$dependency_name" = dwm-desktop-update ] &&
+		[ ! -f "$dependency_dir/../share/dwm-titus/desktop-install.json" ]; then
+		if command -v "$dependency_name" 2>/dev/null; then
+			return 0
+		fi
+	fi
 	for dependency_candidate in "$dependency_dir/$dependency_name" \
 		"$repo_dir/scripts/$dependency_name"; do
 		if [ -x "$dependency_candidate" ]; then

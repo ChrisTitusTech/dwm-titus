@@ -270,10 +270,13 @@ else
 			case "$choice" in
 			[yY] | [yY][eE][sS])
 				repair_status=0
-				if [ -x "$SCRIPT_DIR/dwm-desktop-update" ]; then
+				if [ -f "$SCRIPT_DIR/../share/dwm-titus/desktop-install.json" ] &&
+					[ -x "$SCRIPT_DIR/dwm-desktop-update" ]; then
 					"$SCRIPT_DIR/dwm-desktop-update" install-dependencies || repair_status=$?
 				elif command -v dwm-desktop-update >/dev/null 2>&1; then
 					dwm-desktop-update install-dependencies || repair_status=$?
+				elif [ -x "$SCRIPT_DIR/dwm-desktop-update" ]; then
+					"$SCRIPT_DIR/dwm-desktop-update" install-dependencies || repair_status=$?
 				else
 					printf "${RED}Automated dependency installer not found.${NC}\n"
 					printf "Press any key to quit.\n"

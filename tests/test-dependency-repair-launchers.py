@@ -19,6 +19,10 @@ class DependencyLaunchers(unittest.TestCase):
             scripts.mkdir(parents=True)
             for name in ("dwm-quickshell-controlcenter", "dwm-system-health", "check-deps.sh", "dwm-utils.sh", "dwm-packages.sh"):
                 shutil.copy2(REPO / "scripts" / name, scripts / name)
+            # A source/data copy must defer to the installed updater on PATH.
+            source_updater = scripts / "dwm-desktop-update"
+            source_updater.write_text("#!/bin/sh\nexit 93\n")
+            source_updater.chmod(0o755)
             marker = base / "desktop-reinstalled"
             installer = scripts.parent / "install.sh"
             installer.write_text("#!/bin/sh\ntouch '" + str(marker) + "'\nexit 97\n")
@@ -58,6 +62,7 @@ class DependencyLaunchers(unittest.TestCase):
                 if not source_exists:
                     installer.unlink()
                     terminal.rename(scripts / "dwm-terminal")
+                    source_updater.unlink()
                     updater.rename(scripts / "dwm-desktop-update")
                 for name, args in (("dwm-quickshell-controlcenter", ["action", "dependency-check"]),
                                    ("dwm-system-health", ["repair-user", "install-dependencies"])):
