@@ -20,11 +20,11 @@ class Observer(unittest.TestCase):
         cls.base = Path(cls.temp.name)
         cls.owner = cls.base / "eligible-owner"
         cls.other = cls.base / "bitwarden"
-        subprocess.run(["cc", "-D_POSIX_C_SOURCE=200809L", "-std=c99", "-Wall", "-Wextra", str(REPO / "tests/clipboard-owner.c"), "-lxcb", "-o", str(cls.owner)], check=True)
+        subprocess.run(["cc", "-D_POSIX_C_SOURCE=200809L", "-std=c99", "-Wall", "-Wextra", "-Werror", str(REPO / "tests/clipboard-owner.c"), "-lxcb", "-o", str(cls.owner)], check=True)
         shutil.copy2(cls.owner, cls.other)
         cls.binary = cls.base / "observer"
         libs = subprocess.check_output(["pkg-config", "--libs", "xcb", "xcb-xfixes", "xcb-res"], text=True).split()
-        subprocess.run(["cc", "-D_POSIX_C_SOURCE=200809L", "-std=c99", "-Wall", "-Wextra", str(REPO / "clipboard-observer.c"), *libs, "-o", str(cls.binary)], check=True)
+        subprocess.run(["cc", "-D_POSIX_C_SOURCE=200809L", "-std=c99", "-Wall", "-Wextra", "-Werror", str(REPO / "clipboard-observer.c"), *libs, "-o", str(cls.binary)], check=True)
         cls.xvfb = subprocess.Popen(["Xvfb", "-displayfd", "1", "-screen", "0", "800x600x24", "-nolisten", "tcp"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
         display = cls.xvfb.stdout.readline().strip()
         if not display:
@@ -143,6 +143,52 @@ class Observer(unittest.TestCase):
         events, requests = self.capture(self.other, "spawn", "NEVER-EMIT-MANAGER-HELPER", child=self.owner)
         self.assertEqual(requests, [])
         self.assertFalse(any(event.get("event") == "text" for event in events))
+
+    def test_interpreter_hosted_keepass_is_rejected(self):
+        mono = self.base / "mono"
+        shutil.copy2(self.owner, mono)
+        log = self.base / (self._testMethodName + ".requests")
+        owner = self.start([mono, "KeePass.exe", "plain", "NEVER-EMIT-MONO-SECRET", log])
+        self.assertEqual(owner.stdout.readline().strip(), "ready")
+        self.assertIsNone(self.line(self.observer, 1.5))
+        self.assertFalse(log.exists(), "Interpreter-hosted manager was queried")
+
+    def test_invalid_utf8_is_not_retained(self):
+        events, requests = self.capture(self.owner, "invalid-utf8", "unused")
+        self.assertIn("TEXT", requests)
+        self.assertFalse(any(event.get("event") == "text" for event in events))
+
+    def test_excess_targets_are_rejected_before_text(self):
+        events, requests = self.capture(self.owner, "many-targets", "unused")
+        self.assertIn("TARGETS", requests)
+        self.assertNotIn("TEXT", requests)
+        self.assertFalse(any(event.get("event") == "text" for event in events))
+
+    def test_startup_does_not_import_owned_clipboard(self):
+        self.observer.terminate()
+        self.observer.wait(timeout=5)
+        log = self.base / (self._testMethodName + ".requests")
+        owner = self.start([self.owner, "plain", "NEVER-IMPORT-STARTUP", log])
+        self.assertEqual(owner.stdout.readline().strip(), "ready")
+        self.observer = self.start([self.binary])
+        self.assertEqual(self.line(self.observer, 3), {"event": "ready", "protocol": 1})
+        self.assertIsNone(self.line(self.observer, 1.5))
+        self.assertFalse(log.exists(), "Observer imported existing ownership on startup")
+
+    def test_idle_does_not_poll_selection_or_consume_cpu(self):
+        events, requests = self.capture(self.owner, "plain", "ordinary idle clipboard")
+        self.assertIn({"event": "text", "text": "ordinary idle clipboard"}, events)
+        log = self.base / (self._testMethodName + ".requests")
+        before_requests = log.read_text()
+        def ticks():
+            fields = Path(f"/proc/{self.observer.pid}/stat").read_text().rsplit(")", 1)[1].split()
+            return int(fields[11]) + int(fields[12])
+        before = ticks()
+        time.sleep(1)
+        consumed = ticks() - before
+        self.assertEqual(log.read_text(), before_requests)
+        self.assertLessEqual(consumed, max(1, int(os.sysconf("SC_CLK_TCK") * .01)))
+        print(f"Observer idle: {consumed} CPU ticks in 1s; selection requests unchanged", flush=True)
 
     def test_sensitive_marker_blocks_before_text(self):
         secret = "NEVER-EMIT-MARKED-SECRET"

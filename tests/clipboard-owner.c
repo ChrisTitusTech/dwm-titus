@@ -20,6 +20,7 @@ static xcb_atom_t atom(xcb_connection_t *c, const char *name)
 }
 int main(int argc, char **argv)
 {
+    if (argc == 5 && !strcmp(argv[1], "KeePass.exe")) { argc--; argv++; }
     if (argc != 4) return 2;
     if (!strcmp(argv[1], "spawn")) {
         const char *child = getenv("CLIPBOARD_FIXTURE_CHILD");
@@ -70,10 +71,19 @@ int main(int argc, char **argv)
             reply.selection = r->selection; reply.target = r->target;
             reply.property = property;
             if (!strcmp(argv[1], "timeout")) { free(event); continue; }
-            if (r->target == targets) {
+            if (r->target == targets && !strcmp(argv[1], "many-targets")) {
+                xcb_atom_t supported[129];
+                for (unsigned int i = 0; i < 129; i++) supported[i] = utf8;
+                xcb_change_property(c, XCB_PROP_MODE_REPLACE, r->requestor,
+                    property, XCB_ATOM_ATOM, 32, 129, supported);
+            } else if (r->target == targets) {
                 xcb_atom_t supported[] = {targets, utf8, hint};
                 xcb_change_property(c, XCB_PROP_MODE_REPLACE, r->requestor,
                     property, XCB_ATOM_ATOM, 32, (!strcmp(argv[1], "secret") || raced) ? 3 : 2, supported);
+            } else if (r->target == utf8 && !strcmp(argv[1], "invalid-utf8")) {
+                const unsigned char invalid[] = {0xc0, 0xaf};
+                xcb_change_property(c, XCB_PROP_MODE_REPLACE, r->requestor,
+                    property, utf8, 8, sizeof(invalid), invalid);
             } else if (r->target == utf8 && !strcmp(argv[1], "incr")) {
                 unsigned int size = 1024 * 1024;
                 xcb_change_property(c, XCB_PROP_MODE_REPLACE, r->requestor,
