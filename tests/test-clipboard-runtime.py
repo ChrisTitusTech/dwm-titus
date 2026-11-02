@@ -15,17 +15,19 @@ import Quickshell.Io
 import qs.clipboard
 ShellRoot {
     ClipboardModel { id: model }
+    Component.onCompleted: if (Quickshell.env("CLIPBOARD_TEST_EARLY_CLEAR") === "1") model.clearAll()
     IpcHandler {
         target: "clipboardtest"
         function state(): string { return JSON.stringify({ready:model.historyReady && model.settingsReady,
             capture:model.captureEnabled, backend:model.backendReady, backendFailed:model.backendFailed,
             confirmed:model.confirmedPersistence, enabled:model.persistenceEnabled,
             writing:model.settingsWriting, failed:model.settingsSaveFailed,
-            wipe:model.wipePending, historyFailed:model.saveFailed, count:model.entries.length}); }
+            wipe:model.wipePending, historyFailed:model.saveFailed, discardFailed:model.consentFailed, count:model.entries.length}); }
         function capture(enabled: bool): void { model.setCapture(enabled); }
         function persist(enabled: bool): void { model.setPersistence(enabled); }
         function retry(): void { model.retrySave(); }
         function clear(): void { model.clearAll(); }
+        function clearTwice(): void { model.clearAll(); model.clearAll(); }
     }
 }
 '''
@@ -40,6 +42,8 @@ with tempfile.TemporaryDirectory(prefix='clipboard-privacy-', dir=tmp_root) as d
     shell = work / 'shell'
     shutil.copytree(root / 'config/quickshell', shell)
     (shell / 'shell.qml').write_text(qml)
+    if os.environ.get('DWM_TEST_CLIPBOARD_MODEL'):
+        shutil.copy2(os.environ['DWM_TEST_CLIPBOARD_MODEL'], shell / 'clipboard/ClipboardModel.qml')
     tools = work / 'custom prefix $literal `literal`' / 'bin'
     tools.mkdir(parents=True)
     fifo = work / 'events'
@@ -54,6 +58,59 @@ with tempfile.TemporaryDirectory(prefix='clipboard-privacy-', dir=tmp_root) as d
                     '  if line.strip()=="OVERSIZE": print("x"*393301,flush=True); continue\n'
                     '  print(line.rstrip("\\n"),flush=True)\n')
     mock.chmod(0o755)
+    # Pause an actual FileView atomic writer at fsync, not a mocked model flag.
+    # Clear must wait for this older write before committing its empty file.
+    preload_source = work / 'delay-history-write.c'
+    preload_source.write_text(r"""
+#define _GNU_SOURCE
+#include <dlfcn.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+#include <unistd.h>
+static void delay_write(int fd) {
+    const char *entered = getenv("CLIPBOARD_WRITE_ENTERED");
+    const char *release = getenv("CLIPBOARD_WRITE_RELEASE");
+    char proc[64], path[4096], data[2048];
+    if (!entered || !release) return;
+    snprintf(proc, sizeof proc, "/proc/self/fd/%d", fd);
+    ssize_t n = readlink(proc, path, sizeof path - 1);
+    if (n <= 0) return;
+    path[n] = 0;
+    if (!strstr(path, "/.cache/dwm-titus/")) return;
+    int input = open(proc, O_RDONLY);
+    if (input < 0) return;
+    n = pread(input, data, sizeof data - 1, 0);
+    close(input);
+    if (n <= 0) return;
+    data[n] = 0;
+    if (!strstr(data, "DELAYED-")) return;
+    int marker = open(entered, O_WRONLY | O_CREAT | O_EXCL, 0600);
+    if (marker < 0) return;
+    close(marker);
+    struct timespec pause = {0, 5000000};
+    for (int i = 0; i < 1000 && access(release, F_OK); i++) nanosleep(&pause, NULL);
+}
+int fsync(int fd) {
+    static int (*next)(int);
+    if (!next) next = dlsym(RTLD_NEXT, "fsync");
+    delay_write(fd);
+    return next(fd);
+}
+int fdatasync(int fd) {
+    static int (*next)(int);
+    if (!next) next = dlsym(RTLD_NEXT, "fdatasync");
+    delay_write(fd);
+    return next(fd);
+}
+""")
+    preload = work / 'delay-history-write.so'
+    subprocess.run(['cc', '-shared', '-fPIC', '-Wall', '-Wextra', '-Werror',
+                    preload_source, '-ldl', '-o', preload], check=True)
+    entered = work / 'write-entered'
+    release = work / 'write-release'
     config = home / '.config/dwm-titus'
     cache = home / '.cache/dwm-titus'
     config.mkdir(parents=True)
@@ -82,7 +139,8 @@ with tempfile.TemporaryDirectory(prefix='clipboard-privacy-', dir=tmp_root) as d
                'XDG_RUNTIME_DIR': str(runtime), 'XDG_CONFIG_HOME': str(home / '.config'),
                'XDG_CACHE_HOME': str(home / '.cache'), 'XDG_DATA_HOME': str(home / '.local/share'),
                'PATH': str(tools) + ':' + os.environ['PATH'], 'CLIPBOARD_TEST_EVENTS': str(fifo),
-               'QT_QPA_PLATFORMTHEME': ''}
+               'QT_QPA_PLATFORMTHEME': '', 'LD_PRELOAD': str(preload),
+               'CLIPBOARD_WRITE_ENTERED': str(entered), 'CLIPBOARD_WRITE_RELEASE': str(release)}
         def launch():
             return subprocess.Popen(['quickshell', '--no-duplicate', '--path', str(shell / 'shell.qml')],
                                     env=env, stdout=log, stderr=subprocess.STDOUT)
@@ -137,13 +195,57 @@ with tempfile.TemporaryDirectory(prefix='clipboard-privacy-', dir=tmp_root) as d
             cache.chmod(0o700)
             ipc('retry')
             wait(lambda s: not s['historyFailed'])
-        ipc('clear')
+        for operation in ('clear', 'disable'):
+            entered.unlink(missing_ok=True)
+            release.unlink(missing_ok=True)
+            emit({'event': 'text', 'text': 'DELAYED-' + operation})
+            for _ in range(100):
+                if entered.exists(): break
+                time.sleep(.02)
+            assert entered.exists(), 'Actual history writer did not reach controlled fsync barrier'
+            if operation == 'clear': ipc('clear')
+            else: ipc('capture', 'false')
+            # Give the former external-helper race time to commit its empty
+            # file while the pre-clear FileView writer remains blocked.
+            time.sleep(.3)
+            release.touch()
+            time.sleep(.15)
+            wait(lambda s: s['count'] == 0 and not s['wipe'] and not s['writing'])
+            for _ in range(100):
+                if not json.loads(history.read_text())['entries']: break
+                time.sleep(.05)
+            assert not json.loads(history.read_text())['entries'], operation
+            if operation == 'disable':
+                assert not json.loads(ipc('state'))['capture']
+                ipc('capture', 'true')
+            wait(lambda s: s['capture'] and s['backend'] and s['count'] == 0)
+            # The next delayed transaction needs persistence enabled again.
+            if operation == 'clear':
+                assert json.loads(ipc('state'))['confirmed']
+            else:
+                ipc('persist', 'true')
+                wait(lambda s: s['confirmed'] and not s['writing'])
+        entered.unlink(missing_ok=True)
+        release.unlink(missing_ok=True)
+        ipc('persist', 'false')
+        wait(lambda s: not s['confirmed'] and not s['writing'] and not s['wipe'])
+        emit({'event': 'text', 'text': 'memory capture after persistence off'})
+        wait(lambda s: s['capture'] and s['backend'] and s['count'] == 1)
+        assert not json.loads(history.read_text())['entries']
+        ipc('persist', 'true')
+        wait(lambda s: s['confirmed'] and not s['writing'])
+        ipc('clearTwice')
         wait(lambda s: s['backend'] and s['capture'] and s['count'] == 0)
         assert not json.loads(history.read_text())['entries']
         emit({'event': 'text', 'text': 'post-clear'})
         wait(lambda s: s['count'] == 1)
+        if os.geteuid() != 0: cache.chmod(0o500)
         ipc('capture', 'false')
-        wait(lambda s: not s['capture'] and s['count'] == 0 and not s['wipe'])
+        if os.geteuid() != 0:
+            wait(lambda s: not s['capture'] and s['count'] == 0 and s['discardFailed'])
+            cache.chmod(0o700)
+            ipc('retry')
+        wait(lambda s: not s['capture'] and s['count'] == 0 and not s['wipe'] and not s['historyFailed'])
         assert not json.loads(history.read_text())['entries']
         ipc('capture', 'true')
         wait(lambda s: s['backend'] and s['capture'])
@@ -160,6 +262,22 @@ with tempfile.TemporaryDirectory(prefix='clipboard-privacy-', dir=tmp_root) as d
         wait(lambda s: s['backend'] and s['capture'])
         os.write(pipe, b'OVERSIZE\n')
         wait(lambda s: s['backendFailed'] and not s['capture'])
+        if os.geteuid() != 0:
+            # A readable settings opt-in plus temporary history read failure
+            # must recover without losing the live filtered source.
+            process.terminate()
+            process.wait(timeout=10)
+            settings.write_text(json.dumps({'privacyVersion': 2, 'captureEnabled': True, 'persistenceEnabled': True}))
+            history.write_text(json.dumps({'privacyVersion': 2, 'entries': [{'text': 'stored filtered text', 'timestamp': 1}]}))
+            history.chmod(0o000)
+            process = launch()
+            wait(lambda s: s['ready'] and s['historyFailed'] and s['backend'])
+            history.chmod(0o600)
+            ipc('retry')
+            wait(lambda s: s['ready'] and not s['historyFailed'] and s['capture'] and s['backend'])
+            emit({'event': 'text', 'text': 'filtered after history recovery'})
+            wait(lambda s: s['count'] == 2)
+
         if os.geteuid() != 0:
             # Both unreadable files must fail closed; explicit Clear still wins.
             process.terminate()
@@ -181,6 +299,17 @@ with tempfile.TemporaryDirectory(prefix='clipboard-privacy-', dir=tmp_root) as d
             ipc('retry')
             wait(lambda s: s['ready'] and not s['failed'])
             assert not json.loads(ipc('state'))['capture'], 'retry silently bypassed explicit capture action'
+        # Clear requested before storage preparation must not remain deferred.
+        process.terminate()
+        process.wait(timeout=10)
+        legacy.write_text('{"entries":[{"text":"early clear legacy"}]}')
+        env['CLIPBOARD_TEST_EARLY_CLEAR'] = '1'
+        process = launch()
+        wait(lambda s: s['ready'])
+        for _ in range(100):
+            if not legacy.exists() and not json.loads(history.read_text())['entries']: break
+            time.sleep(.05)
+        assert not legacy.exists() and not json.loads(history.read_text())['entries']
         print('Actual QML privacy consent, filtered events, separate persistence, clear/disable, denial retry and backend failures: PASS')
     finally:
         config.chmod(0o700)

@@ -38,6 +38,8 @@ Scope {
     property bool settingsWriting: false
     property bool requestedPersistence: false
     property bool historyWiping: false
+    property bool historyWriting: false
+    property bool discardPending: false
     property bool confirmedPersistence: false
     property bool storageReady: false
     property bool saveFailed: false
@@ -80,6 +82,7 @@ Scope {
         running: true
         onExited: (exitCode, exitStatus) => { // qmllint disable signal-handler-parameters
             root.storageReady = exitCode === 0 && exitStatus === 0;
+            if (root.storageReady) Qt.callLater(root.startDiscard);
             if (!root.storageReady) {
                 root.settingsSaveFailed = true;
                 root.historyReady = true;
@@ -132,7 +135,7 @@ Scope {
         id: observer
         command: Commands.helperCommand("dwm-clipboard-observer", null, [])
         running: root.captureEnabled && root.settingsReady && !root.settingsLoadFailed
-            && root.historyReady && !root.wipePending && !root.clearPending && !root.backendFailed && !root.observerStopping
+            && !root.clearPending && !root.backendFailed && !root.observerStopping
         onRunningChanged: if (running) { root.backendReady = false; root.observerBuffer = ""; }
         onExited: (exitCode, exitStatus) => { // qmllint disable signal-handler-parameters
             if (root.observerStopping) root.observerStopping = false;
@@ -157,6 +160,7 @@ Scope {
             root.consentRunning = false;
             if (exitCode !== 0 || exitStatus !== 0) { root.consentFailed = true; root.saveFailed = true; return; }
             root.consentFailed = false;
+            root.discardPending = false;
             root.saveFailed = false;
             root.clearPending = false;
             root.wipePending = false;
@@ -166,6 +170,38 @@ Scope {
             if (!root.consentEnable && root.settingsReady && !root.settingsLoadFailed) root.captureEnabled = root.confirmedCapture && !root.captureSuppressed;
             historyFile.reload();
             if (root.consentEnable) root.writeSettings(true, false);
+        }
+    }
+
+    function startDiscard() {
+        if (!root.discardPending || root.historyWriting || root.consentRunning || !root.storageReady) return;
+        root.discardPending = false;
+        root.consentRunning = true;
+        consent.running = true;
+    }
+
+    function writeEntries(entries) {
+        // FileView suppresses identical writes without a completion signal.
+        // A serial guarantees every scheduled write has a matching callback.
+        historyFile.privacyVersion = 2;
+        historyFile.entries = entries;
+        historyFile.writeSerial += 1;
+        root.historyWriting = true;
+        historyFile.writeAdapter();
+    }
+
+    function finishHistoryWrite(success) {
+        root.historyWriting = false;
+        root.saveFailed = !success;
+        if (success && root.historyWiping) root.wipePending = false;
+        root.historyWiping = false;
+        if (root.discardPending) { Qt.callLater(root.startDiscard); return; }
+        if (!success) { Qt.callLater(historyFile.reload); return; }
+        root.restrictHistoryFileMode();
+        if (root.wipePending) Qt.callLater(root.flushPendingWipe);
+        else if (root.savePending) {
+            root.savePending = false;
+            Qt.callLater(root.saveHistory);
         }
     }
 
@@ -364,11 +400,10 @@ Scope {
 
     function flushPendingWipe() {
         if (root.privacyReady && root.wipePending && !root.settingsWriting && !root.settingsLoadFailed
-                && !root.historyLoadFailed && !root.confirmedPersistence && root.historyReady) {
+                && !root.historyLoadFailed && !root.confirmedPersistence && root.historyReady
+                && !root.historyWriting && !root.clearPending && !root.consentRunning) {
             root.historyWiping = true;
-            historyFile.privacyVersion = 2;
-            historyFile.entries = [];
-            historyFile.writeAdapter();
+            root.writeEntries([]);
         }
     }
 
@@ -408,6 +443,8 @@ Scope {
     }
 
     function saveHistory() {
+        if (root.clearPending || root.discardPending || root.consentRunning) return;
+        if (root.historyWriting) { root.savePending = true; return; }
         if (!root.historyReady) {
             // An early write would replace stored history with the not-yet-
             // loaded list; defer until the initial load has completed.
@@ -419,9 +456,7 @@ Scope {
             return;
         }
 
-        historyFile.privacyVersion = 2;
-        historyFile.entries = root.entries;
-        historyFile.writeAdapter();
+        root.writeEntries(root.entries);
     }
 
     function restrictHistoryFileMode() {
@@ -553,10 +588,9 @@ Scope {
         root.pendingCaptures = [];
         root.entries = [];
         root.consentEnable = false;
-        if (root.storageReady && !root.consentRunning) {
-            root.consentRunning = true;
-            consent.running = true;
-        }
+        root.savePending = false;
+        root.discardPending = true;
+        root.startDiscard();
     }
 
     function relativeTime(timestamp) {
@@ -578,6 +612,7 @@ Scope {
         id: historyFile
 
         property alias privacyVersion: clipboardAdapter.privacyVersion
+        property alias writeSerial: clipboardAdapter.writeSerial
         property alias entries: clipboardAdapter.entries
 
         path: root.storageReady && root.privacyReady ? root.historyPath : ""
@@ -593,18 +628,8 @@ Scope {
             root.restrictHistoryFileMode();
             root.loadHistory();
         }
-        onSaved: {
-            root.clearPending = false;
-            root.saveFailed = false;
-            if (root.historyWiping) root.wipePending = false;
-            root.historyWiping = false;
-            root.restrictHistoryFileMode();
-        }
-        onSaveFailed: {
-            root.saveFailed = true;
-            root.historyWiping = false;
-            Qt.callLater(historyFile.reload);
-        }
+        onSaved: root.finishHistoryWrite(true)
+        onSaveFailed: root.finishHistoryWrite(false)
         onLoadFailed: error => {
             root.historyLoaded = true;
             if (error !== 2) {
@@ -628,6 +653,7 @@ Scope {
             id: clipboardAdapter
 
             property int privacyVersion: 0
+            property int writeSerial: 0
             property var entries: []
         }
     }
