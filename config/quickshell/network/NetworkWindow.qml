@@ -16,8 +16,8 @@ ClickAwayPopup {
     readonly property int edgeMargin: Theme.rowSpacing
 
     visible: panelWindow !== null && panelWindow.screen !== null
-        && networkModel.visible && !networkModel.wifiPasswordPromptVisible
-    grabFocus: !networkModel.wifiPasswordPromptVisible
+        && networkModel.visible && !networkModel.promptVisible
+    grabFocus: !networkModel.promptVisible
     targetWindow: panelWindow
     popupWidth: cardWidth
     popupHeight: cardHeight
@@ -41,7 +41,9 @@ ClickAwayPopup {
 
         Keys.onPressed: function(event) {
             if (event.key === Qt.Key_Escape) {
-                if (root.networkModel.wifiPasswordPromptVisible) {
+                if (root.networkModel.hiddenPromptVisible) {
+                    root.networkModel.cancelHiddenPrompt();
+                } else if (root.networkModel.wifiPasswordPromptVisible) {
                     root.networkModel.cancelWifiPasswordPrompt();
                 } else {
                     root.networkModel.close();
@@ -52,7 +54,7 @@ ClickAwayPopup {
 
         ColumnLayout {
             anchors.fill: parent
-            enabled: !root.networkModel.wifiPasswordPromptVisible
+            enabled: !root.networkModel.promptVisible
             spacing: Theme.popupSpacing
 
             PanelHero {
@@ -119,6 +121,8 @@ ClickAwayPopup {
             }
 
             ListView {
+                id: wifiList
+
                 Layout.fillWidth: true
                 Layout.preferredHeight: Math.min(220, Math.max(64, contentHeight))
                 clip: true
@@ -139,6 +143,26 @@ ClickAwayPopup {
                     onConnectRequested: network => {
                         root.networkModel.selectWifi(index);
                         root.networkModel.connectWifi(network);
+                    }
+                }
+
+                footer: Item {
+                    readonly property bool shown: root.networkModel.actionsAvailable
+                        && root.networkModel.wifiDevices.length > 0
+
+                    width: wifiList.width
+                    height: shown ? hiddenRow.height + (root.networkModel.wifiNetworks.length > 0 ? Theme.listSpacing : 0) : 0
+                    visible: shown
+
+                    NetworkHiddenRow {
+                        id: hiddenRow
+
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        busy: root.networkModel.busy
+                        actionsEnabled: root.networkModel.actionsAvailable
+                        onJoinRequested: root.networkModel.openHiddenPrompt("panel")
                     }
                 }
             }
@@ -377,6 +401,12 @@ ClickAwayPopup {
 
                 }
             }
+        }
+
+        NetworkHiddenPrompt {
+            networkModel: root.networkModel
+            origin: "panel"
+            screen: root.panelWindow ? root.panelWindow.screen : null
         }
     }
 }

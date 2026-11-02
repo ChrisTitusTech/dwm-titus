@@ -1706,7 +1706,7 @@ install_missing_deps() {
 	dependency_terminal=$(dependency_helper dwm-terminal) || dependency_terminal=
 	if [ -z "$dependency_terminal" ] ||
 		! "$dependency_terminal" --print-command >/dev/null 2>&1; then
-		printf 'dwm-terminal is unavailable\n' >&2
+		printf 'No supported terminal; run dwm-desktop-update install-dependencies from a text console.\n' >&2
 		return 1
 	fi
 	dependency_updater=$(dependency_helper dwm-desktop-update) || {

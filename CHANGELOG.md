@@ -15,7 +15,30 @@ versions from `config.mk`.
   prefer Path when installed, with Thunar otherwise; existing MIME preferences
   remain unchanged. Keep GTK as the file chooser portal until Path supports
   cancellation through the portal request API.
-
+- Add an optional seconds display to the panel clock (off by default). Toggle
+  it in Settings > Appearance > Panel widgets or the Control Center Bar Widgets
+  page; it is stored in `panel-widgets.conf` and older files keep their widget
+  choices.
+- Add a keyboard layout pill to the panel. With two or more layouts (Settings >
+  Input) it shows the active one (US, GR, ...); click or scroll to switch,
+  middle-click for the first layout, right-click for Settings > Input. It is a
+  sixth panel widget (Control Center Bar Widgets, Settings Appearance), on by
+  default; `panel-widgets.conf` files from before it keep their choices. The
+  pill is ported from the Keyboard-Layout-for-Omarchy plugin
+  (https://github.com/Somnius/Keyboard-Layout-for-Omarchy, MIT).
+- Settings > Input has Switch layout with (Alt+Shift, Ctrl+Shift, Caps Lock,
+  Shift+Caps Lock, both Shifts, Right Alt, Right Ctrl, Menu) and Layout LED
+  (Caps, Scroll or Num Lock) buttons for keyboards. They preview a Modifier
+  options value with only the `grp:` or `grp_led:` part changed.
+- dwm publishes the active keyboard layout group, the group names and the
+  keymap symbols name on the root window and switches layouts on a
+  `_DWM_KEYBOARD_GROUP_REQUEST` root property or the new `cyclelayout` hotkey
+  func. `dwm-quickshell-state` reports them as `keyboard_*` fields, streams
+  layout switches as small keyboard-only updates, and gains
+  `keyboard-group <next|prev|N>`, which returns once dwm has taken the
+  request (exit 75 after about a second if it does not). Workspace names containing commas are no
+  longer split. The design follows the Keyboard-Layout-for-Omarchy plugin
+  (https://github.com/Somnius/Keyboard-Layout-for-Omarchy, MIT).
 - Add `fullscreen=1` window rules to open matching applications across the
   entire monitor without a top bar, gaps, or window borders. Title-based rules
   also apply once when a matching title arrives after the window opens.
@@ -23,6 +46,13 @@ versions from `config.mk`.
   and fixed-size auto-floating, including late title matches.
 - Add `fakefullscreen=1` rules for borderless, monitor-sized windowed mode
   without requesting fullscreen from the application.
+
+- Join hidden Wi-Fi networks from the panel network popover (#375). A
+  "Hidden network..." row at the end of the Wi-Fi list asks for the name,
+  security type (WPA2/WPA3 Personal, WEP, or open), device, and password, and
+  saves a normal NetworkManager profile with hidden-network probing. A wrong
+  password or name is reported in the form and leaves no profile behind.
+  `quickshell ipc call network openHiddenPrompt` opens the form directly.
 
 - Keep Update Center floating and apply its saved Float update terminal toggle
   to the next update or recovery terminal, which defaults to tiled.
@@ -33,6 +63,9 @@ versions from `config.mk`.
   terminals during source and desktop updates.
 
 ### Changed
+
+- Scroll long active-window titles to the right within the panel title pill,
+  with reduced motion preserving right-side elision.
 
 - Reuse existing non-interactive sudo authorization for confirmed desktop
   updates and recovery, falling back to polkit when unavailable. Passwords and
@@ -46,6 +79,29 @@ versions from `config.mk`.
   exact matching omitted files without replacing unrelated destinations.
 - Release rejected desktop update preparations and avoid session restart
   requirements after recovery when the active desktop was unchanged.
+- Settings > Input no longer lists power, sleep and video buttons as keyboards,
+  and shows a device that X splits into several XInput devices on one port
+  (same identity) once instead of one card per part with doubled rows. Changes
+  apply to every part that supports them and Revert restores each part's own
+  value; before, they failed with "stable device identity is ambiguous".
+  Same-identity devices on different ports are listed once with an explanation
+  and still left alone.
+- Preserve keyboard focus in application menus and combo popups so Steam menus
+  do not immediately dismiss. Notification and fullscreen overlay focus behavior
+  remains unchanged.
+- Report `efivarfs` firmware-variable usage as information in System Health
+  instead of a storage error. The fixed-size firmware NVRAM store is not a
+  cleanable filesystem, so a nearly full store no longer raises a false
+  positive on every scan.
+- Mark panel tags that hold windows with a small corner square and draw their
+  numbers brighter than empty tags. The panel state helper now reads xprop's
+  window-list format, so the occupied tags and the panel's running-apps list
+  are no longer always empty, and it reads each window's properties with one
+  xprop call.
+- Install `nm-connection-editor` with the recommended profile and both Fedora
+  images. The network popover already sends Edit Connections and enterprise
+  (802.1X) Wi-Fi to it, but stock installs did not have it, so those paths were
+  hidden or failed.
 
 - Make Kitty follow the selected theme instead of Nord. The shipped
   `kitty.conf` no longer sets its own palette or includes `nord.conf`. Theme

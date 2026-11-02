@@ -188,7 +188,12 @@ check_path_optional() {
 	if [[ -e $path ]]; then
 		ok "$id" "$path" "$path exists"
 	else
-		optional_missing "$id" "$path" "$path is missing" "" ""
+		if [[ $format == health-tsv ]]; then
+			optional_fail=$((optional_fail + 1))
+			emit_health warn "$id" "$path" "$path is missing; restore it with the source installer"
+		else
+			optional_missing "$id" "$path" "$path is missing"
+		fi
 	fi
 }
 
