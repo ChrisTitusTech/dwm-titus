@@ -108,7 +108,8 @@ directory can still install and verify a fixed official revision.
 
 The GUI preserves personal TOML files, application configuration, `.xinitrc`,
 and compile-time `config.h`. It replaces the project-managed Quickshell tree and
-the managed `config` and `scripts` data trees. If the data directory is also a
+the managed `config` and `scripts` data trees. A symlinked `~/.config/quickshell`
+stops the update; it must be a real directory. If the data directory is also a
 Git checkout, the updater prepares and validates a fast-forwarded copy before
 replacing it. Unrelated files in that directory are retained. Development
 branches, tracked or untracked changes, ignored files inside `config` or

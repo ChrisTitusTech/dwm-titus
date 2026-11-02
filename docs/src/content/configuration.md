@@ -32,6 +32,31 @@ there so the tray host starts before tray clients. Use
 
 ---
 
+## What survives updates
+
+`make install` and the GUI Desktop Update keep user-owned files and replace
+managed ones.
+
+| User-owned (preserved) | Managed (replaced) |
+|------|---------|
+| `~/.config/dwm-titus/` (TOML files and other settings) | `~/.config/quickshell/` |
+| Other application configs under `~/.config/` (seeded only when missing; symlinks kept) | `~/.local/share/dwm-titus/config` and `scripts` |
+| `.xinitrc` and `config.h` | Installed `dwm-*` commands |
+
+`~/.config/quickshell/` is replaced on purpose by both `make install` and
+Desktop Update, so local edits there are lost. A symlink there is not
+supported: `make install` removes it and puts a real directory in its place,
+and Desktop Update refuses to run. To keep shell changes, commit them on a
+branch of your dwm-titus checkout and update with the source workflow
+instead of the GUI, which reports the changed tree as needing a sync.
+
+Backed up is not the same as preserved: the pre-update backup in
+[Source Updates and Recovery](/install.html) archives the whole XDG config
+directory, including `~/.config/quickshell/`, so edits made there can be
+copied back by hand from that backup, but no update keeps them in place.
+
+---
+
 ## Picom opacity and backend
 
 Open **Settings > Appearance > Compositor** to change foreground (active) and
