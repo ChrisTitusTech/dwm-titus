@@ -126,6 +126,16 @@ run_bounded() {
 	fi
 }
 
+run_bounded_timeout() {
+	local custom_timeout=$1
+	shift
+	if command -v timeout >/dev/null 2>&1; then
+		timeout "$custom_timeout" "$@"
+	else
+		"$@"
+	fi
+}
+
 first_lines() {
 	local count=${1:-20}
 	awk -v count="$count" 'NF { print; seen++; if (seen >= count) exit }'
@@ -573,8 +583,23 @@ scan_package_database() {
 	case $family in
 	fedora)
 		if command -v dnf >/dev/null 2>&1; then
-			if ! output=$(run_bounded dnf -q --cacheonly check 2>&1); then
-				status=warn
+			if command -v timeout >/dev/null 2>&1; then
+				local db_timeout=${DWM_HEALTH_PACKAGE_DB_TIMEOUT:-60}
+				if ! [[ $db_timeout =~ ^[1-9][0-9]*$ ]]; then
+					db_timeout=60
+				fi
+				if output=$(run_bounded_timeout "$db_timeout" dnf -q --cacheonly check 2>&1); then
+					:
+				else
+					local exit_code=$?
+					status=warn
+					if [[ $exit_code -eq 124 && -z $output ]]; then
+						output="Package database audit timed out after ${db_timeout}s"
+					fi
+				fi
+			else
+				status=restricted
+				output="timeout is unavailable; package database audit skipped"
 			fi
 		else
 			output="dnf is unavailable"

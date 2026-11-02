@@ -17,8 +17,12 @@ class DependencyLaunchers(unittest.TestCase):
             base = Path(temporary)
             scripts = base / "legacy/scripts"
             scripts.mkdir(parents=True)
-            for name in ("dwm-quickshell-controlcenter", "dwm-system-health"):
+            for name in ("dwm-quickshell-controlcenter", "dwm-system-health", "check-deps.sh", "dwm-utils.sh", "dwm-packages.sh"):
                 shutil.copy2(REPO / "scripts" / name, scripts / name)
+            # A source/data copy must defer to the installed updater on PATH.
+            source_updater = scripts / "dwm-desktop-update"
+            source_updater.write_text("#!/bin/sh\nexit 93\n")
+            source_updater.chmod(0o755)
             marker = base / "desktop-reinstalled"
             installer = scripts.parent / "install.sh"
             installer.write_text("#!/bin/sh\ntouch '" + str(marker) + "'\nexit 97\n")
@@ -29,33 +33,54 @@ class DependencyLaunchers(unittest.TestCase):
             before = {p: p.read_bytes() for p in files}
             tools = base / "bin"
             tools.mkdir()
+            for cmd in ("cc", "make", "Xorg", "startx", "xrandr", "xset", "xsetroot", "xkbset",
+                        "quickshell", "picom", "feh", "xsettingsd", "bwrap", "xclip", "xdotool",
+                        "dex", "amixer", "jq", "bluetoothctl", "blueman-applet", "alacritty", "xdg-open"):
+                p = tools / cmd
+                p.write_text("#!/bin/sh\nexit 0\n")
+                p.chmod(0o755)
+            clean_checker = tools / "clean-checker"
+            clean_checker.write_text("#!/bin/sh\nexit 0\n")
+            clean_checker.chmod(0o755)
             log = base / "calls.jsonl"
             log.touch()
             terminal = tools / "dwm-terminal"
-            terminal.write_text("#!/bin/sh\n[ \"$1\" = --print-command ] && { echo fixture; exit 0; }\n[ \"$1\" = -e ] || exit 91\nshift\nexec \"$@\"\n")
+            terminal.write_text("#!/bin/sh\n[ \"$1\" = --print-command ] && { echo mock-term; exit 0; }\n[ \"$1\" = -e ] || exit 91\nshift\nexec \"$@\"\n")
             terminal.chmod(0o755)
+            pkg = tools / "pkg-config"
+            pkg.write_text("#!/bin/sh\nexit 1\n")
+            pkg.chmod(0o755)
             updater = tools / "dwm-desktop-update"
             updater.write_text("#!/usr/bin/python3\nimport json,os,sys\n"
                                "assert sys.argv[1:] == ['install-dependencies'], sys.argv\n"
-                               "with open(os.environ['REPAIR_CALLS'],'a') as f: f.write(json.dumps(sys.argv[1:])+'\\n')\n")
+                               "with open(os.environ['REPAIR_CALLS'],'a') as f: f.write(json.dumps(sys.argv[1:])+'\\n')\n"
+                               "with open(os.environ['FIX_TARGET'],'w') as f: f.write('#!/bin/sh\\nexit 0\\n')\n")
             updater.chmod(0o755)
             environment = {**os.environ, "PATH": str(tools) + ":/usr/bin:/bin", "HOME": str(base),
-                           "DWM_TEST_SYNC": "1", "REPAIR_CALLS": str(log)}
+                           "DWM_TEST_SYNC": "1", "REPAIR_CALLS": str(log), "FIX_TARGET": str(pkg)}
             for source_exists in (True, False):
                 if not source_exists:
                     installer.unlink()
-                for name, args in (("dwm-quickshell-controlcenter", ["action", "install-missing-deps"]),
+                    terminal.rename(scripts / "dwm-terminal")
+                    source_updater.unlink()
+                    updater.rename(scripts / "dwm-desktop-update")
+                for name, args in (("dwm-quickshell-controlcenter", ["action", "dependency-check"]),
                                    ("dwm-system-health", ["repair-user", "install-dependencies"])):
                     with self.subTest(button=name, source_exists=source_exists):
+                        pkg.write_text("#!/bin/sh\nexit " + ("0" if name == "dwm-system-health" else "1") + "\n")
                         marker.unlink(missing_ok=True)
-                        result = subprocess.run([scripts / name, *args], env=environment,
-                                                capture_output=True, text=True, timeout=15)
+                        # Health must reach package repair even when the generic
+                        # checker has no required failures (e.g. only maim is missing).
+                        dispatch_env = dict(environment)
+                        if name == "dwm-system-health":
+                            dispatch_env["DWM_CHECK_DEPS_SCRIPT"] = str(clean_checker)
+                        result = subprocess.run([scripts / name, *args], input="y\n\n", env=dispatch_env,
+                                                 capture_output=True, text=True, timeout=15)
                         self.assertFalse(marker.exists(), "Dependency button ran the full desktop installer")
                         self.assertEqual(result.returncode, 0, result.stderr)
                         self.assertEqual({p: p.read_bytes() for p in files}, before)
             self.assertEqual([json.loads(line) for line in log.read_text().splitlines()],
                              [["install-dependencies"]] * 4)
-
 
     def test_buttons_fail_when_no_backing_terminal_is_available(self):
         with tempfile.TemporaryDirectory(prefix="dependency repair no term ") as temporary:
@@ -73,13 +98,38 @@ class DependencyLaunchers(unittest.TestCase):
             pkg.write_text("#!/bin/sh\nexit 1\n")
             pkg.chmod(0o755)
             environment = {**os.environ, "PATH": str(tools) + ":/usr/bin:/bin", "HOME": str(base), "DWM_TEST_SYNC": "1"}
-            for name, args in (("dwm-system-health", ["repair-user", "install-dependencies"]),):
+            for name, args in (("dwm-quickshell-controlcenter", ["action", "dependency-check"]),
+                               ("dwm-system-health", ["repair-user", "install-dependencies"])):
                 with self.subTest(button=name):
                     result = subprocess.run([scripts / name, *args], env=environment,
                                              capture_output=True, text=True, timeout=15)
                     self.assertNotEqual(result.returncode, 0)
                     self.assertNotIn("launched", result.stdout)
 
+    def test_button_resolves_sibling_checker_in_custom_prefix(self):
+        with tempfile.TemporaryDirectory(prefix="dependency repair prefix ") as temporary:
+            base = Path(temporary)
+            installed_bin = base / "opt/dwm/bin"
+            installed_bin.mkdir(parents=True)
+            for name in ("dwm-quickshell-controlcenter", "check-deps.sh", "dwm-utils.sh"):
+                shutil.copy2(REPO / "scripts" / name, installed_bin / name)
+            tools = base / "bin"
+            tools.mkdir()
+            log = base / "dispatch.log"
+            terminal = tools / "dwm-terminal"
+            terminal.write_text("#!/bin/sh\n"
+                                "[ \"$1\" = --print-command ] && { echo mock-term; exit 0; }\n"
+                                "[ \"$1\" = -e ] || exit 91\n"
+                                "shift\n"
+                                "echo \"$@\" >> '" + str(log) + "'\n")
+            terminal.chmod(0o755)
+            environment = {**os.environ, "PATH": str(tools) + ":/usr/bin:/bin", "HOME": str(base), "DWM_TEST_SYNC": "1"}
+            result = subprocess.run([installed_bin / "dwm-quickshell-controlcenter", "action", "dependency-check"],
+                                    env=environment, capture_output=True, text=True, timeout=15)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            dispatched = log.read_text().strip()
+            expected_checker = str(installed_bin / "check-deps.sh")
+            self.assertIn(expected_checker, dispatched)
 
     def test_custom_prefix_helpers_are_resolved_without_path(self):
         with tempfile.TemporaryDirectory(prefix="dependency prefix ") as directory:
@@ -95,13 +145,42 @@ class DependencyLaunchers(unittest.TestCase):
                 helper = installed / name
                 helper.write_text('#!/bin/sh\nprintf "%s %s\\n" ' + label + ' "$1" >> "$REPAIR_CALLS"\n')
                 helper.chmod(0o755)
+            healer = base / "healer $literal `literal`.sh"
+            healer.write_text('#!/bin/sh\nprintf "healed\\n" >> "$REPAIR_CALLS"\n')
+            healer.chmod(0o755)
             log = base / "calls"
-            env = {**os.environ, "HOME": str(base), "PATH": "/usr/bin:/bin", "DWM_TEST_SYNC": "1", "REPAIR_CALLS": str(log)}
+            env = {**os.environ, "HOME": str(base), "PATH": "/usr/bin:/bin", "DWM_TEST_SYNC": "1", "REPAIR_CALLS": str(log), "DWM_SELF_HEAL_SCRIPT": str(healer)}
             env.pop("DWM_CHECK_DEPS_SCRIPT", None)
-            for name, args in [("dwm-system-health", ["repair-user", "install-dependencies"])]:
+            for name, args in [("dwm-quickshell-controlcenter", ["action", "dependency-check"]),
+                               ("dwm-system-health", ["repair-user", "install-dependencies"]),
+                               ("dwm-quickshell-controlcenter", ["action", "self-heal"])]:
                 result = subprocess.run([installed / name, *args], env=env, input="\n", text=True, capture_output=True, timeout=15)
                 self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(log.read_text().splitlines(), ["updater install-dependencies"])
+            self.assertEqual(log.read_text().splitlines(), ["checker --interactive", "updater install-dependencies", "healed"])
+
+    def test_buttons_fail_when_checker_is_unavailable(self):
+        with tempfile.TemporaryDirectory(prefix="dependency repair no checker ") as temporary:
+            base = Path(temporary)
+            scripts = base / "legacy/scripts"
+            scripts.mkdir(parents=True)
+            for name in ("dwm-quickshell-controlcenter", "dwm-system-health", "dwm-utils.sh"):
+                shutil.copy2(REPO / "scripts" / name, scripts / name)
+            tools = base / "bin"
+            tools.mkdir()
+            terminal = tools / "dwm-terminal"
+            terminal.write_text("#!/bin/sh\n[ \"$1\" = --print-command ] && { echo mock-term; exit 0; }\n[ \"$1\" = -e ] || exit 91\nshift\nexec \"$@\"\n")
+            terminal.chmod(0o755)
+            environment = {**os.environ, "PATH": str(tools) + ":/usr/bin:/bin", "HOME": str(base),
+                           "DWM_CHECK_DEPS_SCRIPT": str(base / "missing-check-deps.sh")}
+            environment.pop("DWM_TEST_SYNC", None)
+            for name, args in (("dwm-quickshell-controlcenter", ["action", "dependency-check"]),):
+                with self.subTest(button=name):
+                    result = subprocess.run([scripts / name, *args], env=environment,
+                                             capture_output=True, text=True, timeout=15)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertNotIn("launched", result.stdout)
+                    if name == "dwm-quickshell-controlcenter":
+                        self.assertIn("unavailable", result.stderr)
 
 
 if __name__ == "__main__":

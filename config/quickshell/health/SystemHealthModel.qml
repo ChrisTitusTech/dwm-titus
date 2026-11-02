@@ -86,7 +86,6 @@ Scope {
         root.repairMessage = "";
         root.repairError = "";
         root.repairSucceeded = false;
-        root.repairLaunched = false;
         root.userRunning = true;
         root.systemRunning = true;
         userScanProcess.running = true;
@@ -180,6 +179,29 @@ Scope {
             const row = root.rows[i];
             if ((category === "overview" || row.category === category)
                     && (row.status === "error" || row.status === "warn" || row.status === "restricted")) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    function categoryWarningCount(category) {
+        let count = 0;
+        for (let i = 0; i < root.rows.length; i++) {
+            const row = root.rows[i];
+            if ((category === "overview" || row.category === category) && row.status === "warn") {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    function categoryErrorCount(category) {
+        let count = 0;
+        for (let i = 0; i < root.rows.length; i++) {
+            const row = root.rows[i];
+            if ((category === "overview" || row.category === category)
+                    && (row.status === "error" || row.status === "restricted")) {
                 count++;
             }
         }
@@ -390,7 +412,7 @@ Scope {
                     root.repairMessage = "Repair completed; rescanning...";
                     Qt.callLater(root.refresh);
                 } else if (root.repairLaunched) {
-                    // The package terminal is still owned by the user.
+                    // Do not prematurely rescan while user interacts with terminal
                 } else {
                     root.repairMessage = root.repairError.length > 0 ? root.repairError : "Repair failed";
                 }
@@ -400,11 +422,13 @@ Scope {
         stdout: SplitParser {
             onRead: function(data) {
                 const parts = data.split("\t");
-                if (parts[0] === "repair" && parts[2] === "launched") {
-                    root.repairLaunched = true;
-                    root.repairMessage = parts[4] || "Package repair opened in terminal";
-                } else if (parts[0] === "repair" && parts[2] === "ok") {
-                    root.repairSucceeded = true;
+                if (parts[0] === "repair") {
+                    if (parts[2] === "launched") {
+                        root.repairLaunched = true;
+                        root.repairMessage = parts[4] || "Interactive repair opened in terminal";
+                    } else if (parts[2] === "ok") {
+                        root.repairSucceeded = true;
+                    }
                 }
             }
         }

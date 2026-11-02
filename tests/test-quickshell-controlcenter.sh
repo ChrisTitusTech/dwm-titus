@@ -11,6 +11,9 @@ repo=$(
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 test_uid=$(id -u)
+# Sibling helper resolution must not escape to real source-tree executables.
+mkdir -p "$work/fixture/scripts"
+cp "$repo/scripts/dwm-quickshell-controlcenter" "$work/fixture/scripts/"
 
 mkdir -p "$work/bin" "$work/config/dwm-titus" "$work/home/Pictures/backgrounds" \
 	"$work/data/dwm-titus/config/quickshell" "$work/state" "$work/runtime" "$work/power-state"
@@ -227,7 +230,7 @@ run_helper() {
 		DWM_TEST_QUICKSHELL_VERSION="${DWM_TEST_QUICKSHELL_VERSION:-0.3.0}" \
 		DWM_HEALTH_COMMAND_TIMEOUT=2 \
 		PATH="${DWM_TEST_PATH:-$work/bin:/usr/bin:/bin}" \
-		"$repo/scripts/dwm-quickshell-controlcenter" "$@"
+		"${DWM_TEST_CONTROL_HELPER:-$repo/scripts/dwm-quickshell-controlcenter}" "$@"
 }
 
 health=$(run_helper health)
@@ -467,6 +470,8 @@ fi
 grep -Fqx 'unknown action: not-real' "$work/action.err"
 
 # Self-Heal passes an executable path as one argv value, including punctuation.
+DWM_TEST_CONTROL_HELPER=$work/fixture/scripts/dwm-quickshell-controlcenter
+export DWM_TEST_CONTROL_HELPER
 self_heal_script="$work/self heal 'quoted';.sh"
 cat >"$self_heal_script" <<'SH'
 #!/bin/sh
@@ -505,6 +510,7 @@ fi
 grep -Fq 'Self-Heal requires an available terminal' "$work/self-heal-no-terminal.err"
 rm "$work/config/dwm-titus/self-heal.path"
 mv "$work/bin/dwm-terminal.saved" "$work/bin/dwm-terminal"
+unset DWM_TEST_CONTROL_HELPER
 
 grep -Fq 'watchChanges: true' "$repo/config/quickshell/appearance/AppearanceModel.qml"
 [ "$(grep -Fc 'watchChanges: true' "$repo/config/quickshell/appearance/AppearanceModel.qml")" -eq 6 ]

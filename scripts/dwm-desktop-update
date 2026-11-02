@@ -673,11 +673,18 @@ def checkout_reason(path, runner=None):
         return ""
     if not (path / ".git").is_dir() or (path / ".git").is_symlink():
         return "This installation uses a Git worktree. Update it with the source installer."
-    if runner(["git", "-C", path, "branch", "--show-current"]) != "main":
+    try:
+        branch = runner(["git", "-C", path, "branch", "--show-current"])
+    except CommandFailure:
+        return "Local source repository is invalid or unreadable. Update it with the source installer."
+    if branch != "main":
         return "Local source is on a development branch. Switch to a clean main checkout before updating."
-    if (runner(["git", "-C", path, "status", "--porcelain", "--untracked-files=all"])
-            or runner(["git", "-C", path, "ls-files", "--others", "--ignored", "--exclude-standard", "--", "config", "scripts"])):
-        return "Local source has changes. Save or resolve them before updating."
+    try:
+        if (runner(["git", "-C", path, "status", "--porcelain", "--untracked-files=all"])
+                or runner(["git", "-C", path, "ls-files", "--others", "--ignored", "--exclude-standard", "--", "config", "scripts"])):
+            return "Local source has changes. Save or resolve them before updating."
+    except CommandFailure:
+        return "Local source repository is invalid or unreadable. Update it with the source installer."
     return ""
 
 
@@ -687,7 +694,10 @@ def checkout_ancestry_reason(path, revision):
     with tempfile.TemporaryDirectory(prefix="desktop-ancestry-") as temporary:
         repository = Path(temporary)
         run(["git", "init", "--bare", repository])
-        run(["git", "-C", repository, "fetch", "--no-tags", path, "HEAD:refs/heads/local"])
+        try:
+            run(["git", "-C", repository, "fetch", "--no-tags", path, "HEAD:refs/heads/local"])
+        except CommandFailure:
+            return "Local source repository is invalid or unreadable. Update it with the source installer."
         run(["git", "-C", repository, "fetch", "--no-tags", SOURCE, revision + ":refs/heads/upstream"], timeout=30)
         try:
             run(["git", "-C", repository, "merge-base", "--is-ancestor", "refs/heads/local", "refs/heads/upstream"])
@@ -952,6 +962,7 @@ def install_dependencies():
             run([*authorization, helper, "repair-dependencies", digest(manifest_path), *repair_args], timeout=None, capture=False)
     except BlockingIOError as error:
         raise RuntimeError("Desktop update is active; finish or recover it before repairing dependencies") from error
+
 
 
 def launch(expected):
@@ -1309,7 +1320,7 @@ def worker(operation):
                     else:
                         completion = dict(state="current", restart="none", percent=100,
                                           detail="Desktop update installed, verified, and active.", checkedAt=int(time.time()))
-                write_json(directory / "completion.json", {"verified": True})
+                write_json(directory / "completion.json", {"verified": True, **completion})
                 authorize(state, value, privileged, "complete", operation)
                 save_status(state, value, **completion)
             except (OSError, ValueError, KeyError, RuntimeError, subprocess.SubprocessError) as error:
@@ -1380,6 +1391,9 @@ def recover(operation):
                               else "Previous desktop files restored. Log out and back in, then check again.")
                     return save_status(state, value, state="failed", canUpdate=False, restart=restart, percent=-1,
                                        systemStarted=False, systemApplied=False, detail=detail)
+                if completion.get("state") == "current" and completion.get("restart") == "none":
+                    return save_status(state, value, state="current", restart="none", percent=100,
+                                       detail="Desktop update installed, verified, and active.", checkedAt=int(time.time()))
                 return save_status(state, value, state="restart-required", restart="session", percent=100,
                                    detail="Desktop files are ready. Log out and back in, then check again.")
             receipts = read_json(directory / "receipt-backup.json") if (directory / "receipt-backup.json").exists() else {}
@@ -1436,7 +1450,7 @@ def recover(operation):
                     (state / name).unlink(missing_ok=True)
             sync_directory(state)
             restart = "session"
-            if (value.get("systemApplied") is False and not any(entry["swapped"] for entry in prepared)
+            if (not any(entry["swapped"] for entry in prepared)
                     and preview.get("restart", "none") == "none"
                     and running_dwm_matches(prefix / "bin/dwm") is True):
                 restart = "none"

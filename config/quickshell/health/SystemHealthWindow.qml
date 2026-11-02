@@ -185,6 +185,8 @@ FloatingWindow {
                                     required property int index
                                     required property var modelData
                                     readonly property bool selected: root.healthModel.selectedCategory === modelData.id
+                                    readonly property int warningCount: root.healthModel.categoryWarningCount(modelData.id)
+                                    readonly property int errorCount: root.healthModel.categoryErrorCount(modelData.id)
 
                                     Layout.fillWidth: true
                                     Layout.preferredHeight: Theme.scaledSize(46)
@@ -226,8 +228,29 @@ FloatingWindow {
                                         }
 
                                         Rectangle {
-                                            visible: root.healthModel.categoryIssueCount(categoryButton.modelData.id) > 0
-                                            implicitWidth: categoryCount.implicitWidth + 12
+                                            id: warningBadge
+                                            visible: categoryButton.warningCount > 0
+                                            implicitWidth: Math.max(22, warningCountText.implicitWidth + 12)
+                                            implicitHeight: 22
+                                            color: Theme.dangerSurface
+                                            border.color: Theme.warning
+                                            border.width: 1
+                                            radius: 6
+
+                                            UiText {
+                                                id: warningCountText
+                                                anchors.centerIn: parent
+                                                text: categoryButton.warningCount
+                                                color: Theme.readableText(Theme.warning, Theme.dangerSurface)
+                                                font.pixelSize: Theme.fontCaptionSize
+                                                font.bold: true
+                                            }
+                                        }
+
+                                        Rectangle {
+                                            id: errorBadge
+                                            visible: categoryButton.errorCount > 0
+                                            implicitWidth: Math.max(22, errorCountText.implicitWidth + 12)
                                             implicitHeight: 22
                                             color: Theme.dangerSurface
                                             border.color: Theme.danger
@@ -235,10 +258,10 @@ FloatingWindow {
                                             radius: 6
 
                                             UiText {
-                                                id: categoryCount
+                                                id: errorCountText
                                                 anchors.centerIn: parent
-                                                text: root.healthModel.categoryIssueCount(categoryButton.modelData.id)
-                                                color: Theme.danger
+                                                text: categoryButton.errorCount
+                                                color: Theme.readableText(Theme.danger, Theme.dangerSurface)
                                                 font.pixelSize: Theme.fontCaptionSize
                                                 font.bold: true
                                             }

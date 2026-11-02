@@ -1671,7 +1671,35 @@ dependency_helper() {
 }
 
 dependency_check() {
-	terminal_run "$repo_dir/scripts/check-deps.sh; printf '\\nPress enter to close...'; read -r _"
+	dependency_terminal=$(dependency_helper dwm-terminal) || dependency_terminal=
+	if [ -z "$dependency_terminal" ] ||
+		! "$dependency_terminal" --print-command >/dev/null 2>&1; then
+		printf 'dwm-terminal is unavailable\n' >&2
+		return 1
+	fi
+	checker=${DWM_CHECK_DEPS_SCRIPT:-}
+	if [ -z "$checker" ]; then
+		checker="$repo_dir/scripts/check-deps.sh"
+		if [ ! -x "$checker" ]; then
+			helper_dir=$(
+				unset CDPATH
+				cd -- "$(dirname -- "$0")" && pwd
+			)
+			checker="$helper_dir/check-deps.sh"
+		fi
+		if [ ! -x "$checker" ]; then
+			checker=$(command -v check-deps.sh 2>/dev/null || true)
+		fi
+		if [ -z "$checker" ] || [ ! -x "$checker" ]; then
+			checker=/usr/local/bin/check-deps.sh
+		fi
+	fi
+	if [ ! -x "$checker" ]; then
+		printf 'check-deps.sh is unavailable\n' >&2
+		return 1
+	fi
+	# shellcheck disable=SC2016 # Expand positional arguments in the terminal shell.
+	terminal_run 'exec "$1" --interactive' "$checker"
 }
 
 install_missing_deps() {
@@ -1711,15 +1739,16 @@ self_heal() {
 		printf 'Self-Heal script is not executable: %s\n' "$self_heal_script" >&2
 		return 1
 	fi
-	if ! command -v dwm-terminal >/dev/null 2>&1 ||
-		! dwm-terminal --print-command >/dev/null 2>&1; then
+	dependency_terminal=$(dependency_helper dwm-terminal) || dependency_terminal=
+	if [ -z "$dependency_terminal" ] ||
+		! "$dependency_terminal" --print-command >/dev/null 2>&1; then
 		printf 'Self-Heal requires an available terminal to show progress and authorization prompts.\n' >&2
 		return 1
 	fi
 	# The script is an argv value, never shell source. It owns any confirmation
 	# and privilege prompts; the Quickshell frontend stays unprivileged.
 	# shellcheck disable=SC2016 # Expand positional arguments in the terminal shell.
-	launch_background dwm-terminal -e sh -c '
+	launch_background "$dependency_terminal" -e sh -c '
 		"$1"
 		status=$?
 		printf "\nSelf-Heal exited with status %s. Press Enter to close..." "$status"

@@ -157,7 +157,6 @@ class DesktopUpdate(unittest.TestCase):
                 update.install_dependencies()
         self.command.assert_not_called()
 
-
     def test_dependency_repair_cli_fails_when_lock_contended(self):
         with update.locked(self.state):
             with patch.object(update.sys.stdin, "isatty", return_value=True), \
@@ -166,12 +165,13 @@ class DesktopUpdate(unittest.TestCase):
                 update.main()
 
 
+
+
     def test_supported_terminal_detection(self):
         with patch.object(privileged.shutil, "which", side_effect=lambda cmd, path=None: "/usr/bin/" + cmd if cmd == "alacritty" else None):
             self.assertTrue(privileged.supported_terminal_installed())
         with patch.object(privileged.shutil, "which", return_value=None):
             self.assertFalse(privileged.supported_terminal_installed())
-
 
     def test_supported_terminal_detection_user_local(self):
         user_bin = self.base / ".local/bin"
@@ -182,14 +182,12 @@ class DesktopUpdate(unittest.TestCase):
         with patch.object(privileged.pwd, "getpwuid", return_value=SimpleNamespace(pw_dir=str(self.base))):
             self.assertTrue(privileged.supported_terminal_installed(1000))
 
-
     def test_install_packages_passes_skip_unavailable(self):
         with patch.object(privileged.subprocess, "run", side_effect=[SimpleNamespace(returncode=1), SimpleNamespace(returncode=0)]) as dnf_run:
             privileged.install_packages(["alacritty"], interactive=True, skip_unavailable=True)
             dnf_run.assert_called_with(["/usr/bin/dnf", "install", "--skip-unavailable", "--", "alacritty"],
                                        check=True, env={"PATH": "/usr/bin:/bin", "HOME": "/root", "LANG": "C.UTF-8"},
                                        stdin=None, cwd="/", timeout=1800)
-
 
     def test_shared_provider_policy_detection(self):
         policy = "example-package\tvirtual-provider\t-\n"
@@ -308,6 +306,7 @@ class DesktopUpdate(unittest.TestCase):
         req_pkgs, _, _ = calls[0]
         self.assertIn("xorg-x11-server-Xorg", req_pkgs)
 
+
         # Caller-selected custom terminal must not force terminal-primary
         calls.clear()
         with patch.object(privileged, "PREFIX", self.base), \
@@ -324,33 +323,6 @@ class DesktopUpdate(unittest.TestCase):
         req_pkgs, _, _ = calls[0]
         self.assertNotIn("alacritty", req_pkgs)
 
-
-    def test_unprivileged_custom_prefix_reinstall_is_idempotent(self):
-        target = self.base / "share/dwm-titus/desktop-install.json"
-        target.parent.mkdir(parents=True)
-        update.write_json(target, {**self.manifest, "files": {}})
-        args = SimpleNamespace(source_dir=str(self.base), destdir="", prefix=str(self.base),
-                               manprefix=str(self.base / "share/man"), xsessions=str(self.base / "xsessions"),
-                               datadir=str(self.base / "share"), commands=[], helpers=[], packages=[])
-        with patch.object(update, "fingerprint", return_value={"mode": 0o644, "sha256": "a" * 64}), \
-                patch.object(update.os, "geteuid", return_value=1000):
-            # Without our fix, this calls trusted_installation(target) which fails on user-owned file
-            update.record_system(args)
-        self.assertTrue(target.exists())
-
-
-    def test_broken_begin_session_retains_recovery_without_another_prompt(self):
-        directory = self.base / "begin-broken"
-        result = subprocess.run([sys.executable, REPO / "tests/fixtures/desktop-worker-scenario.py",
-                                 REPO, directory, "begin-broken"], capture_output=True, text=True, timeout=15)
-        self.assertEqual(result.returncode, 1, result.stderr)
-        value = update.read_json(directory / "state/status.json")
-        self.assertEqual(value["state"], "interrupted", value)
-        self.assertTrue(value["systemStarted"])
-        self.assertFalse(value["systemApplied"])
-        self.assertEqual((directory / "state/authorization-calls").read_text().splitlines(), ["begin"])
-        self.assertFalse((directory / "state/reservation-released").exists())
-        self.assertFalse((directory / "state/complete-called").exists())
 
 
     def test_current_and_content_drift_are_distinct(self):
@@ -642,6 +614,20 @@ class DesktopUpdate(unittest.TestCase):
                 update.record_system(args)
         self.assertEqual(target.read_bytes(), before)
 
+    def test_unprivileged_custom_prefix_reinstall_is_idempotent(self):
+        target = self.base / "share/dwm-titus/desktop-install.json"
+        target.parent.mkdir(parents=True)
+        update.write_json(target, {**self.manifest, "files": {}})
+        args = SimpleNamespace(source_dir=str(self.base), destdir="", prefix=str(self.base),
+                               manprefix=str(self.base / "share/man"), xsessions=str(self.base / "xsessions"),
+                               datadir=str(self.base / "share"), commands=[], helpers=[], packages=[])
+        with patch.object(update, "fingerprint", return_value={"mode": 0o644, "sha256": "a" * 64}), \
+                patch.object(update.os, "geteuid", return_value=1000):
+            # Without our fix, this calls trusted_installation(target) which fails on user-owned file
+            update.record_system(args)
+        self.assertTrue(target.exists())
+
+
     def test_service_forwards_build_overrides_without_shell_splitting(self):
         overrides = {"CC": "clang", "CFLAGS": "-O1 -g", "CPPFLAGS": "-DTEST=1", "LDFLAGS": "-Wl,--as-needed"}
         with patch.dict(os.environ, overrides):
@@ -823,6 +809,40 @@ class DesktopUpdate(unittest.TestCase):
             self.assertEqual(update.check(True)["state"], "current")
             update.save_status(self.state, value, state="interrupted")
             self.assertEqual(update.recover(operation)["restart"], "none")
+
+    def test_recovery_after_system_rollback_uses_restored_binary(self):
+        for matches, expected in ((True, "none"), (False, "session"), (None, "session")):
+            with self.subTest(matches=matches):
+                operation = "f" * 32
+                directory = self.state / "operations" / operation
+                update.write_json(directory / "preview.json", {"manifest": str(self.manifest_path), "restart": "none"})
+                (directory / "completion.json").unlink(missing_ok=True)
+                update.save_status(self.state, update.status_default(), operation=operation, state="interrupted",
+                                   systemApplied=True, systemStarted=True)
+                with patch.object(update, "trusted_installation"), \
+                        patch.object(update, "running_dwm_matches", return_value=matches), \
+                        patch.object(update, "quickshell_processes", return_value=set()):
+                    value = update.recover(operation)
+                self.assertEqual(value["restart"], expected)
+                self.assertEqual(value["state"], "failed")
+
+    def test_verified_completion_recovery_preserves_restart_decision(self):
+        for saved, expected in (({"state": "current", "restart": "none"}, ("current", "none")),
+                                ({"state": "restart-required", "restart": "session"}, ("restart-required", "session")),
+                                ({}, ("restart-required", "session")),
+                                ({"state": "current", "restart": "session"}, ("restart-required", "session"))):
+            with self.subTest(saved=saved):
+                operation = "d" * 32
+                directory = self.state / "operations" / operation
+                update.write_json(directory / "preview.json", {"manifest": str(self.manifest_path)})
+                update.write_json(directory / "completion.json", {"verified": True, **saved})
+                update.save_status(self.state, update.status_default(), operation=operation, state="interrupted")
+                self.command.reset_mock()
+                with patch.object(update, "trusted_installation"):
+                    value = update.recover(operation)
+                self.assertEqual((value["state"], value["restart"]), expected)
+                self.command.assert_called_once()
+                self.assertEqual(self.command.call_args.args[0][-2:], ["complete", operation])
 
     def test_noop_recovery_preserves_an_existing_session_restart_requirement(self):
         operation = "f" * 32
@@ -1012,6 +1032,15 @@ class DesktopUpdate(unittest.TestCase):
         self.assertIn("development branch", update.checkout_reason(self.data))
         self.command.side_effect = ["main", " M scripts/helper"]
         self.assertIn("has changes", update.checkout_reason(self.data))
+
+    def test_empty_or_invalid_git_directory_does_not_crash_checkout_reason(self):
+        (self.data / ".git").mkdir()
+        self.command.side_effect = [update.CommandFailure("fatal: not a git repository", 128),
+                                    "", update.CommandFailure("fatal: not a git repository", 128)]
+        self.assertEqual(update.checkout_reason(self.data),
+                         "Local source repository is invalid or unreadable. Update it with the source installer.")
+        self.assertEqual(update.checkout_ancestry_reason(self.data, "a" * 40),
+                         "Local source repository is invalid or unreadable. Update it with the source installer.")
 
     def test_git_checkout_ignores_hostile_hooks_templates_and_config(self):
         home = self.base / "git-home"
@@ -1315,6 +1344,8 @@ sys.exit(update.worker(operation))
                 if scenario in ("success", "activation-success", "activation-stale", "activation-failure"):
                     completion = update.read_json(directory / "state/operations" / ("c" * 32) / "completion.json")
                     self.assertTrue(completion["verified"])
+                    for field in ("state", "restart", "percent", "detail"):
+                        self.assertEqual(completion.get(field), value[field], (scenario, field))
                 if scenario in ("build-failure", "denied", "cleanup-completion-denied"):
                     self.assertTrue((directory / "state/reservation-released").exists())
                 if scenario in ("begin-denied", "begin-prespawn", "sandbox-failure"):
@@ -1394,6 +1425,19 @@ sys.exit(update.worker(operation))
                 self.assertFalse((directory / "state/complete-called").exists())
                 entries = update.read_json(directory / "state/operations" / ("c" * 32) / "user-backup.json")
                 self.assertTrue(all(Path(e["staging"]).is_dir() for e in entries))
+
+    def test_broken_begin_session_retains_recovery_without_another_prompt(self):
+        directory = self.base / "begin-broken"
+        result = subprocess.run([sys.executable, REPO / "tests/fixtures/desktop-worker-scenario.py",
+                                 REPO, directory, "begin-broken"], capture_output=True, text=True, timeout=15)
+        self.assertEqual(result.returncode, 1, result.stderr)
+        value = update.read_json(directory / "state/status.json")
+        self.assertEqual(value["state"], "interrupted", value)
+        self.assertTrue(value["systemStarted"])
+        self.assertFalse(value["systemApplied"])
+        self.assertEqual((directory / "state/authorization-calls").read_text().splitlines(), ["begin"])
+        self.assertFalse((directory / "state/reservation-released").exists())
+        self.assertFalse((directory / "state/complete-called").exists())
 
     def test_directory_sync_failure_keeps_transaction_unfinished(self):
         directory = self.base / "durability-failure"
