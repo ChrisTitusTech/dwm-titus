@@ -101,10 +101,15 @@ helper = (root / "scripts/dwm-quickshell-state").read_text()
 parser = helper[helper.index("keyboard_codes() {"):helper.index("# One xprop read for all keyboard fields.")]
 for symbols, groups, expected in [
     ("pc+us+inet(evdev)+group(alts_toggle):1", "1", "us"),
+    ("pc+us+level3(ralt_switch):1", "1", "us"),
+    ("pc+us+inet(evdev)+gr:2", "2", "us|gr"),
+    ("pc+us+capslock(escape):1+ctrl(nocaps):1+compose(ralt):1", "1", "us"),
+    ("pc+inet(evdev)+gr:2+us:1+level3(ralt_switch):1", "2", "us|gr"),
+    ("pc+unlisted_custom+inet(evdev)+gr:2", "2", "|gr"),
     ("us:1+inet(evdev)+gr:2", "2", "us|gr"),
     ("pc+us:1+inet(evdev)+de:3", "3", "us||de"),
 ]:
-    result = subprocess.run(["sh", "-c", parser + '\nkeyboard_codes "$1" "" "$2"',
+    result = subprocess.run(["sh", "-c", parser + '\nkeyboard_codes "$1" "" "$2" "us|gr|de"',
                              "sh", symbols, groups], capture_output=True, text=True, check=True)
     assert result.stdout == expected, (symbols, result.stdout)
 print("Keyboard symbols preserve layout codes around option components: PASS")
