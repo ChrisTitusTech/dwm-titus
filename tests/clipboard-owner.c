@@ -29,7 +29,8 @@ int main(int argc, char **argv)
     const char forged[] = "gedit\0Gedit\0";
     xcb_change_property(c, XCB_PROP_MODE_REPLACE, w, XCB_ATOM_WM_CLASS,
         XCB_ATOM_STRING, 8, sizeof(forged) - 1, forged);
-    unsigned int pid = getpid();
+    const char *claimed_pid = getenv("CLIPBOARD_FIXTURE_PID");
+    unsigned int pid = claimed_pid ? (unsigned int)strtoul(claimed_pid, NULL, 10) : (unsigned int)getpid();
     xcb_change_property(c, XCB_PROP_MODE_REPLACE, w, atom(c, "_NET_WM_PID"),
         XCB_ATOM_CARDINAL, 32, 1, &pid);
     xcb_set_selection_owner(c, w, clip, XCB_CURRENT_TIME);

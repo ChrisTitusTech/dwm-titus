@@ -52,8 +52,8 @@ class Observer(unittest.TestCase):
             process.stdout.close()
             process.stderr.close()
 
-    def start(self, argv):
-        process = subprocess.Popen(argv, env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    def start(self, argv, environment=None):
+        process = subprocess.Popen(argv, env=environment or self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         self.processes.append(process)
         return process
 
@@ -65,10 +65,13 @@ class Observer(unittest.TestCase):
             value = process.stdout.readline()
             return json.loads(value) if value else None
 
-    def capture(self, executable, mode, text):
+    def capture(self, executable, mode, text, claimed_pid=None):
         log = self.base / (self._testMethodName + ".requests")
         log.unlink(missing_ok=True)
-        owner = self.start([executable, mode, text, log])
+        environment = {**self.env}
+        if claimed_pid is not None:
+            environment["CLIPBOARD_FIXTURE_PID"] = str(claimed_pid)
+        owner = self.start([executable, mode, text, log], environment)
         self.assertEqual(owner.stdout.readline().strip(), "ready")
         events = []
         deadline = time.monotonic() + 1.5
@@ -151,7 +154,9 @@ class Observer(unittest.TestCase):
 
     def test_unknown_owner_cannot_forge_class(self):
         secret = "NEVER-EMIT-UNKNOWN-BROWSER"
-        events, requests = self.capture(self.other, "plain", secret)
+        self.capture(self.owner, "secret", "marked preliminary owner")
+        eligible_pid = self.processes[-1].pid
+        events, requests = self.capture(self.other, "plain", secret, claimed_pid=eligible_pid)
         self.assertEqual(requests, [], "Unapproved source was queried before identity admission")
         self.assertNotIn(secret, json.dumps(events))
         self.assertFalse(any(event.get("event") == "text" for event in events))
