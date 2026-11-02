@@ -4,7 +4,7 @@ set -eu
 test_repo=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 repo=${DWM_LARGE_SURFACE_REPO:-$test_repo}
 
-for command_name in Xvfb quickshell xdotool xprop getconf; do
+for command_name in Xvfb quickshell xdotool xprop getconf cc pkg-config; do
 	if ! command -v "$command_name" >/dev/null 2>&1; then
 		printf 'SKIP: %s is unavailable\n' "$command_name"
 		exit 77
@@ -70,6 +70,7 @@ cleanup() {
 		[ ! -f "$work/quickshell.log" ] || tail -80 "$work/quickshell.log" >&2
 		[ ! -f "$work/dwm.log" ] || tail -40 "$work/dwm.log" >&2
 	fi
+	[ -n "${title_client_pid:-}" ] && kill "$title_client_pid" 2>/dev/null
 	[ -n "${quickshell_pid:-}" ] && kill "$quickshell_pid" 2>/dev/null
 	[ -n "${dwm_pid:-}" ] && kill "$dwm_pid" 2>/dev/null
 	[ -n "${xvfb_pid:-}" ] && kill "$xvfb_pid" 2>/dev/null
@@ -99,6 +100,15 @@ if [ "${#runtime}" -gt 64 ]; then
 	runtime=$runtime_alias_dir/runtime
 fi
 cp -a "$repo/config/quickshell/." "$config_home/quickshell/"
+# Expose only the isolated fixture model to prove the oversized title reached QML.
+python3 - "$config_home/quickshell/shell.qml" <<'PYQML'
+from pathlib import Path
+import sys
+path = Path(sys.argv[1])
+text = path.read_text()
+text = text.replace('ShellRoot {', 'ShellRoot {\n    IpcHandler {\n        target: "titletest"\n        function observed(): bool {\n            return dwmState.activeWindowTitle.length === 16383\n                && /^W+$/.test(dwmState.activeWindowTitle);\n        }\n    }', 1)
+path.write_text(text)
+PYQML
 cp "$repo/tests/fixtures/system-operation-provider.py" "$data_home/dwm-titus/scripts/dwm-system-management"
 chmod +x "$data_home/dwm-titus/scripts/dwm-system-management"
 cp "$repo/config/"*.toml "$config_home/dwm-titus/"
@@ -107,7 +117,7 @@ cp "$repo/scripts/dwm-settings-provider" "$repo/scripts/dwm-system-health" \
 	"$repo/scripts/dwm-display-setup" "$repo/scripts/dwm-quickshell-controlcenter" \
 	"$repo/scripts/dwm-quickshell-controls" "$repo/scripts/dwm-quickshell-network" \
 	"$repo/scripts/dwm-quickshell-launcher" "$repo/scripts/dwm-diagnostics" \
-	"$repo/scripts/dwm-packages.sh" \
+	"$repo/scripts/dwm-packages.sh" "$repo/scripts/dwm-quickshell-state" \
 	"$repo/scripts/dwm-lock" "$data_home/dwm-titus/scripts/"
 
 # Fail if the isolated health backend silently loses dependency diagnostics.
@@ -552,6 +562,44 @@ done
 [ "$(ipc notifications historyLatestSummary)" = 'Critical notification' ]
 ipc notifications clear >/dev/null
 ipc notifications resetPolicy >/dev/null
+
+test_stage='settling an oversized active title'
+cat >"$work/title-client.c" <<'C'
+#include <X11/Xlib.h>
+#include <string.h>
+#include <unistd.h>
+int main(void) {
+    Display *display = XOpenDisplay(NULL);
+    if (!display) return 1;
+    Window window = XCreateSimpleWindow(display, DefaultRootWindow(display), 0, 0, 300, 200, 0, 0, 0);
+    char title[16384];
+    memset(title, 'W', sizeof(title) - 1);
+    title[sizeof(title) - 1] = 0;
+    XStoreName(display, window, title);
+    XChangeProperty(display, window, XInternAtom(display, "_NET_WM_NAME", False),
+                    XInternAtom(display, "UTF8_STRING", False), 8, PropModeReplace,
+                    (unsigned char *)title, sizeof(title) - 1);
+    XMapWindow(display, window);
+    XFlush(display);
+    sleep(30);
+    XCloseDisplay(display);
+    return 0;
+}
+C
+# pkg-config emits separate compiler/linker flags.
+# shellcheck disable=SC2046
+cc "$work/title-client.c" -o "$work/title-client" $(pkg-config --cflags --libs x11)
+DISPLAY=$display "$work/title-client" &
+title_client_pid=$!
+i=0
+while [ "$i" -lt 100 ]; do
+	[ "$(ipc titletest observed)" = true ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$(ipc titletest observed)" = true ]
+# Even an enormous title must stop producing animation frames within seven seconds.
+sleep 8
 
 test_stage='sampling closed-shell CPU usage'
 clock_ticks=$(getconf CLK_TCK)
