@@ -9,11 +9,16 @@ QtObject {
     Component.onCompleted: {
         try {
             const rootEntries = Catalog.entriesFor("root");
-            require(rootEntries.length === 10, "root taxonomy must contain ten entries");
+            require(rootEntries.length === 11, "root taxonomy must contain eleven entries");
             require(rootEntries[0].label === "Apps", "Apps must lead the root menu");
             require(rootEntries[0].provider === "applications", "Apps must declare its dynamic provider");
             require(Catalog.entriesFor(rootEntries[0].target).length === 0, "dynamic Apps submenu must resolve in the catalog");
-            require(rootEntries[9].label === "System", "System must close the root menu");
+            require(rootEntries[rootEntries.length - 1].label === "System", "System must close the root menu");
+
+            const clipboardEntry = rootEntries.find(entry => entry.id === "clipboard");
+            require(clipboardEntry && clipboardEntry.actionType === "ipc"
+                && clipboardEntry.target === "clipboard" && clipboardEntry.action === "open",
+                "clipboard history must open through managed-shell IPC");
 
             const screenshotEntries = Catalog.entriesFor("screenshots");
             require(screenshotEntries.length === 4, "all screenshot modes must be exposed");
