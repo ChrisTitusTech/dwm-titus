@@ -5,6 +5,9 @@
 #include <string.h>
 #include <unistd.h>
 #include <time.h>
+#include <sys/wait.h>
+#include <signal.h>
+#include <sys/prctl.h>
 
 static xcb_atom_t atom(xcb_connection_t *c, const char *name)
 {
@@ -18,6 +21,21 @@ static xcb_atom_t atom(xcb_connection_t *c, const char *name)
 int main(int argc, char **argv)
 {
     if (argc != 4) return 2;
+    if (!strcmp(argv[1], "spawn")) {
+        const char *child = getenv("CLIPBOARD_FIXTURE_CHILD");
+        if (!child) return 2;
+        pid_t pid = fork();
+        if (pid < 0) return 2;
+        if (!pid) {
+            if (prctl(PR_SET_PDEATHSIG, SIGTERM)) return 2;
+            execl(child, child, "plain", argv[2], argv[3], (char *)NULL);
+            return 2;
+        }
+        /* Parent remains alive so XRes ancestry identifies the manager. */
+        int status;
+        waitpid(pid, &status, 0);
+        return 0;
+    }
     xcb_connection_t *c = xcb_connect(NULL, NULL);
     if (xcb_connection_has_error(c)) return 2;
     xcb_screen_t *s = xcb_setup_roots_iterator(xcb_get_setup(c)).data;

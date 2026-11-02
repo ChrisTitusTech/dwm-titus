@@ -19,12 +19,12 @@ class Observer(unittest.TestCase):
         cls.temp = tempfile.TemporaryDirectory(prefix="clipboard-observer-", dir=os.environ.get("DWM_TEST_TMP_ROOT"))
         cls.base = Path(cls.temp.name)
         cls.owner = cls.base / "eligible-owner"
-        cls.other = cls.base / "browser-owner"
+        cls.other = cls.base / "bitwarden"
         subprocess.run(["cc", "-D_POSIX_C_SOURCE=200809L", "-std=c99", "-Wall", "-Wextra", str(REPO / "tests/clipboard-owner.c"), "-lxcb", "-o", str(cls.owner)], check=True)
         shutil.copy2(cls.owner, cls.other)
         cls.binary = cls.base / "observer"
         libs = subprocess.check_output(["pkg-config", "--libs", "xcb", "xcb-xfixes", "xcb-res"], text=True).split()
-        subprocess.run(["cc", "-D_POSIX_C_SOURCE=200809L", "-std=c99", "-Wall", "-Wextra", '-DCLIPBOARD_TEST_EXECUTABLE="' + str(cls.owner) + '"', str(REPO / "clipboard-observer.c"), *libs, "-o", str(cls.binary)], check=True)
+        subprocess.run(["cc", "-D_POSIX_C_SOURCE=200809L", "-std=c99", "-Wall", "-Wextra", str(REPO / "clipboard-observer.c"), *libs, "-o", str(cls.binary)], check=True)
         cls.xvfb = subprocess.Popen(["Xvfb", "-displayfd", "1", "-screen", "0", "800x600x24", "-nolisten", "tcp"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
         display = cls.xvfb.stdout.readline().strip()
         if not display:
@@ -65,12 +65,14 @@ class Observer(unittest.TestCase):
             value = process.stdout.readline()
             return json.loads(value) if value else None
 
-    def capture(self, executable, mode, text, claimed_pid=None):
+    def capture(self, executable, mode, text, claimed_pid=None, child=None):
         log = self.base / (self._testMethodName + ".requests")
         log.unlink(missing_ok=True)
         environment = {**self.env}
         if claimed_pid is not None:
             environment["CLIPBOARD_FIXTURE_PID"] = str(claimed_pid)
+        if child is not None:
+            environment["CLIPBOARD_FIXTURE_CHILD"] = str(child)
         owner = self.start([executable, mode, text, log], environment)
         self.assertEqual(owner.stdout.readline().strip(), "ready")
         events = []
@@ -83,21 +85,24 @@ class Observer(unittest.TestCase):
         requests = log.read_text().splitlines() if log.exists() else []
         return events, requests
 
-    def test_policy_rejects_sensitive_and_generic_executables(self):
+    def test_policy_rejects_managers_and_preserves_browser_terminal(self):
         source = self.base / "policy-test.c"
         source.write_text('#define main observer_program_main\n#include "' +
                           str(REPO / "clipboard-observer.c") +
                           '"\n#undef main\nint main(void) {\n' +
-                          'const char *denied[] = {"/usr/bin/firefox", "/usr/bin/chromium", '
-                          '"/usr/bin/google-chrome", "/usr/bin/bitwarden", "/usr/bin/keepassxc", '
-                          '"/usr/bin/mono", "/usr/bin/xclip", "/usr/bin/xsel", "/usr/bin/alacritty", '
-                          '"/usr/bin/kitty", "/usr/bin/python3", "/usr/bin/electron"};\n'
+                          'const char *denied[] = {"/usr/bin/bitwarden", "/usr/bin/keepassxc", '
+                          '"/opt/Bitwarden/bitwarden", "/opt/KeePass/KeePass.exe", "/usr/bin/bw", '
+                          '"/usr/bin/pass", "/usr/bin/gopass", "/usr/bin/1password"};\n'
                           'for (unsigned int i = 0; i < sizeof denied / sizeof denied[0]; i++) '
-                          'if (eligible_path(denied[i])) return 1;\nreturn 0;\n}\n')
+                          'if (eligible_path(denied[i])) return 1;\n'
+                          'const char *allowed[] = {"/usr/bin/firefox", "/usr/bin/chromium", '
+                          '"/usr/bin/alacritty", "/usr/bin/xclip", "/usr/bin/mono", "/usr/bin/python3"};\n'
+                          'for (unsigned int i = 0; i < sizeof allowed / sizeof allowed[0]; i++) '
+                          'if (!eligible_path(allowed[i])) return 2;\nif (!eligible_command(getpid(), "/usr/bin/bash")) return 3;\nreturn 0;\n}\n')
         binary = self.base / "policy-test"
         libs = subprocess.check_output(["pkg-config", "--libs", "xcb", "xcb-xfixes", "xcb-res"], text=True).split()
         subprocess.run(["cc", "-D_POSIX_C_SOURCE=200809L", "-std=c99", str(source), *libs, "-o", str(binary)], check=True)
-        subprocess.run([binary], check=True, timeout=5)
+        subprocess.run([binary, "/"], check=True, timeout=5)
 
     def test_missing_xres_is_unavailable(self):
         server = subprocess.Popen(["Xvfb", "-displayfd", "1", "-screen", "0", "800x600x24",
@@ -121,6 +126,23 @@ class Observer(unittest.TestCase):
         events, requests = self.capture(self.owner, "plain", text)
         self.assertIn({"event": "text", "text": text}, events)
         self.assertIn("TEXT", requests)
+
+    def test_browser_and_terminal_copies_remain_available(self):
+        for name in ("firefox", "alacritty"):
+            with self.subTest(application=name):
+                executable = self.base / name
+                shutil.copy2(self.owner, executable)
+                events, requests = self.capture(executable, "plain", name + " normal copy")
+                self.assertIn({"event": "text", "text": name + " normal copy"}, events)
+                self.assertIn("TEXT", requests)
+                events, requests = self.capture(executable, "secret", name + " marked secret")
+                self.assertNotIn("TEXT", requests)
+                self.assertFalse(any(event.get("event") == "text" for event in events))
+
+    def test_helper_spawned_by_manager_is_rejected(self):
+        events, requests = self.capture(self.other, "spawn", "NEVER-EMIT-MANAGER-HELPER", child=self.owner)
+        self.assertEqual(requests, [])
+        self.assertFalse(any(event.get("event") == "text" for event in events))
 
     def test_sensitive_marker_blocks_before_text(self):
         secret = "NEVER-EMIT-MARKED-SECRET"
@@ -152,7 +174,7 @@ class Observer(unittest.TestCase):
         events, requests = self.capture(self.owner, "plain", "recovered")
         self.assertIn({"event": "text", "text": "recovered"}, events)
 
-    def test_unknown_owner_cannot_forge_class(self):
+    def test_manager_cannot_forge_class_and_pid(self):
         secret = "NEVER-EMIT-UNKNOWN-BROWSER"
         self.capture(self.owner, "secret", "marked preliminary owner")
         eligible_pid = self.processes[-1].pid
