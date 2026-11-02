@@ -942,11 +942,21 @@ def install_dependencies():
                     authorization = ["/usr/bin/sudo", "-n"]
             except (OSError, subprocess.TimeoutExpired):
                 pass
+            repair_args = []
+            # Resolve user-selected terminals before elevation. Root never runs
+            # the user command; this hint only preserves that installation choice.
+            try:
+                terminal = subprocess.run(["dwm-terminal", "--print-command"],
+                                          capture_output=True, timeout=10)
+                if terminal.returncode == 0:
+                    repair_args = ["keep-terminal"]
+            except (OSError, subprocess.TimeoutExpired):
+                pass
             print("Install missing desktop dependencies. Review and confirm DNF's package transaction.", flush=True)
             # The privileged helper bounds each map/RPM/DNF operation. Wait for
             # its final exit, including both transactions, so this lock cannot
             # be released while a timed-out pkexec leaves package work behind.
-            run([*authorization, helper, "repair-dependencies", digest(manifest_path)], timeout=None, capture=False)
+            run([*authorization, helper, "repair-dependencies", digest(manifest_path), *repair_args], timeout=None, capture=False)
     except BlockingIOError as error:
         raise RuntimeError("Desktop update is active; finish or recover it before repairing dependencies") from error
 

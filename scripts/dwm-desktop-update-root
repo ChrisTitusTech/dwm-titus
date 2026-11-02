@@ -528,7 +528,8 @@ def perform(args, uid):
             install_packages(packages)
             journal["packages"] = packages
             write_json(backup / "journal.json", journal)
-        elif args[0] in ("dependencies", "repair-dependencies") and len(args) == 2:
+        elif ((args[0] in ("dependencies", "repair-dependencies") and len(args) == 2)
+              or (args[0] == "repair-dependencies" and len(args) == 3 and args[2] == "keep-terminal")):
             for journal_path in STATE.glob("*/journal.json"):
                 journal = read_json(journal_path)
                 if not isinstance(journal, dict) or journal.get("state") not in ("complete", "rolled-back"):
@@ -545,7 +546,7 @@ def perform(args, uid):
                 if fingerprint(mapping) != manifest["files"].get(str(mapping)):
                     fail("Installed package map changed; update or restore the managed helper first")
                 required_profiles = ["required", "source-update", "desktop", "system-management", "theme", "fonts"]
-                if not supported_terminal_installed(uid):
+                if "keep-terminal" not in args[2:] and not supported_terminal_installed(uid):
                     required_profiles.append("terminal-primary")
                 required_packages = []
                 for profile in required_profiles:
