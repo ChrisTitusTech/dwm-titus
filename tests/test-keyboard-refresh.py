@@ -56,8 +56,8 @@ static void fixture_free(XkbDescPtr k, unsigned int mask, Bool all) {
 static void kbpublishgroup(int group) {
     assert(group == 1); publications++;
 }
-static void kbpublishnames(XkbDescPtr k) {
-    (void)k; assert(publications == 1); publications++;
+static int kbpublishnames(XkbDescPtr k) {
+    (void)k; publications++; return failure != 6;
 }
 '''
 fixture += function("updatekeyboard") + function("xkbevent")
@@ -73,6 +73,10 @@ int main(void) {
         assert(kbretry && kbgroups == 3 && kbwrap == XkbClampIntoRange);
         assert(publications == 0);
     }
+    failure = 6;
+    updatekeyboard();
+    assert(kbretry);
+    publications = 0;
     failure = 0;
     xkbevent((XEvent *)&event);
     assert(!kbretry && kbgroups == 2 && kbwrap == XkbWrapIntoRange);
@@ -91,3 +95,16 @@ with tempfile.TemporaryDirectory(prefix="keyboard-refresh-") as directory:
         "-o", str(path / "fixture")], check=True)
     subprocess.run([str(path / "fixture")], check=True)
 print("XKB refresh preserves state after read failures and retries on events: PASS")
+
+# Exercise the production parser without starting an X server.
+helper = (root / "scripts/dwm-quickshell-state").read_text()
+parser = helper[helper.index("keyboard_codes() {"):helper.index("# One xprop read for all keyboard fields.")]
+for symbols, groups, expected in [
+    ("pc+us+inet(evdev)+group(alts_toggle):1", "1", "us"),
+    ("us:1+inet(evdev)+gr:2", "2", "us|gr"),
+    ("pc+us:1+inet(evdev)+de:3", "3", "us||de"),
+]:
+    result = subprocess.run(["sh", "-c", parser + '\nkeyboard_codes "$1" "" "$2"',
+                             "sh", symbols, groups], capture_output=True, text=True, check=True)
+    assert result.stdout == expected, (symbols, result.stdout)
+print("Keyboard symbols preserve layout codes around option components: PASS")

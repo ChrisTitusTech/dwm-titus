@@ -107,7 +107,7 @@ keyboard_codes() {
 				n = split(symbols, tokens, "+")
 				for (i = 1; i <= n; i++) {
 					token = tokens[i]
-					if (token ~ /:1$/ && explicit == "" && first == "") {
+					if (token ~ /:1$/ && token !~ /^group\(/ && explicit == "" && first == "") {
 						explicit = base(token)
 					}
 					if (match(token, /:[2-4]$/)) {
