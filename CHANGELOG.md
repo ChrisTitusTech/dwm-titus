@@ -73,6 +73,13 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Settings > Input no longer lists power, sleep and video buttons as keyboards,
+  and shows a device that X splits into several XInput devices on one port
+  (same identity) once instead of one card per part with doubled rows. Changes
+  apply to every part that supports them and Revert restores each part's own
+  value; before, they failed with "stable device identity is ambiguous".
+  Same-identity devices on different ports are listed once with an explanation
+  and still left alone.
 - Preserve keyboard focus in application menus and combo popups so Steam menus
   do not immediately dismiss. Notification and fullscreen overlay focus behavior
   remains unchanged.

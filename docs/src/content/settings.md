@@ -67,7 +67,18 @@ separate direct action that restores and persists the driver's default. Kept
 values are reapplied idempotently at session startup when the device exposes a
 stable udev or physical sysfs identity. Devices without one remain
 session-configurable and report that persistence is unavailable. Unsupported
-per-device properties remain visible with an explanation.
+per-device properties remain visible with an explanation. Power, sleep and
+video buttons, which X lists as keyboards, are not shown. A device that X
+splits into several XInput devices with the same identity on the same port (a
+VMware PS/2 mouse, for example) is one entry: a change applies to every part
+that supports it, and Revert puts each identifiable part back to its own value.
+After re-enumeration, parts with the same signature can be restored together
+when their captured values agree. If identities or old values cannot be
+resolved safely (including a new part without a snapshot), Revert retains
+recovery and changes no parts; reconnect the original device before retrying.
+It does not guess a value for an uncaptured part. Devices that
+share an identity without sharing a port cannot be told apart, so they are
+listed once with an explanation and are not changed.
 
 The same section exposes session-wide XKB accessibility shortcuts, sticky keys,
 slow keys, bounce keys, and mouse keys when `xkbset` can reach the X11 session.
