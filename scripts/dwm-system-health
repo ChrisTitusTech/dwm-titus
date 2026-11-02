@@ -917,7 +917,9 @@ repair_user() {
 		systemctl --user restart "${units[@]}"
 		;;
 	install-dependencies)
-		control_helper_action install-missing-deps
+		control_helper_action install-missing-deps || return 1
+		emit_record repair overview launched "$action" "Dependency repair launched" "Package repair opened in terminal" "Complete the prompts in the terminal"
+		return 0
 		;;
 	*)
 		printf 'unsupported user repair: %s\n' "$action" >&2

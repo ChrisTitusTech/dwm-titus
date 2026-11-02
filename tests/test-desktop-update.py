@@ -94,9 +94,11 @@ class DesktopUpdate(unittest.TestCase):
                 patch.object(update.subprocess, "run", return_value=SimpleNamespace(returncode=0)) as probe:
             update.install_dependencies()
         trust.assert_called_once_with(self.base / "libexec/dwm-titus/dwm-desktop-update-root", executable=True)
-        probe.assert_called_once_with(["/usr/bin/sudo", "-n", "true"], capture_output=True, timeout=10)
+        self.assertEqual(probe.call_args_list, [
+            unittest.mock.call(["/usr/bin/sudo", "-n", "true"], capture_output=True, timeout=10),
+            unittest.mock.call(["dwm-terminal", "--print-command"], capture_output=True, timeout=10)])
         self.command.assert_called_once_with(["/usr/bin/sudo", "-n", self.base / "libexec/dwm-titus/dwm-desktop-update-root",
-                                             "repair-dependencies", update.digest(self.manifest_path)],
+                                             "repair-dependencies", update.digest(self.manifest_path), "keep-terminal"],
                                             timeout=None, capture=False)
         self.assertEqual({p: p.read_bytes() for p in before}, before)
 
@@ -295,6 +297,22 @@ class DesktopUpdate(unittest.TestCase):
         self.assertEqual(len(calls), 2)
         req_pkgs, _, _ = calls[0]
         self.assertIn("xorg-x11-server-Xorg", req_pkgs)
+
+        # Caller-selected custom terminal must not force terminal-primary
+        calls.clear()
+        with patch.object(privileged, "PREFIX", self.base), \
+                patch.object(privileged, "STATE", self.base / "transactions"), \
+                patch.object(privileged, "trusted"), \
+                patch.object(privileged.sys.stdin, "isatty", return_value=True), \
+                patch.object(privileged, "supported_terminal_installed", return_value=True), \
+                patch.object(privileged, "power_profiles_provider_installed", return_value=False), \
+                patch.object(privileged, "xserver_installed", return_value=False), \
+                patch.object(privileged, "install_packages", side_effect=mock_install):
+            privileged.perform(["repair-dependencies", generation, "keep-terminal"], 1000)
+
+        self.assertEqual(len(calls), 2)
+        req_pkgs, _, _ = calls[0]
+        self.assertNotIn("alacritty", req_pkgs)
 
 
     def test_unprivileged_custom_prefix_reinstall_is_idempotent(self):
