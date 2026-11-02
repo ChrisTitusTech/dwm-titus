@@ -180,7 +180,8 @@ class Observer(unittest.TestCase):
 
     def test_option_operand_and_perl_managers_are_rejected(self):
         for name, args in (("mono", ["--config", "/tmp/mono.config", "KeePass.exe"]),
-                           ("perl", ["/usr/bin/kpcli"])):
+                           ("perl", ["/usr/bin/kpcli"]),
+                           ("bash", ["-e", "/usr/bin/pass"])):
             with self.subTest(interpreter=name):
                 executable = self.base / name
                 shutil.copy2(self.owner, executable)
