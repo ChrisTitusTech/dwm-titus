@@ -160,6 +160,11 @@ load_config() {
 	for widget in $legacy_widget_ids; do
 		[[ -n ${seen[$widget]+x} ]] || count=-1
 	done
+	if [[ $options_allowed == true ]]; then
+		for option in $option_ids; do
+			[[ -n ${seen_options[$option]+x} ]] || count=-1
+		done
+	fi
 	if [[ $first == true || $count -lt 5 || $count -gt 6 ]]; then
 		config_state=partial
 		config_detail='Incomplete panel settings were preserved; using all-on defaults'
