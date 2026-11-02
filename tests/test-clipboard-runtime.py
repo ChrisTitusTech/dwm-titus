@@ -201,6 +201,28 @@ with tempfile.TemporaryDirectory(prefix="clipboard-runtime-") as directory, \
                     break
                 time.sleep(.05)
             assert not json.loads(history.read_text())['entries'], 'Clear intent lost after history reload'
+            process.terminate()
+            process.wait(timeout=5)
+            history.write_text(json.dumps({'entries': [{'text': 'old settings-gated history', 'timestamp': 1}]}))
+            settings.chmod(0)
+            process = subprocess.Popen(['quickshell', '--no-duplicate', '--path', str(shell / 'shell.qml')],
+                                       env=env, stdout=shell_log, stderr=subprocess.STDOUT)
+            wait_state(lambda state: state['ready'] and state['failed'])
+            action('capture', 'session before clear with unreadable settings')
+            action('clear')
+            settings.chmod(0o600)
+            action('retry')
+            wait_state(lambda state: not state['failed'] and state['count'] == 0)
+            for _ in range(100):
+                if not json.loads(history.read_text())['entries']:
+                    break
+                time.sleep(.05)
+            assert not json.loads(history.read_text())['entries'], 'Clear intent lost after settings reload'
+        action('deferHistory')
+        action('capture', 'queued before Clear')
+        action('clear')
+        action('finishHistory')
+        wait_state(lambda state: state['ready'] and state['count'] == 0)
         print('Clipboard opt-in, private storage, failure recovery, idle and restarted opt-out: PASS')
     except BaseException:
         shell_log.flush()

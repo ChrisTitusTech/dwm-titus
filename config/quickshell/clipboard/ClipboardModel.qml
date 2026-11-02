@@ -407,7 +407,8 @@ Scope {
     }
 
     function clearAll() {
-        root.clearPending = root.confirmedPersistence || root.historyLoadFailed;
+        root.clearPending = true;
+        root.pendingCaptures = [];
         root.entries = [];
         root.saveHistory();
     }
