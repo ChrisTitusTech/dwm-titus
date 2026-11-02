@@ -73,6 +73,11 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Mark panel tags that hold windows with a small corner square and draw their
+  numbers brighter than empty tags. The panel state helper now reads xprop's
+  window-list format, so the occupied tags and the panel's running-apps list
+  are no longer always empty, and it reads each window's properties with one
+  xprop call.
 - Install `nm-connection-editor` with the recommended profile and both Fedora
   images. The network popover already sends Edit Connections and enterprise
   (802.1X) Wi-Fi to it, but stock installs did not have it, so those paths were

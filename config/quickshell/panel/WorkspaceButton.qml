@@ -19,11 +19,23 @@ Rectangle {
         : workspaceMouse.containsMouse ? Theme.controlHoverBorder : Theme.transparent
     border.width: selected || workspaceMouse.containsMouse ? Theme.pillBorderWidth : 0
 
+    // Marks tags that hold windows.
+    Rectangle {
+        visible: root.occupied
+        x: Theme.scaledSize(3)
+        y: Theme.scaledSize(3)
+        width: Theme.scaledSize(4)
+        height: width
+        color: root.selected ? Theme.controlSelectedText
+            : Theme.highContrast ? Theme.textStrong : Theme.accent
+    }
+
     Text {
         anchors.centerIn: parent
         text: root.label
         color: root.selected ? Theme.controlSelectedText
-            : workspaceMouse.containsMouse ? Theme.controlHoverText : Theme.textMuted
+            : workspaceMouse.containsMouse ? Theme.controlHoverText
+            : root.occupied ? Theme.textStrong : Theme.textMuted
         font.family: Theme.fontFamily
         font.pixelSize: Theme.panelFontSize
         font.bold: root.selected
