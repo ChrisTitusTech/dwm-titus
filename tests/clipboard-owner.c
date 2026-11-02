@@ -20,7 +20,9 @@ static xcb_atom_t atom(xcb_connection_t *c, const char *name)
 }
 int main(int argc, char **argv)
 {
+    if (argc == 7 && !strcmp(argv[1], "--config")) { argc -= 2; argv += 2; }
     if (argc == 5 && !strcmp(strrchr(argv[1], '/') ? strrchr(argv[1], '/') + 1 : argv[1], "KeePass.exe")) { argc--; argv++; }
+    if (argc == 5 && !strcmp(argv[1], "/usr/bin/kpcli")) { argc--; argv++; }
     if (argc != 4) return 2;
     if (!strcmp(argv[1], "spawn")) {
         const char *child = getenv("CLIPBOARD_FIXTURE_CHILD");

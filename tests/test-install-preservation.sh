@@ -161,6 +161,8 @@ if [[ $(id -u) -eq 0 ]]; then
 		exit 1
 	fi
 fi
+# Satisfy the independent observer preflight while testing dwm rejection.
+install -Dm755 /bin/true "$TEST_REPO/dwm-clipboard-observer"
 rm -f "$TEST_REPO/dwm"
 if make -C "$TEST_REPO" install-system \
 	DESTDIR="$WORK_DIR/stale-stage" >"$WORK_DIR/unbuilt-install.log" 2>&1; then

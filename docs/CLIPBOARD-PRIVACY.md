@@ -20,7 +20,9 @@ markers. This includes executable names identifying Bitwarden, KeePass,
 KeePassXC, KeePassX, 1Password, Proton Pass, NordPass, Enpass, Dashlane, LastPass,
 Keeper Desktop, and named CLI clients such as bw, rbw, pass, gopass and kpcli.
 Bounded launch metadata detects interpreter-hosted clients such as
-`mono /path/KeePass.exe` or `node /usr/bin/bw`. Bounded same-user parent ancestry
+`mono /path/KeePass.exe`, `node /usr/bin/bw`, or `perl /usr/bin/kpcli`.
+Unrecognized interpreter options fail closed rather than risk mistaking an
+option operand for the application entrypoint. Bounded same-user parent ancestry
 also rejects helpers still descended from a detected manager. Unknown source
 identity fails closed. Application names are best-effort identification: renamed
 executables, detached helpers and applications not identified by this policy

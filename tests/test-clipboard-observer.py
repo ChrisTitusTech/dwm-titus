@@ -178,6 +178,18 @@ class Observer(unittest.TestCase):
                 self.assertIsNone(self.line(self.observer, 1.5))
                 self.assertFalse(log.exists(), "Interpreter-hosted manager was queried")
 
+    def test_option_operand_and_perl_managers_are_rejected(self):
+        for name, args in (("mono", ["--config", "/tmp/mono.config", "KeePass.exe"]),
+                           ("perl", ["/usr/bin/kpcli"])):
+            with self.subTest(interpreter=name):
+                executable = self.base / name
+                shutil.copy2(self.owner, executable)
+                log = self.base / (name + "-options.requests")
+                owner = self.start([executable, *args, "plain", "NEVER-EMIT-SECRET", log])
+                self.assertEqual(owner.stdout.readline().strip(), "ready")
+                self.assertIsNone(self.line(self.observer, 1.5))
+                self.assertFalse(log.exists(), "Interpreter manager was queried")
+
     def test_invalid_utf8_is_not_retained(self):
         events, requests = self.capture(self.owner, "invalid-utf8", "unused")
         self.assertIn("TEXT", requests)
