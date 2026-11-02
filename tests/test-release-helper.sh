@@ -52,7 +52,7 @@ printf 'VERSION = %s\n' "$version" >"$fixture/config.mk"
 printf 'release/\n' >"$fixture/.gitignore"
 git -C "$fixture" init -q
 git -C "$fixture" add .
-git -C "$fixture" -c user.name=Test -c user.email=test@example.invalid commit -qm fixture
+git -C "$fixture" -c user.name=Test -c user.email=test@example.invalid -c commit.gpgSign=false commit -qm fixture
 mkdir "$work/remote"
 export RELEASE_TEST_REMOTE="$work/remote"
 cat >"$work/bin/gh" <<'EOF'

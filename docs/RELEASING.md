@@ -49,7 +49,8 @@ variants even from a fresh checkout. It aborts if that download fails; local
 old images or checksum manifests are not used as substitutes.
 The release checksum file uses these downloadable basenames and can be checked
 with `sha256sum --ignore-missing -c dwm-titus-VERSION-SHA256SUMS` beside the
-assets. `--dry-run` prints the copy, hashing and upload commands without writing
+assets. Confirm that the manifest contains the intended ISO basename and that
+the command reports `OK` for that ISO. `--dry-run` prints the copy, hashing and upload commands without writing
 artifacts or contacting GitHub.
 
 `make release-check` builds the archive twice and verifies identical bytes,
