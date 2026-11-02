@@ -104,6 +104,29 @@ class Observer(unittest.TestCase):
         subprocess.run(["cc", "-D_POSIX_C_SOURCE=200809L", "-std=c99", str(source), *libs, "-o", str(binary)], check=True)
         subprocess.run([binary, "/"], check=True, timeout=5)
 
+    def test_notice_accepts_wrapped_and_long_running_timestamps(self):
+        source = self.base / "timestamp-test.c"
+        source.write_text('#define main observer_program_main\n#include "' +
+                          str(REPO / "clipboard-observer.c") +
+                          '"\n#undef main\nint main(void) {\n'
+                          'xcb_xfixes_selection_notify_event_t event = {0};\n'
+                          'uint32_t times[] = {1, UINT32_C(0x80000000), UINT32_MAX, 0, 2};\n'
+                          'fixes_event=70; clipboard=42; event.response_type=70; '
+                          'event.selection=42; event.owner=123;\n'
+                          'for (unsigned i=0; i<sizeof times/sizeof times[0]; i++) {\n'
+                          'event.selection_timestamp=times[i]; pending=0; '
+                          'uint64_t before=generation; notice((void *)&event);\n'
+                          'if (!pending || generation!=before+1 || latest.selection_timestamp!=times[i]) return 1; }\n'
+                          'event.owner=0; notice((void *)&event); if (pending) return 2;\n'
+                          'event.owner=123; event.response_type=70|128; uint64_t before=generation; '
+                          'notice((void *)&event); if (pending || generation!=before) return 3;\n'
+                          'return 0; }\n')
+        binary = self.base / "timestamp-test"
+        libs = subprocess.check_output(["pkg-config", "--libs", "xcb", "xcb-xfixes", "xcb-res"], text=True).split()
+        subprocess.run(["cc", "-D_POSIX_C_SOURCE=200809L", "-std=c99", "-Wall", "-Wextra", "-Werror",
+                        str(source), *libs, "-o", str(binary)], check=True)
+        subprocess.run([binary], check=True, timeout=5)
+
     def test_missing_xres_is_unavailable(self):
         server = subprocess.Popen(["Xvfb", "-displayfd", "1", "-screen", "0", "800x600x24",
                                    "-nolisten", "tcp", "-extension", "X-Resource"],
