@@ -12,6 +12,9 @@ work=$(mktemp -d)
 watch_pid=
 watch_owner_pid=
 cleanup() {
+	local status=$?
+	[[ ! -d $work/inaccessible ]] || chmod 700 "$work/inaccessible"
+	if ((status != 0)) && [[ -s $work/watch.err ]]; then cat "$work/watch.err" >&2; fi
 	[[ -z $watch_owner_pid ]] || kill -KILL "$watch_owner_pid" 2>/dev/null || true
 	[[ -z $watch_owner_pid ]] || wait "$watch_owner_pid" 2>/dev/null || true
 	[[ -z $watch_pid ]] || kill "$watch_pid" 2>/dev/null || true
@@ -262,6 +265,18 @@ MimeType=application/pdf;
 DESKTOP
 ln -s ../../../app/org.example.Pdf/current/active/export/share/applications/org.example.Pdf.desktop \
 	"$work/flatpak/exports/share/applications/org.example.Pdf.desktop"
+# Broken/cyclic higher-priority exports must not hide lower-priority files.
+mkdir -p "$work/flatpak/exports/share/applications/vendor"
+for id in fallback-dead fallback-cycle; do
+	cp "$work/data/applications/firefox.desktop" "$work/flatpak/exports/share/applications/$id.desktop"
+done
+ln -s absent.desktop "$work/data/applications/fallback-dead.desktop"
+ln -s fallback-cycle.desktop "$work/data/applications/fallback-cycle.desktop"
+ln -s absent.desktop "$work/data/applications/vendor/shadow.desktop"
+cp "$work/data/applications/firefox.desktop" "$work/flatpak/exports/share/applications/vendor/shadow.desktop"
+# Hidden is an intentional precedence tombstone, including through a link.
+ln -s hidden.desktop "$work/data/applications/shadow-hidden.desktop"
+cp "$work/data/applications/firefox.desktop" "$work/flatpak/exports/share/applications/shadow-hidden.desktop"
 mkdir -p "$work/symlink-data"
 ln -s "$work/outside-applications" "$work/symlink-data/applications"
 
@@ -483,7 +498,7 @@ if grep -Fq $'candidate\tbrowser\tnodisplay-browser.desktop\t' <<<"$snapshot"; t
 fi
 for rejected_id in hidden.desktop not-an-app.desktop chromium.desktop tryexec-stale.desktop duplicate.desktop \
 	oversized.desktop control.desktop linked-escaped.desktop broken.desktop loop.desktop linked-large.desktop st.desktop \
-	hidden-image.desktop stale-image.desktop; do
+	hidden-image.desktop stale-image.desktop shadow-hidden.desktop; do
 	if grep -Fq "$rejected_id" <<<"$snapshot"; then
 		printf 'Rejected desktop entry was emitted as a candidate: %s\n' "$rejected_id" >&2
 		exit 1
@@ -495,7 +510,11 @@ grep -Fqx $'candidate\tbrowser\tvendor-nested.desktop\tNested Browser\tavailable
 grep -Fqx $'candidate\tbrowser\tlinked-leaf.desktop\tFirefox\tavailable\t\tInstalled desktop entry' <<<"$snapshot"
 grep -Fqx $'candidate\tbrowser\tvendor-linked.desktop\tFirefox\tavailable\t\tInstalled desktop entry' <<<"$snapshot"
 grep -Fqx $'mime-candidate\tapplication/pdf\torg.example.Pdf.desktop\tFlatpak PDF\tavailable\tInstalled desktop entry' <<<"$snapshot"
-for desktop_id in org.example.Pdf.desktop vendor-linked.desktop linked-leaf.desktop; do
+for id in fallback-dead.desktop fallback-cycle.desktop vendor-shadow.desktop; do
+	grep -Fqx "$(printf 'candidate\tbrowser\t%s\tFirefox\tavailable\t\tInstalled desktop entry' "$id")" <<<"$snapshot"
+done
+for desktop_id in org.example.Pdf.desktop vendor-linked.desktop linked-leaf.desktop \
+	fallback-dead.desktop fallback-cycle.desktop vendor-shadow.desktop; do
 	mime=application/pdf
 	[[ $desktop_id == org.example.Pdf.desktop ]] || mime=text/html
 	before_link=$(sha256sum "$work/home/.config/mimeapps.list")
@@ -818,6 +837,17 @@ run_helper open 'https://example.test'
 grep -Fqx 'https://example.test' "$work/opened"
 
 if command -v inotifywait >/dev/null 2>&1; then
+	mkdir "$work/inaccessible"
+	chmod 000 "$work/inaccessible"
+	ln -s "$work/inaccessible/missing.desktop" "$work/data/applications/inaccessible.desktop"
+	deployment=$work/deployment
+	for version in v1 v2; do
+		mkdir -p "$deployment/$version/export"
+		ln -s export "$deployment/$version/active"
+		cp "$work/data/applications/firefox.desktop" "$deployment/$version/export/watched.desktop"
+	done
+	ln -s v1 "$deployment/current"
+	ln -s "$deployment/current/active/watched.desktop" "$work/data/applications/org.example.Watched.desktop"
 	watch_generation_root=$work/watch-data
 	mkdir -p "$watch_generation_root"
 	watch_data_dirs=$work/empty:$watch_generation_root/shared/one:$watch_generation_root/shared/two
@@ -849,6 +879,97 @@ if command -v inotifywait >/dev/null 2>&1; then
 		exit 1
 	fi
 	[[ $(tr '\0' '\n' <"/proc/$generation_child/cmdline" | grep -Fxc -- "$watch_generation_root") == 1 ]]
+
+	# Target watches are nonrecursive, cover the symlink chain, and rearm when
+	# Flatpak-style current deployments or target inodes are replaced.
+	target_child=
+	for _ in {1..100}; do
+		target_child=$(watch_child_for_path "$watch_pid" "$deployment/v1/export" 2>/dev/null || true)
+		[[ -z $target_child ]] || break
+		sleep 0.02
+	done
+	[[ -n $target_child ]]
+	if [[ ! -r $work/inaccessible ]] && watch_child_has_argument "$target_child" "$work/inaccessible"; then
+		printf 'Unreadable target directory was passed to inotifywait\n' >&2
+		exit 1
+	fi
+	if watch_child_has_argument "$target_child" -r; then
+		printf 'Desktop target watch must not be recursive\n' >&2
+		exit 1
+	fi
+	: >"$work/watch.out"
+	printf '# in-place edit\n' >>"$deployment/v1/export/watched.desktop"
+	for _ in {1..100}; do
+		grep -Fq watched.desktop "$work/watch.out" && break
+		sleep 0.02
+	done
+	grep -Fq watched.desktop "$work/watch.out"
+	[[ $(watch_child_for_path "$watch_pid" "$deployment/v1/export") == "$target_child" ]]
+	: >"$work/watch.out"
+	cp "$work/data/applications/firefox.desktop" "$deployment/v1/export/replacement"
+	mv "$deployment/v1/export/replacement" "$deployment/v1/export/watched.desktop"
+	for _ in {1..100}; do
+		grep -Fq watched.desktop "$work/watch.out" && break
+		sleep 0.02
+	done
+	grep -Fq watched.desktop "$work/watch.out"
+	ln -s v2 "$deployment/current.next"
+	mv -Tf "$deployment/current.next" "$deployment/current"
+	for _ in {1..100}; do
+		new_child=$(watch_child_for_path "$watch_pid" "$deployment/v2/export" 2>/dev/null || true)
+		[[ -z $new_child ]] || break
+		sleep 0.02
+	done
+	[[ -n $new_child ]]
+	: >"$work/watch.out"
+	printf '# new deployment edit\n' >>"$deployment/v2/export/watched.desktop"
+	for _ in {1..100}; do
+		grep -Fq watched.desktop "$work/watch.out" && break
+		sleep 0.02
+	done
+	grep -Fq watched.desktop "$work/watch.out"
+	[[ $(watch_child_for_path "$watch_pid" "$deployment/v2/export") == "$new_child" ]]
+	: >"$work/watch.out"
+	printf 'unrelated\n' >"$deployment/v2/export/unrelated.txt"
+	sleep 0.1
+	[[ ! -s $work/watch.out ]]
+
+	# Replacing an ancestor directory must move the watch to the new inode.
+	mv "$deployment/v2/export" "$deployment/v2/export.previous"
+	mkdir "$deployment/v2/export"
+	cp "$work/data/applications/firefox.desktop" "$deployment/v2/export/watched.desktop"
+	for _ in {1..100}; do
+		rearmed_child=$(watch_child_for_path "$watch_pid" "$deployment/v2/export" 2>/dev/null || true)
+		[[ -n $rearmed_child && $rearmed_child != "$new_child" ]] && break
+		sleep 0.02
+	done
+	[[ -n $rearmed_child && $rearmed_child != "$new_child" ]]
+	: >"$work/watch.out"
+	printf '# replaced directory edit\n' >>"$deployment/v2/export/watched.desktop"
+	for _ in {1..100}; do
+		grep -Fq watched.desktop "$work/watch.out" && break
+		sleep 0.02
+	done
+	grep -Fq watched.desktop "$work/watch.out"
+
+	# Importing a populated nested directory emits only a directory move event.
+	mkdir -p "$work/import/vendor" "$work/import-targets"
+	cp "$work/data/applications/firefox.desktop" "$work/import-targets/imported.desktop"
+	ln -s "$work/import-targets/imported.desktop" "$work/import/vendor/imported.desktop"
+	mv "$work/import/vendor" "$work/data/applications/imported-vendor"
+	for _ in {1..100}; do
+		import_child=$(watch_child_for_path "$watch_pid" "$work/import-targets" 2>/dev/null || true)
+		[[ -z $import_child ]] || break
+		sleep 0.02
+	done
+	[[ -n $import_child ]]
+	: >"$work/watch.out"
+	printf '# imported target edit\n' >>"$work/import-targets/imported.desktop"
+	for _ in {1..100}; do
+		grep -Fq imported.desktop "$work/watch.out" && break
+		sleep 0.02
+	done
+	grep -Fq imported.desktop "$work/watch.out"
 
 	printf '[Default Applications]\n' >"$work/data/applications/mimeapps.list"
 	printf '[Default Applications]\n' >"$work/data/applications/fedora-mimeapps.list"
@@ -1155,6 +1276,7 @@ if command -v inotifywait >/dev/null 2>&1; then
 	[[ -s $owner_pid_file ]]
 	watch_pid=$(<"$owner_pid_file")
 	watch_identity=$(process_identity "$watch_pid")
+	# Config roots, physical applications, generation, target, monitor and owner.
 	descendant_identities=()
 	for _ in {1..100}; do
 		descendant_identities=()
@@ -1163,10 +1285,10 @@ if command -v inotifywait >/dev/null 2>&1; then
 			descendant_identity=$(process_identity "$descendant_pid" 2>/dev/null || true)
 			[[ -z $descendant_identity ]] || descendant_identities+=("$descendant_identity")
 		done < <(pgrep -P "$watch_pid" 2>/dev/null || true)
-		((${#descendant_identities[@]} == 6)) && break
+		((${#descendant_identities[@]} == 7)) && break
 		sleep 0.02
 	done
-	((${#descendant_identities[@]} == 6))
+	((${#descendant_identities[@]} == 7))
 	kill -KILL "$watch_owner_pid"
 	wait "$watch_owner_pid" 2>/dev/null || true
 	watch_owner_pid=
