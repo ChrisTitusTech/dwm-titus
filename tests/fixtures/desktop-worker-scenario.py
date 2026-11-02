@@ -118,6 +118,8 @@ def boundary(args, cwd=None, timeout=60, capture=True):
                 raise subprocess.TimeoutExpired(args, timeout)
             if scenario == "begin-denied":
                 raise update.CommandFailure("authorization denied", 126)
+            if scenario == "begin-broken":
+                raise update.CommandFailure("authorization pipe closed", 1)
             (state / "reserved").write_text("reserved")
             return ""
         if args[2] == "packages":
@@ -164,11 +166,16 @@ class FixtureSession:
         self.helper = helper
         self.started = False
         self.broken = False
+        self.process = None
 
     def start(self):
         if not self.started:
+            if scenario == "begin-prespawn":
+                self.broken = True
+                raise OSError("pkexec binary not found")
             assert update.read_json(state / "status.json")["authorization"], "First approval must be visible"
             self.started = True
+            self.process = object()
             with (state / "elevations").open("a") as stream:
                 stream.write("one approval\n")
 
@@ -177,7 +184,7 @@ class FixtureSession:
         try:
             return boundary(["/usr/bin/pkexec", self.helper, action, *args], timeout=timeout, capture=False)
         except update.CommandFailure:
-            if scenario in ("apply-broken", "apply-broken-denied"):
+            if scenario in ("apply-broken", "apply-broken-denied", "begin-broken"):
                 self.broken = True
             raise
 

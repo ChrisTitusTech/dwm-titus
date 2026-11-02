@@ -475,9 +475,9 @@ scan_desktop() {
 		if quickshell_compatible "$version" "$detail"; then
 			emit_check desktop ok quickshell-version "Quickshell" "Available" "$detail" restart-quickshell "Restart Quickshell" user
 		elif [[ -n $version ]]; then
-			emit_check desktop error quickshell-version "Quickshell" "Outdated" "$detail; version 0.3.0 or the supported Fedora 44 snapshot is required" install-dependencies "Open dependency installer" user
+			emit_check desktop error quickshell-version "Quickshell" "Outdated" "$detail; version 0.3.0 or the supported Fedora 44 snapshot is required" "" "" none
 		else
-			emit_check desktop error quickshell-version "Quickshell" "Version unavailable" "Could not verify Quickshell 0.3.0 or the supported Fedora 44 snapshot" install-dependencies "Open dependency installer" user
+			emit_check desktop error quickshell-version "Quickshell" "Version unavailable" "Could not verify Quickshell 0.3.0 or the supported Fedora 44 snapshot" "" "" none
 		fi
 	else
 		emit_check desktop error quickshell-version "Quickshell" "Missing" "The managed shell requires Quickshell 0.3.0 or the supported Fedora 44 snapshot" install-dependencies "Open dependency installer" user

@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import pwd
 import re
 import shutil
 import signal
@@ -180,6 +181,34 @@ def trusted_parent(path, create=False):
     trusted(path, True)
 
 
+def supported_terminal_installed(uid=None):
+    search_paths = os.environ.get("PATH", "")
+    paths = [p for p in search_paths.split(os.pathsep) if p] + ["/usr/local/bin", "/usr/bin", "/bin"]
+    if uid is not None and uid != 0:
+        try:
+            user_home = Path(pwd.getpwuid(uid).pw_dir)
+            paths.insert(0, str(user_home / ".local/bin"))
+        except (KeyError, OSError):
+            pass
+    candidate_path = os.pathsep.join(dict.fromkeys(paths))
+    return any(shutil.which(term, path=candidate_path) for term in (
+        "dwmterm", "alacritty", "kitty", "st", "warp-terminal", "xterm"))
+
+
+def power_profiles_provider_installed():
+    return subprocess.run(
+        ["/usr/bin/rpm", "-q", "--whatprovides", "ppd-service"],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL,
+        timeout=10).returncode == 0
+
+
+def xserver_installed():
+    return any(shutil.which(cmd, path="/usr/local/bin:/usr/bin:/bin") for cmd in ("Xorg", "Xlibre")) or subprocess.run(
+        ["/usr/bin/rpm", "-q", "--whatprovides", "xserver"],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL,
+        timeout=10).returncode == 0
+
+
 def validate_packages(packages):
     if (not isinstance(packages, list) or len(packages) > 256
             or any(not isinstance(item, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9+_.-]{0,127}", item)
@@ -187,18 +216,26 @@ def validate_packages(packages):
         fail("Invalid desktop package names")
 
 
-def install_packages(packages, interactive=False):
+def install_packages(packages, interactive=False, skip_unavailable=False):
     validate_packages(packages)
     missing = [package for package in packages if subprocess.run(
         ["/usr/bin/rpm", "-q", "--quiet", "--", package], stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL, timeout=10).returncode != 0]
     if missing:
-        print("Installing required desktop packages: " + ", ".join(missing), flush=True)
-        subprocess.run(["/usr/bin/dnf", "install", *([] if interactive else ["-y"]), "--", *missing], check=True,
+        label = "optional" if skip_unavailable else "required"
+        print(f"Installing {label} desktop packages: " + ", ".join(missing), flush=True)
+        flags = []
+        if not interactive:
+            flags.append("-y")
+        if skip_unavailable:
+            flags.append("--skip-unavailable")
+        subprocess.run(["/usr/bin/dnf", "install", *flags, "--", *missing], check=True,
                        env={"PATH": "/usr/bin:/bin", "HOME": "/root", "LANG": "C.UTF-8"},
                        stdin=None if interactive else subprocess.DEVNULL, cwd="/", timeout=1800)
-    elif interactive:
+    elif interactive and not skip_unavailable:
         print("All desktop dependency packages are installed.", flush=True)
+
+
 
 
 def validate_candidate(candidate, installed):
@@ -507,16 +544,44 @@ def perform(args, uid):
                 trusted(mapping)
                 if fingerprint(mapping) != manifest["files"].get(str(mapping)):
                     fail("Installed package map changed; update or restore the managed helper first")
-                packages = []
-                for profile in ("required", "recommended", "source-update"):
+                required_profiles = ["required", "source-update", "desktop", "system-management", "theme", "fonts"]
+                if not supported_terminal_installed(uid):
+                    required_profiles.append("terminal-primary")
+                required_packages = []
+                for profile in required_profiles:
                     result = subprocess.run(["/usr/bin/bash", str(mapping), "fedora", profile],
                                             check=True, capture_output=True, text=True, stdin=subprocess.DEVNULL,
                                             env={"PATH": "/usr/bin:/bin", "HOME": "/root", "LANG": "C.UTF-8"},
                                             cwd="/", timeout=10)
-                    packages.extend(result.stdout.splitlines())
-                if not packages:
+                    required_packages.extend(result.stdout.splitlines())
+                if "power-profiles-daemon" in required_packages and power_profiles_provider_installed():
+                    required_packages = [pkg for pkg in required_packages if pkg != "power-profiles-daemon"]
+                if "xorg-x11-server-Xorg" in required_packages and xserver_installed():
+                    required_packages = [pkg for pkg in required_packages if pkg != "xorg-x11-server-Xorg"]
+
+                optional_profiles = ["screenshot-optional", "theme-gtk"]
+                optional_packages = []
+                for profile in optional_profiles:
+                    result = subprocess.run(["/usr/bin/bash", str(mapping), "fedora", profile],
+                                            check=True, capture_output=True, text=True, stdin=subprocess.DEVNULL,
+                                            env={"PATH": "/usr/bin:/bin", "HOME": "/root", "LANG": "C.UTF-8"},
+                                            cwd="/", timeout=10)
+                    optional_packages.extend(result.stdout.splitlines())
+                if "power-profiles-daemon" in optional_packages and power_profiles_provider_installed():
+                    optional_packages = [pkg for pkg in optional_packages if pkg != "power-profiles-daemon"]
+
+                required_set = set(required_packages)
+                optional_packages = [pkg for pkg in optional_packages if pkg not in required_set]
+
+                if not required_packages and not optional_packages:
                     fail("Installed desktop package map is empty")
-                install_packages(sorted(set(packages)), interactive=True)
+
+                if required_packages:
+                    install_packages(sorted(required_set), interactive=True, skip_unavailable=False)
+                if optional_packages:
+                    install_packages(sorted(set(optional_packages)), interactive=True, skip_unavailable=True)
+
+
             else:
                 install_packages(manifest["packages"])
         else:

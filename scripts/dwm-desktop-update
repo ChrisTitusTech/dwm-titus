@@ -373,7 +373,7 @@ def trusted_installation(manifest_path):
 
 def record_system(args):
     source = Path(args.source_dir).resolve()
-    stage = Path(args.destdir) if args.destdir else Path("/")
+    stage = Path(args.destdir).resolve() if args.destdir else Path("/")
     layout = {key: str(Path(getattr(args, key)).absolute()) for key in ("prefix", "manprefix", "xsessions", "datadir")}
     prefix = Path(layout["prefix"])
     files = [prefix / "bin" / name for name in ["dwm", *args.commands]]
@@ -393,14 +393,22 @@ def record_system(args):
                 "layout": layout, "packages": sorted(set(args.packages)),
                 "files": {str(path): fingerprint(stage / str(path).lstrip("/")) for path in sorted(files)}}
     target = stage / str(prefix / "share/dwm-titus/desktop-install.json").lstrip("/")
-    if not args.destdir and target.exists():
-        trusted_installation(target)
+    if stage == Path("/") and target.exists():
+        try:
+            trusted_installation(target)
+        except RuntimeError:
+            if os.geteuid() == 0 or target.stat().st_uid != os.getuid() or target.stat().st_mode & 0o022:
+                raise
+
         previous = read_json(target)
         # A source reinstall can have an older command list. Keep ownership of
         # surviving managed files without blessing any local content changes.
-        for name, record in previous["files"].items():
-            if name not in manifest["files"] and os.path.lexists(name):
-                manifest["files"][name] = record
+        if isinstance(previous, dict) and isinstance(previous.get("files"), dict):
+            for name, record in previous["files"].items():
+                if name not in manifest["files"] and os.path.lexists(name):
+                    manifest["files"][name] = record
+
+
     target.parent.mkdir(parents=True, exist_ok=True, mode=0o755)
     os.chmod(target.parent, 0o755)
     write_json(target, manifest)
@@ -911,20 +919,26 @@ def install_dependencies():
     """Open a package-only repair without changing desktop update receipts or status."""
     if not sys.stdin.isatty():
         raise RuntimeError("Dependency repair requires an interactive terminal")
-    with locked(paths()[2]):
-        if status_read(paths()[2])["state"] in ACTIVE | {"interrupted"}:
-            raise RuntimeError("Finish or recover the desktop update before repairing dependencies")
-        manifest_path, manifest = installation()
-        helper = Path(manifest["layout"]["prefix"]) / "libexec/dwm-titus/dwm-desktop-update-root"
-        trusted_file(helper, executable=True)
-        authorization = ["/usr/bin/pkexec"]
-        try:
-            if subprocess.run(["/usr/bin/sudo", "-n", "true"], capture_output=True, timeout=10).returncode == 0:
-                authorization = ["/usr/bin/sudo", "-n"]
-        except (OSError, subprocess.TimeoutExpired):
-            pass
-        print("Install missing desktop dependencies. Review and confirm DNF's package transaction.", flush=True)
-        run([*authorization, helper, "repair-dependencies", digest(manifest_path)], timeout=1800, capture=False)
+    try:
+        with locked(paths()[2]):
+            if status_read(paths()[2])["state"] in ACTIVE | {"interrupted"}:
+                raise RuntimeError("Finish or recover the desktop update before repairing dependencies")
+            manifest_path, manifest = installation()
+            helper = Path(manifest["layout"]["prefix"]) / "libexec/dwm-titus/dwm-desktop-update-root"
+            trusted_file(helper, executable=True)
+            authorization = ["/usr/bin/pkexec"]
+            try:
+                if subprocess.run(["/usr/bin/sudo", "-n", "true"], capture_output=True, timeout=10).returncode == 0:
+                    authorization = ["/usr/bin/sudo", "-n"]
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+            print("Install missing desktop dependencies. Review and confirm DNF's package transaction.", flush=True)
+            # The privileged helper bounds each map/RPM/DNF operation. Wait for
+            # its final exit, including both transactions, so this lock cannot
+            # be released while a timed-out pkexec leaves package work behind.
+            run([*authorization, helper, "repair-dependencies", digest(manifest_path)], timeout=None, capture=False)
+    except BlockingIOError as error:
+        raise RuntimeError("Desktop update is active; finish or recover it before repairing dependencies") from error
 
 
 def launch(expected):
@@ -1288,13 +1302,14 @@ def worker(operation):
             except (OSError, ValueError, KeyError, RuntimeError, subprocess.SubprocessError) as error:
                 print(str(error), flush=True)
                 denied = isinstance(error, CommandFailure) and error.returncode in (126, 127)
-                if denied and not system_applied and not getattr(privileged, "broken", False):
+                spawned = getattr(privileged, "process", None) is not None
+                if (denied and not system_applied and not reservation_confirmed) or not spawned:
                     system_started = False
-                if isinstance(error, AuthorizationTimeout) and reservation_started:
-                    # pkexec may already have dispatched. Retain recovery ownership,
-                    # but do not hide another password request behind the timeout.
+                elif reservation_started and (isinstance(error, AuthorizationTimeout) or getattr(privileged, "broken", False)):
+                    # pkexec may already have dispatched or the privileged session
+                    # broke after reserving the root journal. Retain recovery ownership.
                     system_started = True
-                if (reservation_started and not system_applied
+                if (reservation_started and not system_applied and spawned
                         and not isinstance(error, AuthorizationTimeout) and not getattr(privileged, "broken", False)):
                     save_status(state, value, state="recovering", percent=-1,
                                 detail="Update failed: " + str(error) + ". Releasing the preparation reservation...")
