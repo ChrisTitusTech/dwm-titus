@@ -70,6 +70,16 @@ SCRIPT
 cat >"$work/fail-bin/inotifywait" <<'SCRIPT'
 #!/bin/sh
 set -eu
+if [ -n "${DWM_TEST_TARGET_WATCH_RACE:-}" ]; then
+	for argument do
+		if [ "$argument" = "$DWM_TEST_TARGET_WATCH_RACE" ] &&
+			[ ! -e "${DWM_TEST_TARGET_WATCH_MARKER:?}" ]; then
+			mv -- "$DWM_TEST_TARGET_WATCH_RACE" "$DWM_TEST_TARGET_WATCH_RACE.removed"
+			printf '%s\n' "$$" >"$DWM_TEST_TARGET_WATCH_MARKER"
+			exit 1
+		fi
+	done
+fi
 if [ -n "${DWM_TEST_WATCH_SETUP_TARGET:-}" ]; then
 	for argument do
 		if [ "$argument" = "$DWM_TEST_WATCH_SETUP_TARGET" ] &&
@@ -1256,6 +1266,52 @@ if command -v inotifywait >/dev/null 2>&1; then
 		sleep 0.02
 	done
 	grep -Fq hotkeys.toml "$work/watch-setup-race.out"
+	kill "$watch_pid"
+	wait "$watch_pid" 2>/dev/null || true
+	watch_pid=
+
+	# Lose an external target directory after collection, before target observer
+	# startup. No target observer exists yet to report the rename itself.
+	raced_target=$work/watch-target-race
+	mkdir -p "$raced_target/export"
+	cp "$work/data/applications/replacement.desktop" "$raced_target/export/race.desktop"
+	ln -s "$raced_target/export/race.desktop" "$work/data/applications/race.desktop"
+	target_race_marker=$work/watch-target-race.marker
+	env "${env_common[@]}" PATH="$work/fail-bin:$work/bin:/usr/bin:/bin" \
+		DWM_TEST_REAL_MV="$REAL_MV" DWM_TEST_REAL_INOTIFYWAIT="$REAL_INOTIFYWAIT" \
+		DWM_TEST_TARGET_WATCH_RACE="$raced_target/export" \
+		DWM_TEST_TARGET_WATCH_MARKER="$target_race_marker" \
+		"$BASH_BIN" "$HELPER" watch >"$work/watch-target-race.out" \
+		2>"$work/watch-target-race.err" &
+	watch_pid=$!
+	for _ in {1..100}; do
+		[[ -s $target_race_marker ]] && break
+		sleep 0.02
+	done
+	[[ -s $target_race_marker ]]
+	failed_target_child=$(<"$target_race_marker")
+	for _ in {1..100}; do
+		recovered_target_child=$(watch_child_for_path "$watch_pid" "$raced_target" 2>/dev/null || true)
+		[[ -n $recovered_target_child && $recovered_target_child != "$failed_target_child" ]] && break
+		sleep 0.02
+	done
+	[[ -n $recovered_target_child && $recovered_target_child != "$failed_target_child" ]]
+	process_identity_is_live "$(process_identity "$watch_pid")"
+	mkdir "$raced_target/export"
+	for _ in {1..100}; do
+		recovered_leaf_child=$(watch_child_for_path "$watch_pid" "$raced_target/export" 2>/dev/null || true)
+		[[ -n $recovered_leaf_child && $recovered_leaf_child != "$recovered_target_child" ]] && break
+		sleep 0.02
+	done
+	[[ -n $recovered_leaf_child && $recovered_leaf_child != "$recovered_target_child" ]]
+	cp "$work/data/applications/replacement.desktop" "$raced_target/export/race.desktop"
+	: >"$work/watch-target-race.out"
+	printf '# recovered target edit\n' >>"$raced_target/export/race.desktop"
+	for _ in {1..100}; do
+		grep -Fq race.desktop "$work/watch-target-race.out" && break
+		sleep 0.02
+	done
+	grep -Fq race.desktop "$work/watch-target-race.out"
 	kill "$watch_pid"
 	wait "$watch_pid" 2>/dev/null || true
 	watch_pid=

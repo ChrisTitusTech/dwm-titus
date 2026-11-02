@@ -1691,6 +1691,15 @@ watch_defaults() {
 				;;
 			control)
 				restart=0
+				# A target directory may disappear or become unsafe before its
+				# observer starts; rebuild from surviving ancestors as for config.
+				for dir in "${desktop_target_dirs[@]}"; do
+					if [[ ! -d $dir || ! -r $dir || ! -x $dir ]] ||
+						! path_has_no_symlink_components "$dir"; then
+						restart=1
+						break
+					fi
+				done
 				if [[ $config_watch_mode == config ]]; then
 					if [[ ! -d $config_watch_target || -L $config_watch_target ]] ||
 						! path_has_no_symlink_components "$config_watch_target"; then
