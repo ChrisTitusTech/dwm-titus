@@ -173,7 +173,9 @@ Scope {
     function loadHistory() {
         root.historyLoaded = true;
         if (!root.settingsReady || root.historyReady) return;
-        const stored = root.confirmedPersistence ? root.toArray(historyFile.entries) : [];
+        const savedEntries = root.toArray(historyFile.entries);
+        if (!root.confirmedPersistence && savedEntries.length > 0) root.wipePending = true;
+        const stored = root.confirmedPersistence ? savedEntries : [];
         const entries = [];
 
         for (const item of stored) {
@@ -190,7 +192,8 @@ Scope {
 
         root.entries = entries.slice(0, root.maxEntries);
         root.historyReady = true;
-        root.flushPendingWipe();
+        // Finish FileView load notification before starting its atomic write.
+        Qt.callLater(root.flushPendingWipe);
         root.flushPendingCaptures();
 
         if (root.savePending) {

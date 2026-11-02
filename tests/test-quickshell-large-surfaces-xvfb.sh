@@ -4,7 +4,7 @@ set -eu
 test_repo=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 repo=${DWM_LARGE_SURFACE_REPO:-$test_repo}
 
-for command_name in Xvfb quickshell xdotool xprop getconf; do
+for command_name in Xvfb quickshell xdotool xprop getconf xclip; do
 	if ! command -v "$command_name" >/dev/null 2>&1; then
 		printf 'SKIP: %s is unavailable\n' "$command_name"
 		exit 77
@@ -70,6 +70,7 @@ cleanup() {
 		[ ! -f "$work/quickshell.log" ] || tail -80 "$work/quickshell.log" >&2
 		[ ! -f "$work/dwm.log" ] || tail -40 "$work/dwm.log" >&2
 	fi
+	[ -n "${clipboard_client_pid:-}" ] && kill "$clipboard_client_pid" 2>/dev/null
 	[ -n "${quickshell_pid:-}" ] && kill "$quickshell_pid" 2>/dev/null
 	[ -n "${dwm_pid:-}" ] && kill "$dwm_pid" 2>/dev/null
 	[ -n "${xvfb_pid:-}" ] && kill "$xvfb_pid" 2>/dev/null
@@ -552,6 +553,41 @@ done
 [ "$(ipc notifications historyLatestSummary)" = 'Critical notification' ]
 ipc notifications clear >/dev/null
 ipc notifications resetPolicy >/dev/null
+
+test_stage='validating clipboard history surface and capture'
+ipc launcher open >/dev/null
+wait_window '^dwm launcher$' >/dev/null
+ipc clipboard open >/dev/null
+clipboard_window=$(wait_window '^dwm clipboard$')
+capture_window clipboard "$clipboard_window"
+if DISPLAY=$display xdotool search --onlyvisible --name '^dwm launcher$' >/dev/null 2>&1; then
+	printf 'Clipboard history left the launcher open\n' >&2
+	exit 1
+fi
+printf 'isolated clipboard capture' >"$work/clipboard-text"
+DISPLAY=$display xclip -selection clipboard -quiet -loops 0 <"$work/clipboard-text" >"$work/xclip.log" 2>&1 &
+clipboard_client_pid=$!
+i=0
+while [ "$i" -lt 100 ]; do
+	[ "$(ipc clipboard count)" -gt 0 ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$(ipc clipboard count)" -gt 0 ]
+[ "$(ipc clipboard persistence)" = false ]
+[ ! -e "$home/.cache/dwm-titus/clipboard-history.json" ]
+DISPLAY=$display xdotool windowactivate --sync "$clipboard_window"
+DISPLAY=$display xdotool key Escape
+i=0
+while [ "$i" -lt 100 ]; do
+	if ! DISPLAY=$display xdotool search --onlyvisible --name '^dwm clipboard$' >/dev/null 2>&1; then break; fi
+	i=$((i + 1))
+	sleep 0.05
+done
+if DISPLAY=$display xdotool search --onlyvisible --name '^dwm clipboard$' >/dev/null 2>&1; then
+	printf 'Escape did not close clipboard history\n' >&2
+	exit 1
+fi
 
 test_stage='sampling closed-shell CPU usage'
 clock_ticks=$(getconf CLK_TCK)

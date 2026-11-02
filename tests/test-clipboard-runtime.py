@@ -133,7 +133,18 @@ with tempfile.TemporaryDirectory(prefix="clipboard-runtime-") as directory, \
             time.sleep(.05)
         assert not json.loads(history.read_text())['entries'], 'deferred wipe was lost'
         assert json.loads(settings.read_text())['persistenceEnabled'] is False
-        print('Clipboard opt-in, private storage, failed saves, idle and deferred opt-out: PASS')
+        process.terminate()
+        process.wait(timeout=5)
+        history.write_text(json.dumps({'entries': [{'text': 'leftover private text', 'timestamp': 1}]}))
+        process = subprocess.Popen(['quickshell', '--no-duplicate', '--path', str(shell / 'shell.qml')],
+                                   env=env, stdout=shell_log, stderr=subprocess.STDOUT)
+        wait_state(lambda state: state['ready'] and not state['wipe'])
+        for _ in range(100):
+            if not json.loads(history.read_text())['entries']:
+                break
+            time.sleep(.05)
+        assert not json.loads(history.read_text())['entries'], 'restart retained opted-out history'
+        print('Clipboard opt-in, private storage, failed saves, idle and restarted opt-out: PASS')
     except BaseException:
         shell_log.flush()
         print((work / 'quickshell.log').read_text())

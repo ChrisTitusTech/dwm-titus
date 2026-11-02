@@ -53,6 +53,7 @@ Rectangle {
         Text {
             Layout.fillWidth: true
             text: root.preview
+            textFormat: Text.PlainText
             color: root.selected ? Theme.menuSelectedText : root.hovered ? Theme.menuHoverText : Theme.menuText
             font.family: Theme.fontFamily
             font.pixelSize: Theme.bodyFontSize
