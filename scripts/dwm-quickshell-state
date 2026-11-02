@@ -18,7 +18,9 @@ clean_line() {
 
 root_property_value() {
 	prop=$1
-	xprop -root "$prop" 2>/dev/null | sed -n 's/^[^=]*= //p'
+	# xprop prints WINDOW lists as "NAME(WINDOW): window id # 0x1, 0x2".
+	xprop -root "$prop" 2>/dev/null |
+		sed -n -e 's/^[^=]*= //p' -e 's/^[^:]*: window id # //p'
 }
 
 root_status() {
@@ -62,20 +64,35 @@ desktop_names() {
 active_window_id() {
 	xdotool getactivewindow 2>/dev/null || {
 		root_property_value _NET_ACTIVE_WINDOW |
-			sed -n 's/^window id # //p' |
 			awk '$1 != "0x0" { print $1; exit }'
 	}
 }
 
-occupied_workspaces() {
+# One xprop per client: "id<TAB>desktop<TAB>pid<TAB>class", empty fields as "-".
+client_rows() {
 	root_property_value _NET_CLIENT_LIST |
 		tr ',' '\n' |
+		awk 'NF { print $NF }' |
 		while IFS= read -r window_id; do
-			window_id=$(printf '%s\n' "$window_id" | awk '{ print $NF }')
-			[ -n "$window_id" ] || continue
-			xprop -id "$window_id" _NET_WM_DESKTOP 2>/dev/null |
-				awk -F'= ' '$2 ~ /^[0-9]+$/ && $2 != 4294967295 { print $2 }'
-		done |
+			xprop -id "$window_id" _NET_WM_DESKTOP _NET_WM_PID WM_CLASS 2>/dev/null |
+				awk -F'= ' -v id="$window_id" '
+					/^_NET_WM_DESKTOP/ && $2 ~ /^[0-9]+$/ { desktop = $2 }
+					/^_NET_WM_PID/ && $2 ~ /^[0-9]+$/ { pid = $2 }
+					/^WM_CLASS/ {
+						gsub(/"/, "", $2)
+						split($2, classes, /, /)
+						class = tolower(classes[2])
+					}
+					END {
+						printf "%s\t%s\t%s\t%s\n", id, desktop == "" ? "-" : desktop,
+							pid == "" ? "-" : pid, class == "" ? "-" : class
+					}'
+		done
+}
+
+occupied_workspaces() {
+	printf '%s\n' "$1" |
+		awk -F'\t' '$2 ~ /^[0-9]+$/ && $2 != 4294967295 { print $2 }' |
 		sort -nu |
 		paste -sd '|' -
 }
@@ -89,24 +106,17 @@ fullscreen_monitors() {
 }
 
 running_apps() {
-	seen='|'
-	root_property_value _NET_CLIENT_LIST |
-		tr ',' '\n' |
-		while IFS= read -r window_id; do
-			window_id=$(printf '%s\n' "$window_id" | awk '{ print $NF }')
-			[ -n "$window_id" ] || continue
-			pid=$(xprop -id "$window_id" _NET_WM_PID 2>/dev/null | awk -F'= ' '$2 ~ /^[0-9]+$/ { print $2; exit }')
-			if [ -n "$pid" ] && [ "$(ps -o uid= -p "$pid" 2>/dev/null | awk '{ print $1 }')" = 0 ]; then
-				continue
-			fi
-			class=$(window_class "$window_id" || true)
-			[ -n "$class" ] || continue
-			case $seen in
-			*"|$class|"*) continue ;;
-			esac
-			seen="$seen$class|"
-			printf '%s:%s\n' "$window_id" "$class"
-		done |
+	pids=$(printf '%s\n' "$1" | awk -F'\t' '$3 ~ /^[0-9]+$/ { print $3 }' | paste -sd, -)
+	root_pids=
+	if [ -n "$pids" ]; then
+		root_pids=$(ps -o uid=,pid= -p "$pids" 2>/dev/null | awk '$1 == 0 { print $2 }' | paste -sd, -)
+	fi
+	printf '%s\n' "$1" |
+		awk -F'\t' -v root_pids=",$root_pids," '
+			NF < 4 || $4 == "-" { next }
+			$3 != "-" && index(root_pids, "," $3 ",") { next }
+			seen[$4]++ { next }
+			{ print $1 ":" $4 }' |
 		paste -sd '|' -
 }
 
@@ -156,9 +166,10 @@ show_state() {
 	class=$(window_class "$window_id" || true)
 	class=${class:-application-x-executable}
 	status=$(root_status)
-	occupied=$(occupied_workspaces)
+	clients=$(client_rows)
+	occupied=$(occupied_workspaces "$clients")
 	fullscreen_monitors=$(fullscreen_monitors)
-	apps=$(running_apps)
+	apps=$(running_apps "$clients")
 	monitor_desktops=$(
 		root_property_value _DWM_MONITOR_DESKTOPS |
 			tr -d '[:space:]'
