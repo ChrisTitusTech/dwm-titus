@@ -247,6 +247,21 @@ cp "$work/data/applications/firefox.desktop" "$work/outside-applications/escaped
 ln -s "$work/outside-applications" "$work/data/applications/linked"
 ln -s "$work/data/applications/firefox.desktop" \
 	"$work/data/applications/linked-leaf.desktop"
+ln -s missing.desktop "$work/data/applications/broken.desktop"
+ln -s loop.desktop "$work/data/applications/loop.desktop"
+ln -s oversized.desktop "$work/data/applications/linked-large.desktop"
+ln -s ../firefox.desktop "$work/data/applications/vendor/linked.desktop"
+ln -s .. "$work/data/applications/vendor/cycle"
+mkdir -p "$work/flatpak/exports/share/applications" "$work/flatpak/app/org.example.Pdf/current/active/export/share/applications"
+cat >"$work/flatpak/app/org.example.Pdf/current/active/export/share/applications/org.example.Pdf.desktop" <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=Flatpak PDF
+Exec=firefox %F
+MimeType=application/pdf;
+DESKTOP
+ln -s ../../../app/org.example.Pdf/current/active/export/share/applications/org.example.Pdf.desktop \
+	"$work/flatpak/exports/share/applications/org.example.Pdf.desktop"
 mkdir -p "$work/symlink-data"
 ln -s "$work/outside-applications" "$work/symlink-data/applications"
 
@@ -373,7 +388,7 @@ env_common=(
 	PATH="$work/bin:/usr/bin:/bin"
 	XDG_CONFIG_HOME="$work/home/.config"
 	XDG_DATA_HOME="$work/data"
-	XDG_DATA_DIRS="$work/empty"
+	XDG_DATA_DIRS="$work/flatpak/exports/share:$work/empty"
 	XDG_STATE_HOME="$work/home/.local/state"
 )
 
@@ -467,7 +482,7 @@ if grep -Fq $'candidate\tbrowser\tnodisplay-browser.desktop\t' <<<"$snapshot"; t
 	exit 1
 fi
 for rejected_id in hidden.desktop not-an-app.desktop chromium.desktop tryexec-stale.desktop duplicate.desktop \
-	oversized.desktop control.desktop linked-escaped.desktop linked-leaf.desktop st.desktop \
+	oversized.desktop control.desktop linked-escaped.desktop broken.desktop loop.desktop linked-large.desktop st.desktop \
 	hidden-image.desktop stale-image.desktop; do
 	if grep -Fq "$rejected_id" <<<"$snapshot"; then
 		printf 'Rejected desktop entry was emitted as a candidate: %s\n' "$rejected_id" >&2
@@ -475,6 +490,21 @@ for rejected_id in hidden.desktop not-an-app.desktop chromium.desktop tryexec-st
 	fi
 done
 grep -Fqx $'candidate\tbrowser\tvendor-nested.desktop\tNested Browser\tavailable\t\tInstalled desktop entry' <<<"$snapshot"
+
+# Symlinked Flatpak exports and nested desktop IDs support selection and readback.
+grep -Fqx $'candidate\tbrowser\tlinked-leaf.desktop\tFirefox\tavailable\t\tInstalled desktop entry' <<<"$snapshot"
+grep -Fqx $'candidate\tbrowser\tvendor-linked.desktop\tFirefox\tavailable\t\tInstalled desktop entry' <<<"$snapshot"
+grep -Fqx $'mime-candidate\tapplication/pdf\torg.example.Pdf.desktop\tFlatpak PDF\tavailable\tInstalled desktop entry' <<<"$snapshot"
+for desktop_id in org.example.Pdf.desktop vendor-linked.desktop linked-leaf.desktop; do
+	mime=application/pdf
+	[[ $desktop_id == org.example.Pdf.desktop ]] || mime=text/html
+	before_link=$(sha256sum "$work/home/.config/mimeapps.list")
+	run_helper set-mime "$mime" "$desktop_id" >/dev/null
+	snapshot=$(run_helper snapshot)
+	grep -Fq "$(printf 'mime\t%s\tavailable\t%s\t' "$mime" "$desktop_id")" <<<"$snapshot"
+	run_helper reset-mime "$mime" >/dev/null
+	[[ $(sha256sum "$work/home/.config/mimeapps.list") == "$before_link" ]]
+done
 
 # NoDisplay image handlers can be selected and restored without changing other defaults.
 image_defaults_before=$(sha256sum "$work/home/.config/mimeapps.list")
@@ -653,7 +683,9 @@ expect_status 1 run_helper set-role browser duplicate.desktop
 expect_status 1 run_helper set-role browser oversized.desktop
 expect_status 1 run_helper set-role browser control.desktop
 expect_status 1 run_helper set-role browser linked-escaped.desktop
-expect_status 1 run_helper set-role browser linked-leaf.desktop
+expect_status 1 run_helper set-role browser broken.desktop
+expect_status 1 run_helper set-role browser loop.desktop
+expect_status 1 run_helper set-role browser linked-large.desktop
 [[ ! -s $work/log ]]
 
 mv "$work/home/.config/mimeapps.list" "$work/mimeapps.target"
