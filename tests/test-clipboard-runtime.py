@@ -24,6 +24,7 @@ ShellRoot {
         function capture(text: string): void { model.capture(text); }
         function persist(enabled: bool): void { model.setPersistence(enabled); }
         function retry(): void { model.retrySave(); }
+        function clear(): void { model.clearAll(); }
         function deferHistory(): void { model.historyReady = false; }
         function finishHistory(): void { model.loadHistory(); }
     }
@@ -185,6 +186,21 @@ with tempfile.TemporaryDirectory(prefix="clipboard-runtime-") as directory, \
             assert json.loads(history.read_text())['entries'][0]['text'] == 'unreadable stored history'
             action('retry')
             wait_state(lambda state: not state['historyFailed'] and state['count'] == 2)
+            process.terminate()
+            process.wait(timeout=5)
+            history.chmod(0)
+            process = subprocess.Popen(['quickshell', '--no-duplicate', '--path', str(shell / 'shell.qml')],
+                                       env=env, stdout=shell_log, stderr=subprocess.STDOUT)
+            wait_state(lambda state: state['ready'] and state['historyFailed'])
+            action('clear')
+            history.chmod(0o600)
+            action('retry')
+            wait_state(lambda state: not state['historyFailed'] and state['count'] == 0)
+            for _ in range(100):
+                if not json.loads(history.read_text())['entries']:
+                    break
+                time.sleep(.05)
+            assert not json.loads(history.read_text())['entries'], 'Clear intent lost after history reload'
         print('Clipboard opt-in, private storage, failure recovery, idle and restarted opt-out: PASS')
     except BaseException:
         shell_log.flush()

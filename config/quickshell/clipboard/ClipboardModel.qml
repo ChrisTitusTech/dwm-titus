@@ -21,6 +21,7 @@ Scope {
     property bool historyReady: false
     property bool historyLoaded: false
     property bool historyLoadFailed: false
+    property bool clearPending: false
     property bool settingsReady: false
     property bool settingsWriting: false
     property bool requestedPersistence: false
@@ -179,7 +180,7 @@ Scope {
         if (!root.settingsReady || root.historyReady) return;
         const savedEntries = root.toArray(historyFile.entries);
         if (!root.confirmedPersistence && savedEntries.length > 0) root.wipePending = true;
-        const stored = root.confirmedPersistence ? savedEntries : [];
+        const stored = root.confirmedPersistence && !root.clearPending ? savedEntries : [];
         const entries = [];
 
         for (const item of stored) {
@@ -199,6 +200,7 @@ Scope {
         // Finish FileView load notification before starting its atomic write.
         Qt.callLater(root.flushPendingWipe);
         root.flushPendingCaptures();
+        if (root.clearPending) Qt.callLater(root.saveHistory);
 
         if (root.savePending) {
             root.savePending = false;
@@ -405,6 +407,7 @@ Scope {
     }
 
     function clearAll() {
+        root.clearPending = root.confirmedPersistence || root.historyLoadFailed;
         root.entries = [];
         root.saveHistory();
     }
@@ -443,6 +446,7 @@ Scope {
             root.loadHistory();
         }
         onSaved: {
+            root.clearPending = false;
             root.saveFailed = false;
             if (root.historyWiping) root.wipePending = false;
             root.historyWiping = false;

@@ -85,6 +85,17 @@ def array_end(text, name):
 
 
 def append_entries(path, name, text, entries):
+    if not re.search(rf"(?m)^[ \t]*{name}[ \t]*=[ \t]*\[", text):
+        header = re.search(rf"(?m)^[ \t]*\[\[((?:vars\.)?{name})\]\][ \t]*(?:#.*)?$", text)
+        if not header:
+            raise ValueError(f"missing {name} array")
+        migrated = text.rstrip() + "\n"
+        for entry in entries:
+            migrated += "\n[[" + header.group(1) + "]]\n"
+            for key, value in entry.items():
+                migrated += key + " = " + (toml_string(value) if isinstance(value, str) else str(value)) + "\n"
+        tomllib.loads(migrated)
+        return migrated
     end, needs_comma = array_end(text, name)
     prefix = text[:end]
     if needs_comma:
