@@ -147,11 +147,13 @@ class Observer(unittest.TestCase):
     def test_interpreter_hosted_keepass_is_rejected(self):
         mono = self.base / "mono"
         shutil.copy2(self.owner, mono)
-        log = self.base / (self._testMethodName + ".requests")
-        owner = self.start([mono, "KeePass.exe", "plain", "NEVER-EMIT-MONO-SECRET", log])
-        self.assertEqual(owner.stdout.readline().strip(), "ready")
-        self.assertIsNone(self.line(self.observer, 1.5))
-        self.assertFalse(log.exists(), "Interpreter-hosted manager was queried")
+        for index, application in enumerate(("KeePass.exe", "/home/test/vault dir/KeePass.exe")):
+            with self.subTest(launch_path=application):
+                log = self.base / (self._testMethodName + str(index) + ".requests")
+                owner = self.start([mono, application, "plain", "NEVER-EMIT-MONO-SECRET", log])
+                self.assertEqual(owner.stdout.readline().strip(), "ready")
+                self.assertIsNone(self.line(self.observer, 1.5))
+                self.assertFalse(log.exists(), "Interpreter-hosted manager was queried")
 
     def test_invalid_utf8_is_not_retained(self):
         events, requests = self.capture(self.owner, "invalid-utf8", "unused")
