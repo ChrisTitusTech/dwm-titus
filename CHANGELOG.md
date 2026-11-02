@@ -15,7 +15,10 @@ versions from `config.mk`.
   prefer Path when installed, with Thunar otherwise; existing MIME preferences
   remain unchanged. Keep GTK as the file chooser portal until Path supports
   cancellation through the portal request API.
-
+- Add an optional seconds display to the panel clock (off by default). Toggle
+  it in Settings > Appearance > Panel widgets or the Control Center Bar Widgets
+  page; it is stored in `panel-widgets.conf` and older files keep their widget
+  choices.
 - Add `fullscreen=1` window rules to open matching applications across the
   entire monitor without a top bar, gaps, or window borders. Title-based rules
   also apply once when a matching title arrives after the window opens.
