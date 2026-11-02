@@ -58,9 +58,11 @@ static int eligible_command(uint32_t pid, const char *exe)
     char path[64], argument[PATH_MAX];
     FILE *file;
     size_t used = 0, total = 0, argument_index = 0;
-    int ch, ok = 1;
+    int ch, ok = 1, shell;
     const char *base = strrchr(exe, '/');
     base = base ? base + 1 : exe;
+    shell = !strcmp(base, "bash") || !strcmp(base, "sh") ||
+        !strcmp(base, "dash") || !strcmp(base, "zsh");
     /* Only interpreter launch arguments identify another application. Browser
      * flags, filenames and arbitrary text arguments are not application IDs. */
     if (strcmp(base, "mono") && strcmp(base, "mono-sgen") && strcmp(base, "node") &&
@@ -74,10 +76,14 @@ static int eligible_command(uint32_t pid, const char *exe)
         if (!ch) {
             argument[used] = 0;
             /* Only executable-shaped arguments, never arbitrary shell text. */
-            if (argument_index && (!strcmp(argument, "-c") || !strcmp(argument, "-e") ||
-                !strcmp(argument, "--command") ||
-                ((!strcmp(base, "bash") || !strcmp(base, "sh") || !strcmp(base, "dash") ||
-                  !strcmp(base, "zsh")) && argument[0] == '-' && argument[1] != '-' && strchr(argument, 'c')))) {
+            if (argument_index && (
+                (shell && (!strcmp(argument, "--command") ||
+                 (argument[0] == '-' && argument[1] != '-' && strchr(argument, 'c')))) ||
+                (!strncmp(base, "python", 6) && !strcmp(argument, "-c")) ||
+                ((!strcmp(base, "node") || !strcmp(base, "nodejs")) &&
+                 (!strcmp(argument, "-e") || !strcmp(argument, "--eval") ||
+                  !strcmp(argument, "-p") || !strcmp(argument, "--print"))) ||
+                (!strncmp(base, "perl", 4) && (!strcmp(argument, "-e") || !strcmp(argument, "-E"))))) {
                 /* Inline interpreter code has no reliable executable identity.
                  * Do not inspect it as a path or infer secrets from its text. */
                 used = 0;
@@ -88,8 +94,6 @@ static int eligible_command(uint32_t pid, const char *exe)
                  * Otherwise an option operand could be mistaken for the app
                  * (e.g. mono --config file KeePass.exe). Fail closed rather
                  * than guess each interpreter's evolving option grammar. */
-                int shell = !strcmp(base, "bash") || !strcmp(base, "sh") ||
-                    !strcmp(base, "dash") || !strcmp(base, "zsh");
                 int known = !strcmp(argument, "--") ||
                     (shell && argument[1] && argument[1] != '-' &&
                      strspn(argument + 1, "abefhiklmnprstuvxBCEHPT") == strlen(argument + 1)) ||
