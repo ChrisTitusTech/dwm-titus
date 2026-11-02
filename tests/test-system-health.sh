@@ -37,6 +37,22 @@ case " $* " in
 *) exit 1 ;;
 esac
 SCRIPT
+cat >"$work/bin/df" <<'SCRIPT'
+#!/bin/sh
+[ "${DWM_TEST_DF_FAIL:-0}" != 1 ] || exit 1
+exec /usr/bin/df "$@"
+SCRIPT
+chmod +x "$work/bin/df"
+
+cat >"$work/bin/findmnt" <<'SCRIPT'
+#!/bin/sh
+case "$*" in
+'-n -o FSTYPE /sys/firmware/efi/efivars') printf 'efivarfs\n' ;;
+'-n -o USE% /sys/firmware/efi/efivars') printf '99%%\n' ;;
+*) exec /usr/bin/findmnt "$@" ;;
+esac
+SCRIPT
+chmod +x "$work/bin/findmnt"
 chmod +x "$work/bin/dnf" "$work/bin/quickshell" "$work/bin/systemctl" "$work/bin/xclip"
 
 DWM_HEALTH_XCLIP_OUTPUT="$work/clipboard.txt" \
@@ -86,6 +102,93 @@ grep -Fq $'check\tdesktop\tok\tquickshell-version\tQuickshell\tAvailable' "$work
 grep -Fq $'check\tservices\twarn\tuser-failed-user-broken-service\tuser-broken.service (user)' "$work/user.tsv"
 grep -Fq $'manage-user-service|user-broken.service\tService actions\tuser' "$work/user.tsv"
 grep -Fq $'meta\toverview\tok\tscan-user-complete' "$work/user.tsv"
+# Missing user files cannot be repaired by the package-only action.
+awk -F '\t' '$4 == "xinitrc" || $4 == "quickshell-config" { found++; if ($8 != "") exit 1 } END { if (found != 2) exit 1 }' "$work/user.tsv"
+
+# Non-package optional gaps must not emit install-dependencies
+grep -Fq $'check\tdependencies\twarn\txinitrc\t' "$work/user.tsv"
+if awk -F '\t' '$4 == "xinitrc" && $8 == "install-dependencies" { found=1 } END { exit !found }' "$work/user.tsv"; then
+	printf 'xinitrc unexpectedly offered install-dependencies repair action\n' >&2
+	exit 1
+fi
+awk -F '\t' '$4 == "xinitrc" && $8 == "" { found=1 } END { exit !found }' "$work/user.tsv"
+
+# Validate DNF audit timeout explanation
+cat >"$work/bin/dnf" <<'SCRIPT'
+#!/bin/sh
+sleep 5
+exit 0
+SCRIPT
+HOME="$work/home" \
+	DWM_HEALTH_OS_RELEASE="$work/os-release" \
+	DWM_HEALTH_COMMAND_TIMEOUT=2 \
+	DWM_HEALTH_PACKAGE_DB_TIMEOUT=1 \
+	PATH="$work/bin:/usr/bin:/bin" \
+	"$HELPER" scan-user >"$work/timeout.tsv"
+grep -Fq $'check\tdependencies\twarn\tpackage-database\tPackage database\tPackage audit needs attention\tPackage database audit timed out after 1s' "$work/timeout.tsv"
+
+# Reject invalid/unbounded audit durations and preserve valid positive seconds.
+cat >"$work/bin/dnf" <<'SCRIPT'
+#!/bin/sh
+printf 'audit ran\n' >>"${DWM_AUDIT_LOG:?}"
+SCRIPT
+cat >"$work/bin/timeout" <<'SCRIPT'
+#!/bin/sh
+duration=$1
+shift
+if [ "$1" = dnf ]; then
+    printf '%s\n' "$duration" >>"${DWM_AUDIT_TIMEOUT_LOG:?}"
+    exec "$@"
+fi
+exec /usr/bin/timeout "$duration" "$@"
+SCRIPT
+chmod +x "$work/bin/timeout"
+for audit_timeout in '' 0 -1 invalid 1.5 ' 7 ' 7; do
+	expected_timeout=60
+	[[ $audit_timeout == 7 ]] && expected_timeout=7
+	: >"$work/audit.log"
+	: >"$work/audit-timeout.log"
+	HOME="$work/home" DWM_HEALTH_OS_RELEASE="$work/os-release" \
+		DWM_AUDIT_LOG="$work/audit.log" DWM_AUDIT_TIMEOUT_LOG="$work/audit-timeout.log" \
+		DWM_HEALTH_COMMAND_TIMEOUT=2 DWM_HEALTH_PACKAGE_DB_TIMEOUT="$audit_timeout" PATH="$work/bin:/usr/bin:/bin" \
+		"$HELPER" scan-user >"$work/audit.tsv"
+	[[ $(cat "$work/audit-timeout.log") == "$expected_timeout" ]]
+	[[ $(cat "$work/audit.log") == 'audit ran' ]]
+	grep -Fq $'check\tdependencies\tok\tpackage-database' "$work/audit.tsv"
+done
+
+# A missing timeout utility must skip DNF instead of running it unbounded.
+cat >"$work/no-timeout-env" <<'SCRIPT'
+command() {
+    if [[ $1 == -v && ${2:-} == timeout ]]; then
+        return 1
+    fi
+    builtin command "$@"
+}
+SCRIPT
+: >"$work/audit.log"
+HOME="$work/home" DWM_HEALTH_OS_RELEASE="$work/os-release" \
+	DWM_AUDIT_LOG="$work/audit.log" BASH_ENV="$work/no-timeout-env" \
+	PATH="$work/bin:/usr/bin:/bin" "$HELPER" scan-user >"$work/no-timeout.tsv"
+[[ ! -s $work/audit.log ]]
+grep -Fq $'check\tdependencies\trestricted\tpackage-database\tPackage database\tPackage audit needs attention\ttimeout is unavailable; package database audit skipped' "$work/no-timeout.tsv"
+rm "$work/bin/timeout"
+# efivarfs is fixed-size firmware NVRAM, never a cleanable disk error.
+grep -Fq 'df -P -l -x tmpfs -x devtmpfs -x squashfs -x efivarfs' "$HELPER"
+grep -Fq 'df -Pi -l -x tmpfs -x devtmpfs -x squashfs -x efivarfs' "$HELPER"
+grep -Fq $'check\tstorage\tinfo\tdisk-efivars\tFirmware variables (efivarfs)\t99% used' "$work/user.tsv"
+if grep -Fq $'check\tstorage\terror\tdisk-sys-firmware-efi-efivars' "$work/user.tsv"; then
+	printf 'efivarfs storage was reported as an error\n' >&2
+	exit 1
+fi
+
+# Firmware state stays readable even when unrelated filesystem scans fail.
+HOME="$work/home" XDG_CONFIG_HOME="$work/home/.config" \
+	DWM_HEALTH_OS_RELEASE="$work/os-release" DWM_HEALTH_COMMAND_TIMEOUT=2 \
+	DWM_HEALTH_SYSTEMCTL_LOG="$work/systemctl.log" DWM_TEST_DF_FAIL=1 \
+	PATH="$work/bin:/usr/bin:/bin" "$HELPER" scan-user >"$work/df-failed.tsv"
+grep -Fq $'check\tstorage\tinfo\tdisk-efivars' "$work/df-failed.tsv"
+grep -Fq $'check\tstorage\trestricted\tstorage-usage' "$work/df-failed.tsv"
 
 HOME="$work/home" \
 	DWM_HEALTH_COMMAND_TIMEOUT=2 \

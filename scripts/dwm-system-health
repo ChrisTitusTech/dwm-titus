@@ -126,6 +126,16 @@ run_bounded() {
 	fi
 }
 
+run_bounded_timeout() {
+	local custom_timeout=$1
+	shift
+	if command -v timeout >/dev/null 2>&1; then
+		timeout "$custom_timeout" "$@"
+	else
+		"$@"
+	fi
+}
+
 first_lines() {
 	local count=${1:-20}
 	awk -v count="$count" 'NF { print; seen++; if (seen >= count) exit }'
@@ -343,7 +353,20 @@ scan_load() {
 scan_storage() {
 	local output source percent mount usage status id
 
-	if ! output=$(run_bounded df -P -l -x tmpfs -x devtmpfs -x squashfs 2>/dev/null); then
+	# efivarfs reports fixed-size firmware NVRAM, not a cleanable filesystem.
+	# Surface its usage as information instead of a disk error.
+	if command -v findmnt >/dev/null 2>&1 &&
+		[[ $(run_bounded findmnt -n -o FSTYPE /sys/firmware/efi/efivars 2>/dev/null) == efivarfs ]]; then
+		local efivars_usage
+		efivars_usage=$(run_bounded findmnt -n -o USE% /sys/firmware/efi/efivars 2>/dev/null || true)
+		emit_check storage info disk-efivars "Firmware variables (efivarfs)" \
+			"${efivars_usage:-unknown} used" "Firmware NVRAM; not a cleanable filesystem"
+	elif [[ -d /sys/firmware/efi ]]; then
+		emit_check storage restricted disk-efivars "Firmware variables (efivarfs)" \
+			"Unable to read firmware storage" "findmnt is unavailable, timed out, or efivarfs is not mounted"
+	fi
+
+	if ! output=$(run_bounded df -P -l -x tmpfs -x devtmpfs -x squashfs -x efivarfs 2>/dev/null); then
 		emit_check storage restricted storage-usage "Filesystem usage" "Unable to read local filesystems" "df failed or timed out"
 		return
 	fi
@@ -363,7 +386,7 @@ scan_storage() {
 		emit_check storage "$status" "disk-$id" "Filesystem $mount" "$usage% used" "$source"
 	done <<<"$output"
 
-	if output=$(run_bounded df -Pi -l -x tmpfs -x devtmpfs -x squashfs 2>/dev/null); then
+	if output=$(run_bounded df -Pi -l -x tmpfs -x devtmpfs -x squashfs -x efivarfs 2>/dev/null); then
 		while read -r source _ _ _ percent mount; do
 			[[ $source == Filesystem ]] && continue
 			usage=${percent%%%}
@@ -475,9 +498,9 @@ scan_desktop() {
 		if quickshell_compatible "$version" "$detail"; then
 			emit_check desktop ok quickshell-version "Quickshell" "Available" "$detail" restart-quickshell "Restart Quickshell" user
 		elif [[ -n $version ]]; then
-			emit_check desktop error quickshell-version "Quickshell" "Outdated" "$detail; version 0.3.0 or the supported Fedora 44 snapshot is required" install-dependencies "Open dependency installer" user
+			emit_check desktop error quickshell-version "Quickshell" "Outdated" "$detail; version 0.3.0 or the supported Fedora 44 snapshot is required" "" "" none
 		else
-			emit_check desktop error quickshell-version "Quickshell" "Version unavailable" "Could not verify Quickshell 0.3.0 or the supported Fedora 44 snapshot" install-dependencies "Open dependency installer" user
+			emit_check desktop error quickshell-version "Quickshell" "Version unavailable" "Could not verify Quickshell 0.3.0 or the supported Fedora 44 snapshot" "" "" none
 		fi
 	else
 		emit_check desktop error quickshell-version "Quickshell" "Missing" "The managed shell requires Quickshell 0.3.0 or the supported Fedora 44 snapshot" install-dependencies "Open dependency installer" user
@@ -560,8 +583,23 @@ scan_package_database() {
 	case $family in
 	fedora)
 		if command -v dnf >/dev/null 2>&1; then
-			if ! output=$(run_bounded dnf -q --cacheonly check 2>&1); then
-				status=warn
+			if command -v timeout >/dev/null 2>&1; then
+				local db_timeout=${DWM_HEALTH_PACKAGE_DB_TIMEOUT:-60}
+				if ! [[ $db_timeout =~ ^[1-9][0-9]*$ ]]; then
+					db_timeout=60
+				fi
+				if output=$(run_bounded_timeout "$db_timeout" dnf -q --cacheonly check 2>&1); then
+					:
+				else
+					local exit_code=$?
+					status=warn
+					if [[ $exit_code -eq 124 && -z $output ]]; then
+						output="Package database audit timed out after ${db_timeout}s"
+					fi
+				fi
+			else
+				status=restricted
+				output="timeout is unavailable; package database audit skipped"
 			fi
 		else
 			output="dnf is unavailable"
@@ -917,14 +955,9 @@ repair_user() {
 		systemctl --user restart "${units[@]}"
 		;;
 	install-dependencies)
-		local installer=$SCRIPT_DIR/../install.sh
-		if [[ -x $installer ]] && command -v dwm-terminal >/dev/null 2>&1; then
-			local quoted_dir
-			printf -v quoted_dir '%q' "${installer%/*}"
-			dwm-terminal -e bash -lc "cd $quoted_dir && exec ./install.sh"
-		else
-			control_helper_action dependency-check
-		fi
+		control_helper_action install-missing-deps || return 1
+		emit_record repair overview launched "$action" "Dependency repair launched" "Package repair opened in terminal" "Complete the prompts in the terminal"
+		return 0
 		;;
 	*)
 		printf 'unsupported user repair: %s\n' "$action" >&2

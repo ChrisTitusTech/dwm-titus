@@ -66,7 +66,8 @@ ShellRoot {
                     test.startupSaveDispatched = true;
                 }
                 if (test.step === 0 && test.ticks > 10 && model.initialCacheLoaded
-                        && initiallyFullModel.initialCacheLoaded && model.savedRefreshSeconds === 900) {
+                        && initiallyFullModel.initialCacheLoaded && model.savedRefreshSeconds === 900
+                        && !model.pendingSaveReload && !model.settingsLoading) {
                     test.require(!model.savedFloating, "legacy preferences default to tiled");
                     const operationEnvelope = "update-center-action-protocol\t1\t0\noperation\top-00000000000000000000000000000000\tfedora\trecover\t";
                     for (const phase of ["failed", "closed"])
@@ -149,7 +150,8 @@ ShellRoot {
                     test.require(model.saveSettings(), "subsequent save must use the refreshed baseline");
                     test.step = 1;
                     initiallyFullLoader.active = false;
-                } else if (test.step === 1 && model.savedRefreshSeconds === 1000) {
+                } else if (test.step === 1 && model.savedRefreshSeconds === 1000
+                        && !model.pendingSaveReload && !model.settingsLoading) {
                     test.require(model.savedFloating, "saved window mode must survive helper reload");
                     test.require(model.settingsBaseline === "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
                         "successful subsequent save must refresh its baseline");

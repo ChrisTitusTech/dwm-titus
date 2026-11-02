@@ -474,12 +474,17 @@ check-monitor-tags:
 check-clipboard:
 	python3 tests/test-clipboard-migration.py
 	python3 tests/test-clipboard-runtime.py
+check-keyboard-layout: all
+	python3 tests/test-keyboard-refresh.py
+	tests/test-keyboard-layout-xvfb.sh
+	tests/test-keyboard-layout-panel-xvfb.sh
 
 check-quickshell-launcher:
 	tests/test-quickshell-launcher.sh
 
 check-quickshell-network:
 	tests/test-quickshell-network.sh
+	python3 tests/test-hidden-network-model.py
 
 check-quickshell-connectivity:
 	tests/test-quickshell-connectivity.sh
@@ -515,6 +520,7 @@ check-quickshell-design-system:
 
 check-quickshell-large-surfaces:
 	tests/test-quickshell-large-surfaces.sh
+	tests/test-quickshell-health-category-badges.sh
 
 check-quickshell-large-surfaces-xvfb: all
 	status=0; tests/test-quickshell-large-surfaces-xvfb.sh || status=$$?; \
@@ -642,6 +648,7 @@ check-fedora-platform:
 	@$(call run_managed_test,tests/test-fedora-platform.sh)
 
 check-fedora-packages:
+	tests/test-package-provider-policy.sh
 	tests/test-fedora-packages.sh
 
 check-install: check-install-manifest
@@ -710,6 +717,8 @@ check-install-preservation:
 check-desktop-update: dwm
 	@python3 tests/test-desktop-update-sandbox.py
 	python3 tests/test-desktop-update.py
+	python3 tests/test-dependency-repair-launchers.py
+	tests/test-check-deps-interactive.sh
 	tests/test-desktop-update-ui.sh
 	dbus-run-session -- xvfb-run -a /usr/bin/python3 tests/test-desktop-update-progress.py
 	dbus-run-session -- xvfb-run -a /usr/bin/python3 tests/test-desktop-update-focus.py
@@ -778,6 +787,7 @@ check: check-picom check-picom-xvfb
 	$(MAKE) check-display-setup
 	$(MAKE) check-monitor-tags
 	$(MAKE) check-clipboard
+	$(MAKE) check-keyboard-layout
 	$(MAKE) check-quickshell-launcher
 	$(MAKE) check-quickshell-controls
 	$(MAKE) check-quickshell-audio
@@ -840,7 +850,7 @@ check: check-picom check-picom-xvfb
 	check-display-profile check-display-setup check-fedora-iso-builder check-fedora-packages check-fedora-platform check-format check-install \
 	check-gearlever-install check-herdr-install check-install-manifest check-install-preservation check-kickstart check-lock \
 	check-session-guards check-session-migration check-screenshot check-release-helper check-shell check-webapp-launch check-diagnostics check-status check-system-health check-system-management check-quickshell-system-management check-settings \
-	check-quickshell-launcher check-quickshell-controls check-quickshell-audio check-quickshell-controlcenter check-quickshell-power check-quickshell-power-backend check-quickshell-power-model check-quickshell-session-actions check-quickshell-defaults-model check-quickshell-appearance-model check-quickshell-design-system check-quickshell-large-surfaces check-quickshell-large-surfaces-xvfb check-quickshell-panel-menus check-quickshell-panel-settings check-quickshell-command-menu check-quickshell-notifications check-quickshell-tray check-quickshell-health-xvfb check-quickshell-settings-xvfb check-quickshell-settings-responsiveness-xvfb check-quickshell-network check-quickshell-connectivity check-quickshell-qml check-lightdm-config check-terminal check-xvfb-runtime install install-system install-user \
+	check-quickshell-launcher check-quickshell-controls check-quickshell-audio check-quickshell-controlcenter check-quickshell-power check-quickshell-power-backend check-quickshell-power-model check-quickshell-session-actions check-quickshell-defaults-model check-quickshell-appearance-model check-quickshell-design-system check-quickshell-large-surfaces check-quickshell-large-surfaces-xvfb check-quickshell-panel-menus check-quickshell-panel-settings check-quickshell-command-menu check-quickshell-notifications check-quickshell-tray check-quickshell-health-xvfb check-quickshell-settings-xvfb check-quickshell-settings-responsiveness-xvfb check-quickshell-network check-quickshell-connectivity check-quickshell-qml check-lightdm-config check-terminal check-xvfb-runtime check-keyboard-layout install install-system install-user \
 	install-cursors install-app-themes check-app-themes native release release-check uninstall uninstall-files
 
 .PHONY: check-clipboard

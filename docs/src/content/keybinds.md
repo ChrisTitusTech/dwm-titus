@@ -25,9 +25,16 @@ Bindings are defined in `config/hotkeys.toml` and reload instantly on save — n
 | `Super` + `E` | File manager |
 | `Super` + `V` | Clipboard history (disk persistence is opt-in) |
 | `Super` + `B` | Browser |
+| `Super` + `W` | Looking Glass VM client (when installed) |
+| `Super` + `Shift` + `W` | Randomize wallpaper |
 | `Super` + `/` | Keybind viewer |
 | `Super` + `F1` | Control Center |
+| `Super` + `Alt` + `F1` | Control Center (alternate) |
 | `Super` + `Shift` + `R` | Restart Quickshell |
+| `Super` + `Ctrl` + `R` | Force-stop Steam, Wine/Proton, and Windows applications |
+
+`Super` + `Ctrl` + `R` force-kills matching processes without relaunching them.
+Unsaved application or game progress can be lost.
 
 ## Screenshots
 
@@ -82,11 +89,18 @@ not edit customized hotkey files.
 |------|--------|
 | `Super` + `T` | Tiling layout |
 | `Super` + `F` | Floating layout |
-| `Super` + `M` | Fullscreen (monocle) |
+| `Super` + `M` | Toggle monocle focus mode and bar |
 | `Super` + `Space` | Toggle floating for window |
 | `Super` + `Shift` + `M` | Toggle floating for window |
 | `Super` + `Shift` + `Y` | Fake fullscreen (bar stays) |
 | `Super` + `Shift` + `B` | Toggle bar visibility |
+
+`Super` + `M` switches to the monocle layout and toggles the bar. It does not
+request per-window fullscreen; applications or window rules do that when
+needed. The saved pre-focus layout is shared across tags and monitors, so
+switching tags before pressing the binding again may restore a different
+layout. The monocle layout has no separate direct layout binding. To select it
+directly, add a `setlayout` record with `layout_idx=2` to `hotkeys.toml`.
 
 Entering floating mode with a toggle shrinks a tiled window by 15% around its
 current center, subject to the application's minimum size and resize increments.
@@ -141,8 +155,10 @@ the dwm session after updating to activate this behavior.
 | Action | Function |
 |--------|----------|
 | `Super` + Left drag | Move window |
-| `Super` + Middle click | Toggle floating |
 | `Super` + Right drag | Resize window |
+
+Middle click is unbound by default. To use it, add a `button=2` record to the
+`buttons` array in `hotkeys.toml`.
 
 ---
 
@@ -160,6 +176,29 @@ keys = [
 ```
 
 See the comments in `hotkeys.toml` for a full list of `func` values and modifier syntax.
+
+### Keyboard layouts
+
+Set two or more layouts in Settings -> Input -> Keyboard layout (for example
+`us,gr`). Keep a Latin layout first: dwm matches hotkeys against the first
+layout's keys. To switch with a key, pick one under Settings -> Input ->
+Switch layout with (Alt+Shift, Caps Lock, ...), or type any `grp:` option into
+Modifier options. Avoid the Space chords such as `grp:win_space_toggle`: XKB
+switches the layout and dwm still runs Super+Space (toggle floating). To switch with a
+dwm hotkey instead, bind the `cyclelayout` func; there is no default binding:
+
+```toml
+{ mod="SUPER ALT", key="k", desc="Next keyboard layout", func="cyclelayout", i=1 },
+```
+
+Settings sets the layout on that keyboard only. X copies it to the shared
+keyboard state, which dwm and the panel read, right away if that keyboard was
+the last one used, otherwise on its next key press. Until then the panel can
+show the old layout; switching works normally after that.
+
+dwm publishes the active layout on the root window, so
+`xprop -root _DWM_KEYBOARD_GROUP` shows the current group and the group count,
+and `dwm-quickshell-state keyboard-group next` switches from a script.
 
 The browser binding uses `dwm-default-apps open`. Configure it with
 Settings -> Defaults or with `dwm-default-apps browsers` and

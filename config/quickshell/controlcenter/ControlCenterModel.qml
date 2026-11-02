@@ -17,7 +17,8 @@ Scope {
         "Volume": "volume",
         "Bluetooth": "bluetooth",
         "Network": "network",
-        "Power": "power"
+        "Power": "power",
+        "Keyboard layout": "keyboard-layout"
     })
     readonly property bool showVolumeWidget: root.panelSettingsModel
         ? root.panelSettingsModel.widgetEnabled("volume") : true
@@ -44,9 +45,8 @@ Scope {
             { "id": "restart-quickshell", "label": "Restart Quickshell" },
             { "id": "reload-wallpaper", "label": "Reload Wallpaper" },
             { "id": "restart-networkmanager", "label": "Restart NetworkManager" },
-            { "id": "dependency-check", "label": "Dependency Check" },
+            { "id": "dependency-check", "label": "Check Dependencies" },
             { "id": "self-heal", "label": "Self-Heal" },
-            { "id": "install-missing-deps", "label": "Install Missing Deps" },
             { "id": "open-wallpapers", "label": "Wallpaper Folder" }
         ];
         if (root.gtkSettingsAvailable) {
@@ -97,6 +97,14 @@ Scope {
         const id = root.widgetIds[name];
         if (!root.panelSettingsModel || id === undefined) return;
         root.panelSettingsModel.toggleWidget(id);
+    }
+
+    function optionEnabled(id) {
+        return !!root.panelSettingsModel && root.panelSettingsModel.optionEnabled(id);
+    }
+
+    function toggleOption(id) {
+        if (root.panelSettingsModel) root.panelSettingsModel.toggleOption(id);
     }
 
     function toggle() {
