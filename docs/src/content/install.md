@@ -336,7 +336,7 @@ printf 'export XDG_CONFIG_HOME=%q\nexport XDG_DATA_HOME=%q\n' \
     "${XDG_CONFIG_HOME:-$HOME/.config}" "${XDG_DATA_HOME:-$HOME/.local/share}" \
     >"$backup_dir/xdg.env"
 python3 - "$repo_dir/config.h" "${XDG_CONFIG_HOME:-$HOME/.config}" \
-    "$HOME/.xinitrc" "${XDG_DATA_HOME:-$HOME/.local/share}/applications" \
+    "$HOME/.xinitrc" "$HOME/.gtkrc-2.0" "${XDG_DATA_HOME:-$HOME/.local/share}/applications" \
     >"$backup_dir/user-paths.nul" <<'PYTHON' || exit 1
 import os
 import sys

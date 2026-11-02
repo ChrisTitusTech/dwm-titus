@@ -47,7 +47,9 @@ Source installs also apply the selected theme: `make install` regenerates
 Alacritty and Kitty active-theme files, updates their theme imports/includes,
 and writes managed GTK/Qt appearance keys. Unrelated application settings are
 preserved, but these theme integration values are not. Back up your effective
-XDG configuration directory before installing if you need to restore them. The
+XDG configuration directory and `$HOME/.gtkrc-2.0` (including its target if it
+is a symlink) before installing if you need to restore them. GTK2 keeps its
+appearance settings outside the XDG configuration directory. The
 GUI Desktop Update preserves application configuration.
 
 `${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/` is replaced on purpose by both `make install` and
