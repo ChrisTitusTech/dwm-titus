@@ -38,3 +38,13 @@ Deferred candidates are not Phase 6 commitments. Reopening one requires an
 explicit roadmap decision and the independent pre-implementation evaluation
 described above. Rejected candidates remain outside the product plan unless a
 new requirement supplies a concrete consumer and acceptance criteria.
+
+## Clipboard reconsideration (2026-11-02)
+
+The maintainer explicitly requested a sensitivity-aware backend for password
+manager copies, then chose to retain browser and terminal history with a
+documented limitation for unmarked extension copies. The optional
+clipboard candidate is reopened under the privacy contract in `SPEC.md` and
+`docs/CLIPBOARD-PRIVACY.md`. This backend is an independently reviewable
+prerequisite; it does not enable automatic capture or adopt the pending UI by
+itself. The other candidate decisions above remain unchanged.

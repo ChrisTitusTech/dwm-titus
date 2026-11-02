@@ -8,6 +8,11 @@ versions from `config.mk`.
 
 ### Added
 
+- Add an optional, unprivileged X11 clipboard observer that rejects password
+  manager applications and sensitivity-marked copies before reading text.
+  Browser and terminal history remain available; unmarked secrets may be retained.
+  It is a privacy prerequisite and does not enable clipboard history by itself.
+
 - Integrate Path from `ChrisTitusTech/Path`, available as `path` in the
   `christitustech/copr-fedora` COPR. Full installs attempt it after approved
   repository setup and skip it when unavailable. Both Fedora image profiles

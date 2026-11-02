@@ -22,7 +22,7 @@ run_managed_test = if [ -n "$${DWM_TEST_WORKSPACE:-}" ] && [ -n "$${DWM_TEST_RUN
 SRC = drw.c dwm.c util.c tomlparser.c
 OBJ = ${SRC:.c=.o}
 
-INSTALL_COMMANDS = \
+INSTALL_COMMANDS = dwm-clipboard-observer \
 	scripts/active-audio \
 	scripts/dwm-accessibility-settings \
 	scripts/check-deps.sh \
@@ -97,7 +97,9 @@ RELEASE_NAME = dwm-titus-${VERSION}
 RELEASE_ARCHIVE = release/${RELEASE_NAME}.tar.gz
 SOURCE_DATE_EPOCH ?= $(shell git log -1 --format=%ct 2>/dev/null || printf '0')
 
-all: dwm
+CLIPBOARD_MODULES = xcb xcb-xfixes xcb-res
+
+all: dwm dwm-clipboard-observer
 
 .c.o:
 	${CC} ${CPPFLAGS} ${CFLAGS} -c $<
@@ -114,12 +116,18 @@ config.h:
 dwm: check-build-deps ${OBJ}
 	${CC} -o $@ ${OBJ} ${LDFLAGS} ${LDLIBS}
 
+dwm-clipboard-observer: clipboard-observer.c config.mk Makefile
+	${CC} ${CPPFLAGS} ${CFLAGS} -o $@ clipboard-observer.c ${LDFLAGS} $$( ${PKG_CONFIG} --cflags --libs ${CLIPBOARD_MODULES} )
+
+check-clipboard-observer: dwm-clipboard-observer
+	$(call run_managed_test,python3 tests/test-clipboard-observer.py)
+
 check-build-deps:
 	@command -v "${PKG_CONFIG}" >/dev/null 2>&1 || { \
 		echo "Missing required command: ${PKG_CONFIG}" >&2; \
 		exit 1; \
 	}
-	@missing="$$(for module in ${PKG_MODULES}; do \
+	@missing="$$(for module in ${PKG_MODULES} ${CLIPBOARD_MODULES}; do \
 		"${PKG_CONFIG}" --exists "$$module" || printf '%s ' "$$module"; \
 	done)"; \
 	if [ -n "$$missing" ]; then \
@@ -129,7 +137,7 @@ check-build-deps:
 	fi
 
 clean:
-	rm -f dwm ${OBJ} *.orig *.rej
+	rm -f dwm dwm-clipboard-observer ${OBJ} *.orig *.rej
 
 native:
 	$(MAKE) clean
@@ -193,6 +201,11 @@ install-system:
 	/usr/bin/python3 -I scripts/dwm-desktop-update guard-system-install --destdir "${DESTDIR}" -- $(MAKE) install-system-files
 
 install-system-files:
+	@test -x dwm-clipboard-observer || { echo "Clipboard observer is not built. Run make before install-system." >&2; exit 1; }
+	@for input in clipboard-observer.c config.mk Makefile; do \
+		test -e "$$input" || { echo "Clipboard observer build input is missing: $$input" >&2; exit 1; }; \
+		if [ "$$input" -nt dwm-clipboard-observer ]; then echo "Clipboard observer is stale. Run make before install-system." >&2; exit 1; fi; \
+	done
 	@test -x dwm || { echo "dwm is not built. Run make before install-system." >&2; exit 1; }
 	@for input in ${SRC} ${OBJ} drw.h util.h tomlparser.h config.h config.mk Makefile; do \
 		test -e "$$input" || { echo "dwm build input is missing: $$input. Run make before install-system." >&2; exit 1; }; \
@@ -389,12 +402,13 @@ uninstall-files:
 	rm -f "${DESTDIR}${PRIVILEGED_HELPER_DIR}/dwm-dnf-defaults"
 	rm -f "${DESTDIR}${PREFIX}/share/dwm-titus/desktop-install.json"
 
-release: dwm
+release: all
 	@work="$$(mktemp -d)"; \
 	trap 'rm -rf "$$work"' EXIT; \
 	root="$$work/${RELEASE_NAME}"; \
 	mkdir -p "$$root" release; \
 	install -Dm755 dwm "$$root/dwm"; \
+	install -Dm755 dwm-clipboard-observer "$$root/dwm-clipboard-observer"; \
 	install -Dm644 scripts/.xinitrc "$$root/.xinitrc"; \
 	sed "s|@PREFIX@|${PREFIX}|g" dwm.desktop > "$$root/dwm.desktop"; \
 	cp -a assets config scripts "$$root/"; \
@@ -787,6 +801,7 @@ check: check-picom check-picom-xvfb
 	$(MAKE) check-display-setup
 	$(MAKE) check-monitor-tags
 	$(MAKE) check-clipboard
+	$(MAKE) check-clipboard-observer
 	$(MAKE) check-keyboard-layout
 	$(MAKE) check-quickshell-launcher
 	$(MAKE) check-quickshell-controls
@@ -854,3 +869,4 @@ check: check-picom check-picom-xvfb
 	install-cursors install-app-themes check-app-themes native release release-check uninstall uninstall-files
 
 .PHONY: check-clipboard
+.PHONY: check-clipboard-observer
