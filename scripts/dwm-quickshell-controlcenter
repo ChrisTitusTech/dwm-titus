@@ -687,7 +687,7 @@ power_snapshot_upower() {
 	esac
 
 	# One total deadline covers the complete inventory, not just each device.
-	if run_bounded 3 "$0" power-system-battery; then
+	if run_bounded 3 "$0" power-system-battery 2>/dev/null; then
 		printf 'power-system-battery\tyes\n'
 	else
 		printf 'power-system-battery\tno\n'

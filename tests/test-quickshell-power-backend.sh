@@ -442,7 +442,8 @@ fi
 
 # The entire multi-device scan has one deadline, not one budget per device.
 inventory_started=$(date +%s)
-slow_snapshot=$(DWM_POWER_TEST_INVENTORY_HANG=1 run_helper power-snapshot)
+slow_snapshot=$(DWM_POWER_TEST_INVENTORY_HANG=1 run_helper power-snapshot 2>"$work/inventory-timeout.err")
+[ ! -s "$work/inventory-timeout.err" ]
 inventory_elapsed=$(($(date +%s) - inventory_started))
 [ "$inventory_elapsed" -le 8 ]
 printf '%s\n' "$slow_snapshot" | grep -Fqx 'power-system-battery	no'
