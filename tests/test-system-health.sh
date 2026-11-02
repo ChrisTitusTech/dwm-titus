@@ -37,6 +37,13 @@ case " $* " in
 *) exit 1 ;;
 esac
 SCRIPT
+cat >"$work/bin/df" <<'SCRIPT'
+#!/bin/sh
+[ "${DWM_TEST_DF_FAIL:-0}" != 1 ] || exit 1
+exec /usr/bin/df "$@"
+SCRIPT
+chmod +x "$work/bin/df"
+
 cat >"$work/bin/findmnt" <<'SCRIPT'
 #!/bin/sh
 case "$*" in
@@ -104,6 +111,14 @@ if grep -Fq $'check\tstorage\terror\tdisk-sys-firmware-efi-efivars' "$work/user.
 	printf 'efivarfs storage was reported as an error\n' >&2
 	exit 1
 fi
+
+# Firmware state stays readable even when unrelated filesystem scans fail.
+HOME="$work/home" XDG_CONFIG_HOME="$work/home/.config" \
+	DWM_HEALTH_OS_RELEASE="$work/os-release" DWM_HEALTH_COMMAND_TIMEOUT=2 \
+	DWM_HEALTH_SYSTEMCTL_LOG="$work/systemctl.log" DWM_TEST_DF_FAIL=1 \
+	PATH="$work/bin:/usr/bin:/bin" "$HELPER" scan-user >"$work/df-failed.tsv"
+grep -Fq $'check\tstorage\tinfo\tdisk-efivars' "$work/df-failed.tsv"
+grep -Fq $'check\tstorage\trestricted\tstorage-usage' "$work/df-failed.tsv"
 
 HOME="$work/home" \
 	DWM_HEALTH_COMMAND_TIMEOUT=2 \

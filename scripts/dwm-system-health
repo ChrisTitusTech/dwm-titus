@@ -343,6 +343,19 @@ scan_load() {
 scan_storage() {
 	local output source percent mount usage status id
 
+	# efivarfs reports fixed-size firmware NVRAM, not a cleanable filesystem.
+	# Surface its usage as information instead of a disk error.
+	if command -v findmnt >/dev/null 2>&1 &&
+		[[ $(run_bounded findmnt -n -o FSTYPE /sys/firmware/efi/efivars 2>/dev/null) == efivarfs ]]; then
+		local efivars_usage
+		efivars_usage=$(run_bounded findmnt -n -o USE% /sys/firmware/efi/efivars 2>/dev/null || true)
+		emit_check storage info disk-efivars "Firmware variables (efivarfs)" \
+			"${efivars_usage:-unknown} used" "Firmware NVRAM; not a cleanable filesystem"
+	elif [[ -d /sys/firmware/efi ]]; then
+		emit_check storage restricted disk-efivars "Firmware variables (efivarfs)" \
+			"Unable to read firmware storage" "findmnt is unavailable, timed out, or efivarfs is not mounted"
+	fi
+
 	if ! output=$(run_bounded df -P -l -x tmpfs -x devtmpfs -x squashfs -x efivarfs 2>/dev/null); then
 		emit_check storage restricted storage-usage "Filesystem usage" "Unable to read local filesystems" "df failed or timed out"
 		return
@@ -362,16 +375,6 @@ scan_storage() {
 		[[ -n $id ]] || id=root
 		emit_check storage "$status" "disk-$id" "Filesystem $mount" "$usage% used" "$source"
 	done <<<"$output"
-
-	# efivarfs reports fixed-size firmware NVRAM, not a cleanable filesystem.
-	# Surface its usage as information instead of a disk error.
-	if command -v findmnt >/dev/null 2>&1 &&
-		[[ $(run_bounded findmnt -n -o FSTYPE /sys/firmware/efi/efivars 2>/dev/null) == efivarfs ]]; then
-		local efivars_usage
-		efivars_usage=$(run_bounded findmnt -n -o USE% /sys/firmware/efi/efivars 2>/dev/null || true)
-		emit_check storage info disk-efivars "Firmware variables (efivarfs)" \
-			"${efivars_usage:-unknown} used" "Firmware NVRAM; not a cleanable filesystem"
-	fi
 
 	if output=$(run_bounded df -Pi -l -x tmpfs -x devtmpfs -x squashfs -x efivarfs 2>/dev/null); then
 		while read -r source _ _ _ percent mount; do
