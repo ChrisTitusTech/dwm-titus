@@ -392,7 +392,7 @@ grep -Fq 'font.pixelSize: Theme.panelIconFontSize' "$icon_text"
 test "$(grep -Fc 'Theme.scaledFontSize(14 *' "$panel")" -eq 5
 grep -Fq 'scaledFontSize(13, 10)' "$theme"
 test "$(grep -Ec 'font\.pixelSize: Theme\.(bodyFontSize|inputFontSize)' "$display_pane")" -eq 14
-test "$(grep -Ec 'font\.pixelSize: Theme\.(bodyFontSize|inputFontSize)' "$input_pane")" -eq 5
+test "$(grep -Ec 'font\.pixelSize: Theme\.(bodyFontSize|inputFontSize)' "$input_pane")" -eq 6
 grep -Fq 'font.pixelSize: Theme.inputFontSize' "$network_pane"
 grep -Fq 'passwordInput.implicitHeight + 2 * Theme.spacingSm' "$network_pane"
 grep -Fq 'readonly property real scaleFactor:' "$display_pane"
