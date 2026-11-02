@@ -4,7 +4,7 @@ set -eu
 test_repo=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 repo=${DWM_LARGE_SURFACE_REPO:-$test_repo}
 
-for command_name in Xvfb quickshell xdotool xprop getconf xclip cc pkg-config; do
+for command_name in Xvfb quickshell xdotool xprop getconf cc pkg-config; do
 	if ! command -v "$command_name" >/dev/null 2>&1; then
 		printf 'SKIP: %s is unavailable\n' "$command_name"
 		exit 77
@@ -574,18 +574,11 @@ if DISPLAY=$display xdotool search --onlyvisible --name '^dwm launcher$' >/dev/n
 	printf 'Clipboard history left the launcher open\n' >&2
 	exit 1
 fi
-printf 'isolated clipboard capture' >"$work/clipboard-text"
-DISPLAY=$display xclip -selection clipboard -quiet -loops 0 <"$work/clipboard-text" >"$work/xclip.log" 2>&1 &
-clipboard_client_pid=$!
-i=0
-while [ "$i" -lt 100 ]; do
-	[ "$(ipc clipboard count)" -gt 0 ] && break
-	i=$((i + 1))
-	sleep 0.05
-done
-[ "$(ipc clipboard count)" -gt 0 ]
+# Opening the surface must not opt in or import the current clipboard.
+[ "$(ipc clipboard count)" -eq 0 ]
 [ "$(ipc clipboard persistence)" = false ]
 [ ! -e "$home/.cache/dwm-titus/clipboard-history.json" ]
+[ ! -e "$home/.cache/dwm-titus/clipboard-history-v2.json" ]
 DISPLAY=$display xdotool windowactivate --sync "$clipboard_window"
 DISPLAY=$display xdotool key Escape
 i=0

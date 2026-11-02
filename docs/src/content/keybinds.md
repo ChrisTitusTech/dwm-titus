@@ -23,7 +23,7 @@ Bindings are defined in `config/hotkeys.toml` and reload instantly on save — n
 | `Super` + `R` | App launcher (Quickshell) |
 | `Super` + `X` | Alacritty terminal |
 | `Super` + `E` | File manager |
-| `Super` + `V` | Clipboard history (disk persistence is opt-in) |
+| `Super` + `V` | Clipboard history (capture and disk persistence are separate opt-ins) |
 | `Super` + `B` | Browser |
 | `Super` + `W` | Looking Glass VM client (when installed) |
 | `Super` + `Shift` + `W` | Randomize wallpaper |
@@ -208,3 +208,16 @@ The terminal variable defaults to Alacritty. Settings -> Defaults can select a
 validated installed terminal without changing the `Super`+`X` key record. To
 use the optional Herdr workspace, install it explicitly, change the binding to
 `dwm-terminal`, and set `DWM_HERDR=1` in the session environment.
+
+Clipboard capture is off by default. Open Super+V and choose **Enable; discard
+older history** to start capturing new copies through the sensitivity backend.
+This deletes older clipboard history without importing it. **Persist** is a
+separate opt-in; disabling capture clears both memory and stored history.
+**Clear all** also discards older history and restarts observation without
+importing the current clipboard.
+
+Browser and terminal copies remain available. Recognized password-manager sources
+and sensitivity-marked copies are excluded on a best-effort basis. An unmarked
+copy made by a browser extension cannot reliably be distinguished from ordinary
+browser text, so it may enter history. Do not enable capture when that limitation
+is unacceptable. Backend failure stops capture until an explicit retry.

@@ -157,6 +157,14 @@ FloatingWindow {
                     Layout.fillWidth: true
                 }
 
+                ShellButton {
+                    label: root.clipboardModel.captureEnabled ? "Disable capture" : "Enable; discard older history"
+                    enabled: root.clipboardModel.storageReady && root.clipboardModel.settingsReady
+                        && !root.clipboardModel.settingsLoadFailed && !root.clipboardModel.settingsWriting
+                        && !root.clipboardModel.consentRunning
+                    onActivated: root.clipboardModel.setCapture(!root.clipboardModel.captureEnabled)
+                }
+
                 UiText {
                     text: "Persist"
                     color: root.clipboardModel.persistenceEnabled ? Theme.menuText : Theme.menuMutedText
@@ -165,7 +173,7 @@ FloatingWindow {
 
                 PanelToggleSwitch {
                     checked: root.clipboardModel.persistenceEnabled
-                    enabled: root.clipboardModel.storageReady && root.clipboardModel.settingsReady
+                    enabled: root.clipboardModel.captureEnabled && root.clipboardModel.storageReady && root.clipboardModel.settingsReady
                         && !root.clipboardModel.settingsWriting && !root.clipboardModel.settingsLoadFailed
                     accessibleName: "Persist clipboard history across restarts"
                     accessibleDescription: "When enabled, clipboard entries are written to the private history file"
@@ -183,10 +191,18 @@ FloatingWindow {
                 ShellButton {
                     label: "Clear all"
                     danger: true
-                    enabled: root.clipboardModel.entries.length > 0
-                    accessibleDescription: "Delete every clipboard history entry"
+                    enabled: root.clipboardModel.storageReady && !root.clipboardModel.consentRunning
+                    accessibleDescription: "Delete all current and older stored clipboard history"
                     onActivated: root.clipboardModel.clearAll()
                 }
+            }
+
+            UiText {
+                Layout.fillWidth: true
+                text: "Capture is opt-in. Browser and terminal copies are included. Password-manager sources and sensitivity markers are excluded when identifiable. Unmarked extension copies can still be recorded. Enabling discards older history; disk persistence is a separate opt-in."
+                wrapMode: Text.WordWrap
+                color: Theme.menuMutedText
+                font.pixelSize: Theme.smallFontSize
             }
 
             UiText {

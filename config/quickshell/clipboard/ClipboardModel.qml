@@ -1,12 +1,13 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import qs.core
 
 Scope {
     id: root
 
     readonly property int maxEntries: 50
-    readonly property int maxEntryLength: 100000
+    readonly property int maxEntryLength: 65536
     readonly property int maxPendingCaptures: 8
     property bool visible: false
     property string query: ""
@@ -15,8 +16,19 @@ Scope {
     property var entries: []
     property var filteredEntries: []
     property int timeTick: 0
-    // Clipboard history is opt-in: captures always stay in memory for the
-    // session, but nothing is written to disk until persistence is enabled.
+    // Capture and disk persistence require separate explicit opt-ins.
+    property bool captureEnabled: false
+    property bool confirmedCapture: false
+    property bool requestedCapture: false
+    property bool privacyReady: false
+    property bool captureSuppressed: false
+    property bool backendReady: false
+    property bool backendFailed: false
+    property bool observerStopping: false
+    property string observerBuffer: ""
+    property bool consentEnable: false
+    property bool consentRunning: false
+    property bool consentFailed: false
     property bool persistenceEnabled: false
     property bool historyReady: false
     property bool historyLoaded: false
@@ -39,17 +51,20 @@ Scope {
     readonly property string configDir: (Quickshell.env("XDG_CONFIG_HOME") || (root.homeDir + "/.config")) + "/dwm-titus"
     readonly property string settingsPath: root.configDir + "/clipboard-settings.json"
     readonly property string cacheDir: (Quickshell.env("XDG_CACHE_HOME") || (root.homeDir + "/.cache")) + "/dwm-titus"
-    readonly property string historyPath: root.cacheDir + "/clipboard-history.json"
+    readonly property string historyPath: root.cacheDir + "/clipboard-history-v2.json"
     readonly property string status: {
-        if (root.historyLoadFailed) return "History unreadable - session only; retry to reload";
+        if (root.backendFailed) return "Capture stopped: privacy backend unavailable; enable to retry";
+        if (root.historyLoadFailed) return "History unreadable - retry to reload";
         if (root.saveFailed) {
             return root.wipePending ? "Stored history could not be cleared - retry save"
                 : "History write failed - entries are only in memory";
         }
-        if (root.settingsLoadFailed) return "Settings unreadable - session only; retry to reload";
+        if (root.settingsLoadFailed) return "Settings unreadable - capture stopped; retry to reload";
         if (root.settingsSaveFailed) {
             return "Settings write failed - persistence state unchanged on disk";
         }
+
+        if (!root.captureEnabled) return "Capture off - older history is never imported";
 
         const count = root.entries.length === 0 ? "No entries yet"
             : root.entries.length === 1 ? "1 entry" : root.entries.length + " entries";
@@ -76,15 +91,127 @@ Scope {
     onEntriesChanged: root.refreshFilteredEntries()
     onQueryChanged: root.refreshFilteredEntries()
 
-    Connections {
-        target: Quickshell
+    function failBackend() {
+        if (observer.running) root.observerStopping = true;
+        root.backendFailed = true;
+        root.backendReady = false;
+        root.captureEnabled = false;
+        root.observerBuffer = "";
+        root.pendingCaptures = [];
+    }
 
-        function onClipboardTextChanged() {
-            root.capture(Quickshell.clipboardText);
+    function observerChunk(chunk) {
+        if (!root.captureEnabled || root.backendFailed) return;
+        // Empty-marker SplitParser streams chunks without accumulating a frame.
+        // The backend emits ASCII JSON, so chunk boundaries cannot split UTF-8.
+        for (let offset = 0; offset < chunk.length;) {
+            const newline = chunk.indexOf("\n", offset);
+            const end = newline < 0 ? chunk.length : newline;
+            if (root.observerBuffer.length + end - offset > 393300) {
+                root.failBackend(); return;
+            }
+            root.observerBuffer += chunk.slice(offset, end);
+            if (newline < 0) return;
+            const frame = root.observerBuffer;
+            root.observerBuffer = "";
+            let value;
+            try { value = JSON.parse(frame); } catch (error) { root.failBackend(); return; }
+            if (!value || typeof value !== "object" || Array.isArray(value)) { root.failBackend(); return; }
+            const keys = Object.keys(value).sort().join(",");
+            if (!root.backendReady && keys === "event,protocol" && value.event === "ready" && value.protocol === 1) {
+                root.backendReady = true;
+            } else if (root.backendReady && keys === "event,text" && value.event === "text"
+                    && typeof value.text === "string" && value.text.length <= root.maxEntryLength) {
+                root.capture(value.text);
+            } else { root.failBackend(); return; }
+            offset = newline + 1;
         }
     }
 
+    Process {
+        id: observer
+        command: Commands.helperCommand("dwm-clipboard-observer", null, [])
+        running: root.captureEnabled && root.settingsReady && !root.settingsLoadFailed
+            && root.historyReady && !root.wipePending && !root.clearPending && !root.backendFailed && !root.observerStopping
+        onRunningChanged: if (running) { root.backendReady = false; root.observerBuffer = ""; }
+        onExited: (exitCode, exitStatus) => { // qmllint disable signal-handler-parameters
+            if (root.observerStopping) root.observerStopping = false;
+            else if (root.captureEnabled) root.failBackend();
+        }
+        stdout: SplitParser { splitMarker: ""; onRead: data => root.observerChunk(data) }
+    }
+
+    Timer {
+        interval: 3000
+        running: observer.running && !root.backendReady
+        onTriggered: root.failBackend()
+    }
+
+    // Explicit consent discards legacy plaintext without ever reading it.
+    Process {
+        id: consent
+        command: ["python3", "-c",
+            "import os,sys,json,tempfile; os.umask(0o077); p=sys.argv[1]; old=sys.argv[2]; fd,t=tempfile.mkstemp(dir=os.path.dirname(p)); f=os.fdopen(fd,'w'); json.dump({'privacyVersion':2,'entries':[]},f); f.close(); os.replace(t,p); os.unlink(old) if os.path.lexists(old) else None",
+            root.historyPath, root.cacheDir + "/clipboard-history.json"]
+        onExited: (exitCode, exitStatus) => { // qmllint disable signal-handler-parameters
+            root.consentRunning = false;
+            if (exitCode !== 0 || exitStatus !== 0) { root.consentFailed = true; root.saveFailed = true; return; }
+            root.consentFailed = false;
+            root.saveFailed = false;
+            root.clearPending = false;
+            root.wipePending = false;
+            root.privacyReady = true;
+            root.historyReady = false;
+            root.historyLoaded = false;
+            if (!root.consentEnable && root.settingsReady && !root.settingsLoadFailed) root.captureEnabled = root.confirmedCapture && !root.captureSuppressed;
+            historyFile.reload();
+            if (root.consentEnable) root.writeSettings(true, false);
+        }
+    }
+
+    function setCapture(enabled) {
+        if (root.settingsWriting || root.consentRunning) return;
+        root.requestedCapture = enabled;
+        root.backendFailed = false;
+        root.backendReady = false;
+        if (!enabled) {
+            if (observer.running) root.observerStopping = true;
+            root.captureSuppressed = true;
+            root.captureEnabled = false;
+            root.entries = [];
+            root.pendingCaptures = [];
+            root.wipePending = true;
+            root.persistenceEnabled = false;
+            root.confirmedPersistence = false;
+            root.confirmedCapture = false;
+            root.clearAll();
+            if (!root.settingsLoadFailed) root.writeSettings(false, false);
+            return;
+        }
+        if (!root.storageReady || !root.settingsReady || root.settingsLoadFailed) return;
+        if (!root.privacyReady) {
+            root.consentEnable = true;
+            root.consentRunning = true;
+            consent.running = true;
+        } else if (root.confirmedCapture && !root.settingsSaveFailed) {
+            root.captureSuppressed = false;
+            root.captureEnabled = true;
+        } else root.writeSettings(true, root.confirmedPersistence);
+    }
+
+    function writeSettings(capture, persistence) {
+        root.requestedCapture = capture;
+        root.requestedPersistence = persistence;
+        root.persistenceEnabled = persistence;
+        settingsFile.captureEnabled = capture;
+        settingsFile.persistenceEnabled = persistence;
+        settingsFile.privacyVersion = 2;
+        root.settingsWriting = true;
+        settingsFile.setText(JSON.stringify({privacyVersion:2, captureEnabled:capture, persistenceEnabled:persistence}) + "\n");
+    }
+
     function capture(text) {
+        if (!root.captureEnabled || !root.backendReady || root.settingsLoadFailed) return;
         // FileView loads asynchronously; a capture that saved before the
         // initial load finished could replace the stored history with a
         // single-entry list, so early captures are queued instead.
@@ -178,7 +305,7 @@ Scope {
     function loadHistory() {
         root.historyLoaded = true;
         if (!root.settingsReady || root.settingsLoadFailed || root.historyLoadFailed || root.historyReady) return;
-        const savedEntries = root.toArray(historyFile.entries);
+        const savedEntries = historyFile.privacyVersion === 2 ? root.toArray(historyFile.entries) : [];
         if (!root.confirmedPersistence && savedEntries.length > 0) root.wipePending = true;
         const stored = root.confirmedPersistence && !root.clearPending ? savedEntries : [];
         const entries = [];
@@ -215,9 +342,13 @@ Scope {
             root.settingsLoadFailed = false;
             root.settingsSaveFailed = false;
         }
-        root.confirmedPersistence = settingsFile.persistenceEnabled === true;
+        root.privacyReady = settingsFile.privacyVersion === 2;
+        root.confirmedCapture = root.privacyReady && settingsFile.captureEnabled === true;
+        root.captureEnabled = root.confirmedCapture && !root.captureSuppressed && !root.backendFailed;
+        root.confirmedPersistence = root.privacyReady && root.confirmedCapture && settingsFile.persistenceEnabled === true;
         root.persistenceEnabled = root.confirmedPersistence;
         root.settingsReady = true;
+        if (!root.privacyReady) { root.historyReady = true; return; }
         if (root.historyLoadFailed) Qt.callLater(historyFile.reload);
         else if (root.historyLoaded) root.loadHistory();
         if (root.persistenceEnabled) root.saveHistory();
@@ -226,25 +357,26 @@ Scope {
     function setPersistence(enabled) {
         if (!root.storageReady || !root.settingsReady || root.settingsWriting
                 || root.settingsLoadFailed || root.historyWiping || root.persistenceEnabled === enabled) return;
-        root.requestedPersistence = enabled;
-        root.persistenceEnabled = enabled;
-        settingsFile.persistenceEnabled = enabled;
-        root.settingsWriting = true;
+        if (!root.captureEnabled) return;
         root.wipePending = !enabled;
-        settingsFile.setText(JSON.stringify({ "persistenceEnabled": enabled }) + "\n");
+        root.writeSettings(root.confirmedCapture, enabled);
     }
 
     function flushPendingWipe() {
-        if (root.wipePending && !root.settingsWriting && !root.settingsLoadFailed
+        if (root.privacyReady && root.wipePending && !root.settingsWriting && !root.settingsLoadFailed
                 && !root.historyLoadFailed && !root.confirmedPersistence && root.historyReady) {
             root.historyWiping = true;
+            historyFile.privacyVersion = 2;
             historyFile.entries = [];
             historyFile.writeAdapter();
         }
     }
 
     function finishSettingsWrite() {
-        root.confirmedPersistence = root.persistenceEnabled;
+        root.confirmedCapture = root.requestedCapture;
+        root.captureSuppressed = !root.requestedCapture;
+        root.captureEnabled = root.requestedCapture;
+        root.confirmedPersistence = root.requestedPersistence;
         root.settingsWriting = false;
         root.settingsSaveFailed = false;
         root.flushPendingWipe();
@@ -252,11 +384,14 @@ Scope {
     }
 
     function settingsWriteFailed() {
-        root.wipePending = false;
+        root.captureEnabled = false;
+        root.captureSuppressed = true;
         root.settingsWriting = false;
         root.settingsSaveFailed = true;
         root.persistenceEnabled = root.confirmedPersistence;
-        settingsFile.persistenceEnabled = root.confirmedPersistence;
+        settingsFile.privacyVersion = 0;
+        settingsFile.captureEnabled = false;
+        settingsFile.persistenceEnabled = false;
         // Reset FileView's failed-write cache once. Missing-file loads do not
         // write defaults, so this cannot become a reload/write retry loop.
         root.settingsReady = false;
@@ -264,9 +399,10 @@ Scope {
     }
 
     function retrySave() {
-        if (root.settingsLoadFailed) settingsFile.reload();
+        if (root.consentFailed) { root.consentRunning = true; consent.running = true; }
+        else if (root.settingsLoadFailed) settingsFile.reload();
         else if (root.historyLoadFailed) historyFile.reload();
-        else if (root.settingsSaveFailed) root.setPersistence(root.requestedPersistence);
+        else if (root.settingsSaveFailed) root.writeSettings(root.requestedCapture, root.requestedPersistence);
         else if (root.wipePending) root.flushPendingWipe();
         else root.saveHistory();
     }
@@ -283,6 +419,7 @@ Scope {
             return;
         }
 
+        historyFile.privacyVersion = 2;
         historyFile.entries = root.entries;
         historyFile.writeAdapter();
     }
@@ -409,10 +546,17 @@ Scope {
     }
 
     function clearAll() {
+        if (observer.running) root.observerStopping = true;
+        root.captureEnabled = false;
+        root.backendReady = false;
         root.clearPending = true;
         root.pendingCaptures = [];
         root.entries = [];
-        root.saveHistory();
+        root.consentEnable = false;
+        if (root.storageReady && !root.consentRunning) {
+            root.consentRunning = true;
+            consent.running = true;
+        }
     }
 
     function relativeTime(timestamp) {
@@ -433,9 +577,10 @@ Scope {
     FileView {
         id: historyFile
 
+        property alias privacyVersion: clipboardAdapter.privacyVersion
         property alias entries: clipboardAdapter.entries
 
-        path: root.storageReady ? root.historyPath : ""
+        path: root.storageReady && root.privacyReady ? root.historyPath : ""
         atomicWrites: true
         printErrors: false
         onLoaded: {
@@ -482,6 +627,7 @@ Scope {
         adapter: JsonAdapter {
             id: clipboardAdapter
 
+            property int privacyVersion: 0
             property var entries: []
         }
     }
@@ -489,6 +635,8 @@ Scope {
     FileView {
         id: settingsFile
 
+        property alias privacyVersion: clipboardSettings.privacyVersion
+        property alias captureEnabled: clipboardSettings.captureEnabled
         property alias persistenceEnabled: clipboardSettings.persistenceEnabled
 
         path: root.storageReady ? root.settingsPath : ""
@@ -499,10 +647,14 @@ Scope {
         onSaveFailed: root.settingsWriteFailed()
         onLoadFailed: error => {
             if (error === 2) {
+                settingsFile.privacyVersion = 0;
+                settingsFile.captureEnabled = false;
                 settingsFile.persistenceEnabled = false;
                 root.applyLoadedSettings();
                 return;
             }
+            root.captureEnabled = false;
+            root.captureSuppressed = true;
             root.settingsReady = true;
             root.settingsSaveFailed = true;
             root.settingsLoadFailed = true;
@@ -516,6 +668,8 @@ Scope {
         adapter: JsonAdapter {
             id: clipboardSettings
 
+            property int privacyVersion: 0
+            property bool captureEnabled: false
             property bool persistenceEnabled: false
         }
     }
