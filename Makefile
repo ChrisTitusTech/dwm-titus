@@ -485,9 +485,10 @@ check-status:
 check-monitor-tags:
 	tests/test-monitor-tag-switching.sh
 
-check-clipboard:
+check-clipboard: dwm-clipboard-observer
 	python3 tests/test-clipboard-migration.py
 	python3 tests/test-clipboard-runtime.py
+	python3 tests/test-clipboard-end-to-end.py
 check-keyboard-layout: all
 	python3 tests/test-keyboard-refresh.py
 	tests/test-keyboard-layout-xvfb.sh
