@@ -19,14 +19,18 @@ part themselves.
 **dwm-titus is a Fedora-only distribution.** Fedora Linux is the sole supported
 platform for installation, runtime behavior, package resolution, testing, and
 release qualification. Use either the Fedora desktop image or the
-existing-system installer on Fedora Linux.
+existing-system installer on Fedora Linux. The published images and release
+qualification target Fedora 44 x86_64. Newer releases, including Fedora 45, are
+accepted by the existing-system installer but are not yet release-qualified;
+run `dwm-diagnostics` and report release-specific problems on the issue
+tracker.
 
 ## What You Get
 
 | Experience | What it includes |
 | --- | --- |
 | **A focused desktop** | Automatic window tiling, nine workspaces, fast keyboard navigation, multi-monitor support, and flexible fullscreen modes. |
-| **Everyday essentials** | A polished panel, application launcher, system tray, Control Center, Settings, notifications, screenshots, audio, brightness, and power controls. |
+| **Everyday essentials** | A polished panel with a keyboard layout switcher, application launcher, system tray, Control Center, Settings, notifications, screenshots, audio, brightness, and power controls. |
 | **Easy discovery** | An interactive keybind viewer, guided display setup, built-in diagnostics, workstation self-heal, and clear unsupported-feature reporting. |
 | **Personal configuration** | Live-reloading hotkeys, themes, and window rules, with local configuration preserved across upgrades. |
 | **Two installation paths** | A ready-to-install Fedora image or an installer for an existing Fedora system. |
@@ -97,6 +101,8 @@ cd dwm-titus
 ```
 
 The dry run shows the dependency and installation plan before anything changes.
+Run both commands from the cloned directory: `./install.sh` resolves relative to
+the current directory, so a new terminal must `cd dwm-titus` first.
 The installer requires Fedora, preserves existing personal configuration, and
 installs the managed desktop components. It accepts only Fedora's
 `/etc/os-release` identity and rejects every other operating-system identity
@@ -106,7 +112,7 @@ before making changes.
 | --- | --- |
 | `core` | The X11 session, required dependencies, and one terminal emulator. |
 | `recommended` | The complete everyday desktop, including Alacritty, Quickshell, Gear Lever for AppImages, theming, screenshots, audio, brightness, and the PackageKit, Python RPM binding, AccountsService, CUPS, and printer-tool prerequisites for Phase 6 system management. |
-| `full` | The recommended desktop plus optional file-manager, wallpaper, display-manager, and supported Fedora gaming integrations. |
+| `full` | The recommended desktop plus optional file-manager (Thunar, and Path from `christitustech/copr-fedora` when available), wallpaper, display-manager, and supported Fedora gaming integrations. |
 
 `maim` is an optional dependency used only by the screenshot hotkeys. If it is
 unavailable, installation continues and reports that the screenshot hotkeys
@@ -155,7 +161,8 @@ ${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/
 
 Hotkeys, themes, and window rules reload when their TOML files are saved.
 Advanced compile-time preferences live in the user-owned `config.h`, which the
-installer and future upgrades preserve.
+installer and future upgrades preserve. `${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/` is managed
+by dwm-titus and replaced on every update, so don't keep local edits there.
 
 The installer also provides `dwm-settings-display` and its root-owned
 `libexec/dwm-titus/dwm-settings-display-root` persistence helper. Live display
@@ -219,6 +226,7 @@ safe customization paths.
 - [Configuration](https://dwm.christitus.com/configuration.html)
 - [Theming](https://dwm.christitus.com/theming.html)
 - [Control Center](https://dwm.christitus.com/control-center.html)
+- [Updates](https://dwm.christitus.com/updates.html)
 - [Settings](https://dwm.christitus.com/settings.html)
 - [How dwm-titus Works](https://dwm.christitus.com/patches.html)
 - [Troubleshooting](https://dwm.christitus.com/troubleshooting.html)
@@ -248,7 +256,9 @@ cannot be canceled. Cancel only dismisses the preview, and closing Settings does
 not undo an action. An uncertain result requires fresh status and new confirmation,
 not automatic retry. Locale changes apply to new sessions; log out manually when
 ready. Synchronization status is labeled as the last read.
-The panel and System Settings share one minute-level local clock. A newly
+The panel and System Settings share one local clock. It is minute-level unless
+seconds are turned on for the panel (Settings > Appearance or Control Center >
+Bar Widgets); the Settings readout stays minute-level. A newly
 reported timezone refreshes both displays without restarting Quickshell.
 
 Start with the built-in diagnostic report:

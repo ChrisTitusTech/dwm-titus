@@ -17,7 +17,8 @@ Scope {
         "Volume": "volume",
         "Bluetooth": "bluetooth",
         "Network": "network",
-        "Power": "power"
+        "Power": "power",
+        "Keyboard layout": "keyboard-layout"
     })
     readonly property bool showVolumeWidget: root.panelSettingsModel
         ? root.panelSettingsModel.widgetEnabled("volume") : true
@@ -97,6 +98,14 @@ Scope {
         const id = root.widgetIds[name];
         if (!root.panelSettingsModel || id === undefined) return;
         root.panelSettingsModel.toggleWidget(id);
+    }
+
+    function optionEnabled(id) {
+        return !!root.panelSettingsModel && root.panelSettingsModel.optionEnabled(id);
+    }
+
+    function toggleOption(id) {
+        if (root.panelSettingsModel) root.panelSettingsModel.toggleOption(id);
     }
 
     function toggle() {
