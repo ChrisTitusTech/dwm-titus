@@ -42,6 +42,7 @@ Scope {
     property bool discardPending: false
     property bool confirmedPersistence: false
     property bool storageReady: false
+    readonly property bool storagePreparing: prepareStorage.running
     property bool saveFailed: false
     property bool savePending: false
     property bool wipePending: false
@@ -63,6 +64,7 @@ Scope {
         }
         if (root.settingsLoadFailed) return "Settings unreadable - capture stopped; retry to reload";
         if (root.settingsSaveFailed) {
+            if (!root.storageReady) return "Storage unavailable - repair permissions and retry";
             return "Settings write failed - persistence state unchanged on disk";
         }
 
@@ -82,7 +84,12 @@ Scope {
         running: true
         onExited: (exitCode, exitStatus) => { // qmllint disable signal-handler-parameters
             root.storageReady = exitCode === 0 && exitStatus === 0;
-            if (root.storageReady) Qt.callLater(root.startDiscard);
+            if (root.storageReady) {
+                root.settingsSaveFailed = false;
+                root.historyReady = false;
+                root.historyLoaded = false;
+                Qt.callLater(root.startDiscard);
+            }
             if (!root.storageReady) {
                 root.settingsSaveFailed = true;
                 root.historyReady = true;
@@ -434,6 +441,10 @@ Scope {
     }
 
     function retrySave() {
+        if (!root.storageReady) {
+            if (!prepareStorage.running) prepareStorage.running = true;
+            return;
+        }
         if (root.consentFailed) { root.consentRunning = true; consent.running = true; }
         else if (root.settingsLoadFailed) settingsFile.reload();
         else if (root.historyLoadFailed) historyFile.reload();

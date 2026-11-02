@@ -15,17 +15,39 @@ import Quickshell.Io
 import qs.clipboard
 ShellRoot {
     ClipboardModel { id: model }
+    ClipboardWindow { id: surface; clipboardModel: model }
     Component.onCompleted: if (Quickshell.env("CLIPBOARD_TEST_EARLY_CLEAR") === "1") model.clearAll()
     IpcHandler {
         target: "clipboardtest"
         function state(): string { return JSON.stringify({ready:model.historyReady && model.settingsReady,
             capture:model.captureEnabled, backend:model.backendReady, backendFailed:model.backendFailed,
+            storage:model.storageReady, preparing:model.storagePreparing,
             confirmed:model.confirmedPersistence, enabled:model.persistenceEnabled,
             writing:model.settingsWriting, failed:model.settingsSaveFailed,
             wipe:model.wipePending, historyFailed:model.saveFailed, discardFailed:model.consentFailed, count:model.entries.length}); }
         function capture(enabled: bool): void { model.setCapture(enabled); }
         function persist(enabled: bool): void { model.setPersistence(enabled); }
         function retry(): void { model.retrySave(); }
+        function open(): void { model.open(); }
+        function close(): void { model.close(); }
+        function storageRetryEnabled(): bool {
+            const stack = [surface.contentItem];
+            while (stack.length) {
+                const item = stack.pop();
+                if (item.label === "Retry storage") return item.enabled;
+                for (const child of item.children || []) stack.push(child);
+            }
+            return false;
+        }
+        function retryStorageFromUi(): void {
+            const stack = [surface.contentItem];
+            while (stack.length) {
+                const item = stack.pop();
+                if (item.label === "Retry storage" && item.enabled) { item.requestActivation(); return; }
+                for (const child of item.children || []) stack.push(child);
+            }
+            throw new Error("Storage Retry is unavailable");
+        }
         function clear(): void { model.clearAll(); }
         function clearTwice(): void { model.clearAll(); model.clearAll(); }
     }
@@ -144,6 +166,10 @@ int fdatasync(int fd) {
         def launch():
             return subprocess.Popen(['quickshell', '--no-duplicate', '--path', str(shell / 'shell.qml')],
                                     env=env, stdout=log, stderr=subprocess.STDOUT)
+        saved_cache = work / 'saved-cache'
+        if os.geteuid() != 0:
+            cache.rename(saved_cache)
+            cache.parent.chmod(0o500)
         process = launch()
         def ipc(*args):
             result = subprocess.run(['quickshell', 'ipc', '--path', str(shell / 'shell.qml'),
@@ -163,7 +189,20 @@ int fdatasync(int fd) {
             raise AssertionError(last)
         def emit(value):
             os.write(pipe, (json.dumps(value, ensure_ascii=True) + '\n').encode())
-        wait(lambda s: s['ready'])
+        if os.geteuid() != 0:
+            wait(lambda s: s['failed'] and not s['preparing'])
+            state = json.loads(ipc('state'))
+            assert not state['storage'] and not state['capture'] and state['count'] == 0
+            time.sleep(.15)
+            assert not json.loads(ipc('state'))['preparing'], 'Storage setup retried without user action'
+            ipc('open')
+            assert ipc('storageRetryEnabled').strip() == 'true', 'Storage Retry button is disabled before settings readiness'
+            cache.parent.chmod(0o700)
+            saved_cache.rename(cache)
+            ipc('retryStorageFromUi')
+        wait(lambda s: s['ready'] and s['storage'])
+        assert process.poll() is None, 'Storage retry required a shell restart'
+        ipc('close')
         assert not json.loads(ipc('state'))['capture']
         assert json.loads(ipc('state'))['count'] == 0 and legacy.exists()
         assert not history.exists(), 'legacy history read or rewritten before consent'
@@ -313,6 +352,8 @@ int fdatasync(int fd) {
         print('Actual QML privacy consent, filtered events, separate persistence, clear/disable, denial retry and backend failures: PASS')
     finally:
         config.chmod(0o700)
+        cache.parent.chmod(0o700)
+        if saved_cache.exists() and not cache.exists(): saved_cache.rename(cache)
         cache.chmod(0o700)
         if process:
             process.terminate()

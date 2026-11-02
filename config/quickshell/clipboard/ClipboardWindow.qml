@@ -181,10 +181,11 @@ FloatingWindow {
                 }
 
                 ShellButton {
-                    label: (root.clipboardModel.settingsLoadFailed || root.clipboardModel.historyLoadFailed) ? "Retry load" : "Retry save"
+                    label: !root.clipboardModel.storageReady ? "Retry storage"
+                        : (root.clipboardModel.settingsLoadFailed || root.clipboardModel.historyLoadFailed) ? "Retry load" : "Retry save"
                     visible: root.clipboardModel.saveFailed || root.clipboardModel.settingsSaveFailed
-                    enabled: root.clipboardModel.settingsReady && !root.clipboardModel.settingsWriting
-                        && !root.clipboardModel.historyWiping
+                    enabled: !root.clipboardModel.storagePreparing && !root.clipboardModel.settingsWriting
+                        && !root.clipboardModel.historyWiping && !root.clipboardModel.consentRunning
                     onActivated: root.clipboardModel.retrySave()
                 }
 
@@ -210,7 +211,7 @@ FloatingWindow {
                 horizontalAlignment: Text.AlignHCenter
                 visible: root.clipboardModel.filteredEntries.length === 0
                 text: root.clipboardModel.entries.length === 0
-                    ? "Nothing copied yet — copy some text and it will appear here"
+                    ? "Nothing copied yet - copy some text and it will appear here"
                     : "No entries match your search"
                 color: Theme.menuMutedText
             }
