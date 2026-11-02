@@ -91,7 +91,11 @@ cat >"$work/bin/xinput" <<'EOF'
 case $1 in
 --list)
 	[ "${TEST_FAIL_LIST:-0}" != 1 ] || exit 1
-	cat "$TEST_DEVICES"
+	if [ "${2:-}" = --name-only ]; then
+		sed -n "s/^[^[:alnum:]_]*\(.*\)[[:space:]]id=$3[[:space:]].*/\1/p" "$TEST_DEVICES" | sed 's/[[:space:]]*$//'
+	else
+		cat "$TEST_DEVICES"
+	fi
 	;;
 list-props)
 	if [ "${TEST_DISAPPEAR_ID:-}" = "$2" ]; then
@@ -147,11 +151,11 @@ Device 'Twin PS/2 Mouse':
 	libinput Natural Scrolling Enabled Default (303): ${TEST_DEFAULT_17:-0}
 PROPS
 		;;
-	18 | 28) cat <<'PROPS'
+	18 | 28) cat <<PROPS
 Device 'Twin PS/2 Mouse':
 	Device Product ID (101): 2, 19
 	Device Node (102): "/dev/input/event14"
-	libinput Natural Scrolling Enabled (302): 1
+	libinput Natural Scrolling Enabled (302): ${TEST_TWIN_18_VALUE:-1}
 	libinput Natural Scrolling Enabled Default (303): 1
 PROPS
 		if [ "${TEST_DUPLICATE_CAPABILITIES:-0}" = 1 ]; then
@@ -1094,6 +1098,19 @@ for action in reset apply-saved; do
 	test ! -s "$work/actions.log"
 	cmp "$work/saved-before-query" "$work/home/.config/dwm-titus/input-settings.conf"
 done
+
+# Unreadable unrelated pointers must not block a healthy grouped target.
+cp "$work/devices-shared" "$work/devices-unrelated"
+printf '| + Mouse, Wild [Name] id=12 [slave pointer (2)]\n' >>"$work/devices-unrelated"
+rm -f "$work/list-props.count"
+env "${env_common[@]}" TEST_DEVICES="$work/devices-unrelated" TEST_DISAPPEAR_ID=12 TEST_DISAPPEAR_FROM=1 "$helper" preview unrelated-query 10 "$twin_key" natural-scroll 1 >/dev/null
+env "${env_common[@]}" TEST_DEVICES="$work/devices-unrelated" TEST_DISAPPEAR_ID=12 TEST_DISAPPEAR_FROM=1 "$helper" revert unrelated-query >/dev/null
+
+# Duplicate signatures are safe to restore when all captured values agree.
+env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" TEST_DUPLICATE_CAPABILITIES=1 TEST_TWIN_18_VALUE=0 "$helper" preview uniform-parts 10 "$twin_key" natural-scroll 1 >/dev/null
+rm -f "$work/actions.log"
+env "${env_common[@]}" TEST_DEVICES="$work/devices-shared-replug" TEST_DUPLICATE_CAPABILITIES=1 TEST_TWIN_18_VALUE=0 "$helper" revert uniform-parts >/dev/null
+[[ $(cat "$work/actions.log") == $'xinput set-prop 27 libinput Natural Scrolling Enabled 0\nxinput set-prop 28 libinput Natural Scrolling Enabled 0' ]]
 
 # A journal append failure happens before any live member is changed.
 cat >"$work/bin/stat" <<'STAT'

@@ -12,7 +12,7 @@ self="$script_dir/${BASH_SOURCE[0]##*/}"
 accessibility_key=accessx
 
 declare -a device_ids=() device_keys=() device_kinds=() device_names=() device_persistable=() device_ports=()
-declare -a member_ids=()
+declare -a member_ids=() failed_device_names=() failed_device_kinds=()
 watch_event_fifo=
 watch_monitor_pid=
 watch_session_guard_pid=
@@ -174,7 +174,7 @@ stable_device_source() {
 }
 
 scan_devices() {
-	local line id kind name properties product node source identity key persistable devices strict=${1:-false}
+	local line id kind name properties product node source identity key persistable devices failed_name
 	need_tools
 	device_ids=()
 	device_keys=()
@@ -182,6 +182,8 @@ scan_devices() {
 	device_names=()
 	device_persistable=()
 	device_ports=()
+	failed_device_names=()
+	failed_device_kinds=()
 	if ! devices=$(xinput --list --short); then
 		die "unable to query XInput devices"
 	fi
@@ -192,13 +194,17 @@ scan_devices() {
 			properties=$(mktemp)
 			xinput list-props "$id" >"$properties" 2>/dev/null || {
 				rm -f "$properties"
-				[[ $strict != true ]] || return 1
+				failed_name=$(xinput --list --name-only "$id" 2>/dev/null || true)
+				failed_device_names+=("$failed_name")
+				failed_device_kinds+=("$kind")
 				continue
 			}
 			name=$(sed -n "1{s/^Device '//; s/':$//; p;}" "$properties")
 			[[ -n $name ]] || {
 				rm -f "$properties"
-				[[ $strict != true ]] || return 1
+				failed_name=$(xinput --list --name-only "$id" 2>/dev/null || true)
+				failed_device_names+=("$failed_name")
+				failed_device_kinds+=("$kind")
 				continue
 			}
 			[[ $name != *"XTEST"* ]] || {
@@ -251,9 +257,26 @@ device_can_persist() {
 # identity (a VMware PS/2 mouse has two event nodes on one port). They are one
 # entry: reads use the first member that has the setting, writes go to every
 # member that has it.
+# An unreadable unrelated device does not invalidate a healthy target. If
+# its name cannot be queried, or name/kind match a target, identity is unknown.
+scan_candidate_safe() {
+	local wanted=$1 index failed matches=0
+	for index in "${!device_keys[@]}"; do
+		[[ ${device_keys[$index]} == "$wanted" ]] || continue
+		matches=$((matches + 1))
+		for failed in "${!failed_device_names[@]}"; do
+			[[ ${failed_device_kinds[$failed]} == "${device_kinds[$index]}" ||
+				(${failed_device_kinds[$failed]} == pointer && ${device_kinds[$index]} == touchpad) ]] || continue
+			[[ -n ${failed_device_names[$failed]} && ${failed_device_names[$failed]} != "${device_names[$index]}" ]] || return 1
+		done
+	done
+	((matches > 0 || ${#failed_device_names[@]} == 0))
+}
+
 resolve_devices() {
 	local wanted=$1
-	scan_devices true || return 1
+	scan_devices || return 1
+	scan_candidate_safe "$wanted" || return 1
 	collect_members "$wanted"
 	((${#member_ids[@]} > 0)) || die "device is disconnected or unavailable: $wanted"
 	members_share_port "$wanted" || die "stable device identity is ambiguous"
@@ -371,8 +394,8 @@ capture_members() {
 # Resolve the complete rollback plan before writing. Re-enumerated members
 # require a unique physical-part signature in both snapshots.
 restore_members() {
-	local token=$1 key=$2 setting=$3 previous=$4 file id value identity old failed=0 status
-	local -A values=() identities=() counts=() current_counts=() current_identity=()
+	local token=$1 key=$2 setting=$3 previous=$4 file id value identity failed=0 status
+	local -A values=() identities=() counts=() current_identity=() signature_values=() signature_conflicts=()
 	local -a restore=()
 	file=$(token_file "$token" members)
 	if [[ $key == "$accessibility_key" || ! -s $file ]]; then
@@ -384,6 +407,10 @@ restore_members() {
 	while IFS=$'\t' read -r id identity; do
 		identities[$id]=$identity
 		counts[$identity]=$((${counts[$identity]:-0} + 1))
+		if [[ -n ${signature_values[$identity]+x} && ${signature_values[$identity]} != "${values[$id]}" ]]; then
+			signature_conflicts[$identity]=1
+		fi
+		signature_values[$identity]=${values[$id]}
 	done <"$(token_file "$token" identities)"
 	for id in "${member_ids[@]}"; do
 		if member_value "$id" "$setting" >/dev/null; then
@@ -395,18 +422,14 @@ restore_members() {
 		fi
 		identity=$(member_identity "$id") || return 1
 		current_identity[$id]=$identity
-		current_counts[$identity]=$((${current_counts[$identity]:-0} + 1))
 	done
 	for id in "${!current_identity[@]}"; do
 		identity=${current_identity[$id]}
 		if [[ -n ${values[$id]+x} && ${identities[$id]:-} == "$identity" ]]; then
 			value=${values[$id]}
 		else
-			[[ ${counts[$identity]:-0} == 1 && ${current_counts[$identity]} == 1 ]] || return 1
-			value=
-			for old in "${!identities[@]}"; do
-				[[ ${identities[$old]} != "$identity" ]] || value=${values[$old]}
-			done
+			[[ ${counts[$identity]:-0} -gt 0 && -z ${signature_conflicts[$identity]:-} ]] || return 1
+			value=${signature_values[$identity]}
 		fi
 		restore+=("$id"$'\t'"$value")
 	done
@@ -454,7 +477,8 @@ reapply_members() {
 	local -a retry_values=() written=()
 	file=$(token_file "$token" members)
 	[[ $key != "$accessibility_key" && -s $file ]] || return 0
-	scan_devices true || return 1
+	scan_devices || return 1
+	scan_candidate_safe "$key" || return 1
 	collect_members "$key"
 	((${#member_ids[@]} > 0)) || return 0
 	members_share_port "$key" || return 1
