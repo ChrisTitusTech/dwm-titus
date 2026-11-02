@@ -90,6 +90,11 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Isolate test configuration, data, state, and cache directories from the
+  invoking desktop. Installer preservation fixtures now keep both simulated
+  homes' receipts and build configurations in their own state directories and
+  verify that inherited desktop state and caches stay unchanged.
+
 - Keep dependency-install actions limited to missing Fedora packages with DNF
   confirmation, preserving desktop files, receipts, and Update Center status.
 - Preserve surviving managed-file records during source reinstalls and recover

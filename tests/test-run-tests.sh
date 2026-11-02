@@ -62,6 +62,28 @@ if find "$test_root" -mindepth 1 -print -quit | grep -q .; then
 	exit 1
 fi
 
+# Inherited desktop XDG paths must not be visible as default test storage.
+for kind in config data state cache; do
+	mkdir -p "$work/host-$kind"
+	printf '%s\n' "host-$kind sentinel" >"$work/host-$kind/sentinel"
+done
+xdg_out=$work/xdg.out
+# shellcheck disable=SC2016
+XDG_CONFIG_HOME=$work/host-config XDG_DATA_HOME=$work/host-data \
+	XDG_STATE_HOME=$work/host-state XDG_CACHE_HOME=$work/host-cache \
+	DWM_TEST_TMP_ROOT=$work/xdg-root "$repo/scripts/run-tests" bash -eu -c '
+    for directory in "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_STATE_HOME" "$XDG_CACHE_HOME"; do
+        case "$directory" in "$DWM_TEST_WORKSPACE"/xdg/*) ;; *) exit 3 ;; esac
+        test -d "$directory"
+        printf "test storage\n" >"$directory/child-write"
+    done
+' >"$xdg_out"
+assert_workspace_removed "$xdg_out" "$work/xdg-root" XDG
+for kind in config data state cache; do
+	[[ $(cat "$work/host-$kind/sentinel") == "host-$kind sentinel" ]]
+	[[ $(find "$work/host-$kind" -mindepth 1 | wc -l) == 1 ]]
+done
+
 descendant_out=$work/descendant.out
 # Expansion is intentionally deferred to the child shell.
 # shellcheck disable=SC2016

@@ -727,7 +727,7 @@ check-install-manifest: all
 	echo "==> Install manifest and uninstall symmetry validated."
 
 check-install-preservation:
-	tests/test-install-preservation.sh
+	tests/test-install-state-isolation.sh
 
 check-desktop-update: dwm
 	@python3 tests/test-desktop-update-sandbox.py

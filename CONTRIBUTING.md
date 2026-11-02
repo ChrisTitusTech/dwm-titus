@@ -25,6 +25,12 @@ make
 scripts/run-tests
 ```
 
+The managed runner replaces `XDG_CONFIG_HOME`, `XDG_DATA_HOME`,
+`XDG_STATE_HOME`, and `XDG_CACHE_HOME` with private directories in its temporary
+workspace. It retains `HOME` for toolchain discovery. A fixture that changes
+`HOME` or drops privileges must also supply all four XDG homes for that fixture;
+never inherit the invoking desktop's receipt, build configuration, or caches.
+
 Use `./install.sh --dry-run --non-interactive --profile core` to inspect the
 dependency plan without changing the system.
 

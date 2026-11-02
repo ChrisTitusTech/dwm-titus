@@ -104,6 +104,15 @@ trap 'interrupt HUP 129' HUP
 trap 'interrupt INT 130' INT
 trap 'interrupt TERM 143' TERM
 
+# Never let fixtures inherit the invoking desktop's user storage. Keep HOME
+# for toolchain discovery; fixtures that change HOME must bind all XDG homes
+# to that fixture as well, especially when dropping privileges.
+export XDG_CONFIG_HOME=$work/xdg/config
+export XDG_DATA_HOME=$work/xdg/data
+export XDG_STATE_HOME=$work/xdg/state
+export XDG_CACHE_HOME=$work/xdg/cache
+mkdir -p -- "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_STATE_HOME" "$XDG_CACHE_HOME"
+
 export TMPDIR=$work
 export DWM_TEST_WORKSPACE=$work
 export DWM_TEST_RUNNER_TOKEN=$runner_token
