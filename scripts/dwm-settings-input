@@ -382,16 +382,26 @@ apply_preview_members() {
 # that has the setting, also one a replug gave a new XInput id. A device that
 # is gone gets it from the saved setting when it comes back.
 reapply_members() {
-	local token=$1 key=$2 setting=$3 value=$4 file id
+	local token=$1 key=$2 setting=$3 value=$4 file id old pair
+	local -a retry_values=() written=()
 	file=$(token_file "$token" members)
 	[[ $key != "$accessibility_key" && -s $file ]] || return 0
 	scan_devices
 	collect_members "$key"
 	((${#member_ids[@]} > 0)) || return 0
 	members_share_port "$key" || return 1
+	# Read every old value before writes: keyboard rules names are shared.
 	for id in "${member_ids[@]}"; do
-		member_value "$id" "$setting" >/dev/null || continue
-		apply_member_value "$id" "$setting" "$value" || return 1
+		old=$(member_value "$id" "$setting") || continue
+		retry_values+=("$id"$'\t'"$old")
+	done
+	for pair in "${retry_values[@]}"; do
+		id=${pair%%$'\t'*}
+		apply_member_value "$id" "$setting" "$value" || {
+			undo_member_writes "$setting" "${written[@]}" || return 3
+			return 1
+		}
+		written+=("$pair")
 	done
 }
 

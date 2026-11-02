@@ -923,12 +923,14 @@ env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" TEST_FAIL_SET_FROM=2 
 	TEST_SET_COUNTER="$work/set.count" "$helper" preview twin-keep 5 "$twin_key" natural-scroll 1 \
 	>"$work/twin-keep.out" 2>/dev/null
 grep -Fq $'preview-failed\ttwin-keep' "$work/twin-keep.out"
+rm -f "$work/actions.log"
 if env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" TEST_FAIL_SET_ID=18 "$helper" \
 	keep twin-keep >/dev/null 2>"$work/twin-keep.err"; then
 	printf 'Keep accepted a value one part still rejects\n' >&2
 	exit 1
 fi
 grep -Fq 'use Revert' "$work/twin-keep.err"
+[[ $(tail -1 "$work/actions.log") == 'xinput set-prop 17 libinput Natural Scrolling Enabled 0' ]]
 test -f "$work/runtime/dwm-settings-input/twin-keep.state"
 if grep -Fq "$twin_key"$'\tnatural-scroll' "$work/home/.config/dwm-titus/input-settings.conf" 2>/dev/null; then
 	printf 'Keep saved a value one part rejected\n' >&2
