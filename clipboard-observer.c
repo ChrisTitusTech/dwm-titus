@@ -64,7 +64,7 @@ static int eligible_command(uint32_t pid, const char *exe)
     /* Only interpreter launch arguments identify another application. Browser
      * flags, filenames and arbitrary text arguments are not application IDs. */
     if (strcmp(base, "mono") && strcmp(base, "mono-sgen") && strcmp(base, "node") &&
-        strcmp(base, "nodejs") && strncmp(base, "python", 6) && strcmp(base, "java") &&
+        strcmp(base, "nodejs") && strncmp(base, "python", 6) && strncmp(base, "perl", 4) && strcmp(base, "java") &&
         strcmp(base, "bash") && strcmp(base, "sh") && strcmp(base, "dash") && strcmp(base, "zsh")) return 1;
     snprintf(path, sizeof(path), "/proc/%u/cmdline", pid);
     file = fopen(path, "r");
@@ -82,6 +82,26 @@ static int eligible_command(uint32_t pid, const char *exe)
                  * Do not inspect it as a path or infer secrets from its text. */
                 used = 0;
                 break;
+            }
+            if (argument_index && argument[0] == '-') {
+                /* Only known operand-free flags may precede the entrypoint.
+                 * Otherwise an option operand could be mistaken for the app
+                 * (e.g. mono --config file KeePass.exe). Fail closed rather
+                 * than guess each interpreter's evolving option grammar. */
+                int shell = !strcmp(base, "bash") || !strcmp(base, "sh") ||
+                    !strcmp(base, "dash") || !strcmp(base, "zsh");
+                int known = !strcmp(argument, "--") ||
+                    (shell && argument[1] && argument[1] != '-' &&
+                     strspn(argument + 1, "abefhiklmnprstuvxBCEHPT") == strlen(argument + 1)) ||
+                    (!strncmp(base, "python", 6) && (!strcmp(argument, "-u") ||
+                     !strcmp(argument, "-B") || !strcmp(argument, "-E") ||
+                     !strcmp(argument, "-I") || !strcmp(argument, "-s") ||
+                     !strcmp(argument, "-S") || !strcmp(argument, "-m"))) ||
+                    (!strcmp(base, "java") && !strcmp(argument, "-jar")) ||
+                    ((!strcmp(base, "mono") || !strcmp(base, "mono-sgen")) &&
+                     !strcmp(argument, "--debug")) ||
+                    (!strncmp(base, "perl", 4) && (!strcmp(argument, "-w") || !strcmp(argument, "-T")));
+                if (!known) { ok = 0; used = 0; break; }
             }
             if (argument_index && used && argument[0] != '-') {
                 /* Spaces are valid in a script/app pathname (notably Mono). */
