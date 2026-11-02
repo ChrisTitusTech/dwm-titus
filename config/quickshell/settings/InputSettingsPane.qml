@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import qs.core
+import "InputOptions.js" as InputOptions
 
 pragma ComponentBehavior: Bound
 
@@ -54,6 +55,7 @@ Flickable {
                 required property var modelData
                 property var settings: root.settingsModel.inputSettings.filter(function(setting) { return setting.device === deviceCard.modelData.key; })
                 property var unsupported: root.settingsModel.inputUnsupported.filter(function(setting) { return setting.device === deviceCard.modelData.key; })
+                property var modifierOptions: deviceCard.settings.filter(function(setting) { return setting.id === "modifier-options"; })[0] || null
 
                 Layout.fillWidth: true
                 Layout.preferredHeight: deviceColumn.implicitHeight + 20
@@ -120,6 +122,58 @@ Flickable {
                             ShellButton { visible: settingRow.modelData.type !== "boolean"; label: "Preview"; accessibleDescription: settingRow.modelData.label; enabled: !root.settingsModel.previewOperationLocked; onActivated: root.settingsModel.previewInput(deviceCard.modelData.key, settingRow.modelData.id, settingRow.editValue) }
                             ShellButton { label: "Reset"; accessibleDescription: settingRow.modelData.label; enabled: !root.settingsModel.previewOperationLocked; onActivated: root.settingsModel.resetInput(deviceCard.modelData.key, settingRow.modelData.id) }
                         }
+                    }
+                    // Presets for the layout switch key and LED; each one previews a
+                    // modifier-options value with only its grp: or grp_led: part changed.
+                    Repeater {
+                        model: deviceCard.modifierOptions === null ? [] : [
+                            { label: "Switch layout with", prefix: InputOptions.switchPrefix, choices: InputOptions.switchChoices },
+                            { label: "Layout LED", prefix: InputOptions.ledPrefix, choices: InputOptions.ledChoices }
+                        ]
+                        delegate: RowLayout {
+                            id: presetRow
+                            required property var modelData
+                            readonly property string options: deviceCard.modifierOptions === null ? "" : deviceCard.modifierOptions.value
+                            readonly property string selected: InputOptions.current(presetRow.options, presetRow.modelData.prefix)
+                            Layout.fillWidth: true
+
+                            Text {
+                                Layout.preferredWidth: 150
+                                Layout.maximumWidth: 150
+                                Layout.alignment: Qt.AlignTop
+                                text: presetRow.modelData.label
+                                color: Theme.text
+                                font.family: Theme.fontFamily
+                                font.pixelSize: Theme.bodyFontSize
+                                wrapMode: Text.WordWrap
+                            }
+                            Flow {
+                                Layout.fillWidth: true
+                                spacing: Theme.spacingSm
+                                Repeater {
+                                    model: presetRow.modelData.choices
+                                    delegate: ShellButton {
+                                        id: presetButton
+                                        required property var modelData
+                                        label: presetButton.modelData.label
+                                        primary: presetButton.modelData.value === presetRow.selected
+                                        accessibleDescription: presetRow.modelData.label + " " + presetButton.modelData.label + ". Starts a timed preview."
+                                        enabled: !root.settingsModel.previewOperationLocked
+                                        onActivated: root.settingsModel.previewInput(deviceCard.modelData.key, "modifier-options",
+                                            InputOptions.withChoice(presetRow.options, presetRow.modelData.prefix, presetButton.modelData.value))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        visible: deviceCard.modifierOptions !== null && text.length > 0
+                        text: deviceCard.modifierOptions === null ? "" : InputOptions.hint(deviceCard.modifierOptions.value)
+                        color: Theme.textMuted
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.smallFontSize
+                        wrapMode: Text.WordWrap
                     }
                     Repeater {
                         model: deviceCard.unsupported
