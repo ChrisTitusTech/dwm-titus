@@ -37,6 +37,22 @@ case " $* " in
 *) exit 1 ;;
 esac
 SCRIPT
+cat >"$work/bin/df" <<'SCRIPT'
+#!/bin/sh
+[ "${DWM_TEST_DF_FAIL:-0}" != 1 ] || exit 1
+exec /usr/bin/df "$@"
+SCRIPT
+chmod +x "$work/bin/df"
+
+cat >"$work/bin/findmnt" <<'SCRIPT'
+#!/bin/sh
+case "$*" in
+'-n -o FSTYPE /sys/firmware/efi/efivars') printf 'efivarfs\n' ;;
+'-n -o USE% /sys/firmware/efi/efivars') printf '99%%\n' ;;
+*) exec /usr/bin/findmnt "$@" ;;
+esac
+SCRIPT
+chmod +x "$work/bin/findmnt"
 chmod +x "$work/bin/dnf" "$work/bin/quickshell" "$work/bin/systemctl" "$work/bin/xclip"
 
 DWM_HEALTH_XCLIP_OUTPUT="$work/clipboard.txt" \
@@ -86,6 +102,23 @@ grep -Fq $'check\tdesktop\tok\tquickshell-version\tQuickshell\tAvailable' "$work
 grep -Fq $'check\tservices\twarn\tuser-failed-user-broken-service\tuser-broken.service (user)' "$work/user.tsv"
 grep -Fq $'manage-user-service|user-broken.service\tService actions\tuser' "$work/user.tsv"
 grep -Fq $'meta\toverview\tok\tscan-user-complete' "$work/user.tsv"
+
+# efivarfs is fixed-size firmware NVRAM, never a cleanable disk error.
+grep -Fq 'df -P -l -x tmpfs -x devtmpfs -x squashfs -x efivarfs' "$HELPER"
+grep -Fq 'df -Pi -l -x tmpfs -x devtmpfs -x squashfs -x efivarfs' "$HELPER"
+grep -Fq $'check\tstorage\tinfo\tdisk-efivars\tFirmware variables (efivarfs)\t99% used' "$work/user.tsv"
+if grep -Fq $'check\tstorage\terror\tdisk-sys-firmware-efi-efivars' "$work/user.tsv"; then
+	printf 'efivarfs storage was reported as an error\n' >&2
+	exit 1
+fi
+
+# Firmware state stays readable even when unrelated filesystem scans fail.
+HOME="$work/home" XDG_CONFIG_HOME="$work/home/.config" \
+	DWM_HEALTH_OS_RELEASE="$work/os-release" DWM_HEALTH_COMMAND_TIMEOUT=2 \
+	DWM_HEALTH_SYSTEMCTL_LOG="$work/systemctl.log" DWM_TEST_DF_FAIL=1 \
+	PATH="$work/bin:/usr/bin:/bin" "$HELPER" scan-user >"$work/df-failed.tsv"
+grep -Fq $'check\tstorage\tinfo\tdisk-efivars' "$work/df-failed.tsv"
+grep -Fq $'check\tstorage\trestricted\tstorage-usage' "$work/df-failed.tsv"
 
 HOME="$work/home" \
 	DWM_HEALTH_COMMAND_TIMEOUT=2 \

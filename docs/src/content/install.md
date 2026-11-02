@@ -10,6 +10,13 @@ eyebrow: Start here
 > **dwm-titus is Fedora-only.** Fedora Linux with Xorg is required for every
 > supported installation, package, test, and release path.
 
+The released images and this guide are validated against Fedora 44. Newer
+Fedora releases, including Fedora 45, are accepted by the existing-system
+installer when `/etc/os-release` reports `ID=fedora`, but they are not yet
+release-qualified. Dependency resolution and the desktop are expected to work;
+run `dwm-diagnostics` first and report release-specific problems on the issue
+tracker.
+
 ## Dependencies
 
 See [Desktop Dependencies](/dependencies.html) for a component-by-component
@@ -112,18 +119,31 @@ install-herdr
 
 ## Manual Install
 
-### 1. Dependencies
+### 1. Clone the checkout
+
+For a first-time source install:
+
+```bash
+git clone https://github.com/ChrisTitusTech/dwm-titus.git
+cd dwm-titus
+```
+
+If you already have a checkout, enter that directory instead of cloning again.
+Run the remaining commands from it; a new terminal must `cd` into the checkout
+first.
+
+### 2. Dependencies
 
 The supported dependency path is the installer because it resolves Fedora
 package names from the shared map:
 
 ```bash
 ./install.sh --dry-run --non-interactive --profile core
-./install.sh --profile full
+./install.sh --profile recommended
 ```
 
 Use `core` for the required build/X11/session packages, Alacritty, and media applications,
-`recommended` for the complete desktop layer, or `full` for optional extras
+`recommended` for the complete everyday desktop, or `full` for optional extras
 such as file-manager integration, wallpapers, and
 display-manager setup. On x86_64 Fedora, `full` can also install Steam,
 Gamescope, GameMode, and MangoHud after repository approval.
@@ -166,12 +186,13 @@ to use GTK: the current Path package opens a chooser but does not implement
 caller cancellation through `org.freedesktop.portal.Request.Close`. Using Path
 for folder browsing does not require its file chooser portal.
 
-### 2. Clone and Build
+### 3. Build and synchronize
+
+The installer above already builds and installs the desktop. For later source
+changes, preserve an existing compile-time configuration and synchronize with:
 
 ```bash
-git clone https://github.com/ChrisTitusTech/dwm-titus.git
-cd dwm-titus
-cp config.def.h config.h
+test -f config.h || cp config.def.h config.h
 ./scripts/dev-sync-install.sh
 ```
 
@@ -325,43 +346,62 @@ contract, restart behavior, and interrupted-operation recovery.
 
 Before a source update, save the current checkout and user configuration. Run
 this from the checkout as your regular user in Bash, with desktop settings
-closed so they cannot change during the backup:
+closed so they cannot change during the backup. Use a terminal in the desktop
+session so its effective XDG roots are recorded:
 
 ```bash
 repo_dir=$(pwd -P)
 backup_dir=$(mktemp -d "$HOME/dwm-titus-backup.XXXXXX") || exit 1
 chmod 700 "$backup_dir" || exit 1
 tar -C "$repo_dir" -cpf "$backup_dir/source.tar" . || exit 1
-printf 'export XDG_CONFIG_HOME=%q\nexport XDG_DATA_HOME=%q\n' \
-    "${XDG_CONFIG_HOME:-$HOME/.config}" "${XDG_DATA_HOME:-$HOME/.local/share}" \
+state_home=${XDG_STATE_HOME:-$HOME/.local/state}
+case "$state_home" in /*) ;; *) state_home=$HOME/.local/state ;; esac
+printf 'export XDG_CONFIG_HOME=%q\nexport XDG_DATA_HOME=%q\nexport XDG_STATE_HOME=%q\n' \
+    "${XDG_CONFIG_HOME:-$HOME/.config}" "${XDG_DATA_HOME:-$HOME/.local/share}" "$state_home" \
     >"$backup_dir/xdg.env"
-python3 - "$repo_dir/config.h" "${XDG_CONFIG_HOME:-$HOME/.config}" \
-    "$HOME/.xinitrc" "${XDG_DATA_HOME:-$HOME/.local/share}/applications" \
+python3 - "$backup_dir/theme-paths.nul" "$repo_dir/config.h" "${XDG_CONFIG_HOME:-$HOME/.config}" \
+    "$HOME/.xinitrc" "$HOME/.gtkrc-2.0" "${XDG_DATA_HOME:-$HOME/.local/share}/applications" \
     >"$backup_dir/user-paths.nul" <<'PYTHON' || exit 1
 import os
 import sys
 
-pending = [os.path.abspath(p) for p in sys.argv[1:] if os.path.lexists(p)]
-seen = set()
-while pending:
-    original = pending.pop()
-    # Canonicalize parents, retaining a final symlink as its own archive entry.
-    path = os.path.join(os.path.realpath(os.path.dirname(original)), os.path.basename(original))
-    if path in seen:
-        continue
-    seen.add(path)
-    if os.path.islink(path):
-        target = os.path.realpath(path)
-        if not os.path.exists(target) or not os.access(target, os.W_OK):
-            sys.exit("Back up this missing or read-only link target separately: " + path)
-        pending.append(target)
-    elif os.path.isdir(path):
-        pending.extend(entry.path for entry in os.scandir(path))
-for path in sorted(seen):
-    sys.stdout.buffer.write(os.fsencode(path.lstrip("/")) + b"\0")
+def archive_paths(roots):
+    pending = [os.path.abspath(p) for p in roots if os.path.lexists(p)]
+    seen = set()
+    while pending:
+        original = pending.pop()
+        # Retain a final symlink as an entry and archive its writable target.
+        path = os.path.join(os.path.realpath(os.path.dirname(original)), os.path.basename(original))
+        if path in seen:
+            continue
+        seen.add(path)
+        if os.path.islink(path):
+            target = os.path.realpath(path)
+            if not os.path.exists(target) or not os.access(target, os.W_OK):
+                sys.exit("Back up this missing or read-only link target separately: " + path)
+            pending.append(target)
+        elif os.path.isdir(path):
+            pending.extend(entry.path for entry in os.scandir(path))
+    return seen
+
+def manifest(paths):
+    return b"".join(os.fsencode(p.lstrip("/")) + b"\0" for p in sorted(paths))
+
+config_root = sys.argv[3]
+theme_roots = [os.path.join(config_root, name) for name in
+               ("alacritty", "kitty", "dwmterm", "gtk-3.0", "gtk-4.0", "qt5ct", "qt6ct")]
+theme_paths = archive_paths(theme_roots + [sys.argv[5]])
+managed_shell = os.path.realpath(os.path.join(config_root, "quickshell"))
+if any(os.path.commonpath([path, managed_shell]) == managed_shell for path in theme_paths):
+    sys.exit("A theme path targets managed Quickshell; back it up separately before updating")
+with open(sys.argv[1], "wb") as output:
+    output.write(manifest(theme_paths))
+sys.stdout.buffer.write(manifest(archive_paths(sys.argv[2:])))
 PYTHON
 tar -C / --null --no-recursion -cpf "$backup_dir/user.tar" \
     -T "$backup_dir/user-paths.nul" || exit 1
+tar -C / --null --no-recursion -cpf "$backup_dir/themes.tar" \
+    -T "$backup_dir/theme-paths.nul" || exit 1
 printf 'Recovery backup: %s\n' "$backup_dir"
 ```
 
@@ -371,7 +411,11 @@ source and configuration, not Fedora packages or all personal data. The user
 archive records the effective XDG paths, symlink layout, and the contents of
 referenced writable targets, including dotfiles outside the checkout. A missing
 or read-only link target stops the recipe; resolve it or back it up separately
-before updating. Keep the XDG parent-directory layout unchanged during recovery.
+before updating. Keep the XDG parent-directory layout unchanged during recovery. The separate
+`themes.tar` archive captures existing GTK2, GTK3/4, Qt5/6, Dwmterm, Alacritty, and Kitty
+configuration and writable symlink targets for selective post-install restoration.
+It does not include the managed Quickshell tree. Theme preferences held by running
+services or D-Bus are outside this file backup; close the session as instructed.
 
 For a clean tracked checkout, update and synchronize the installed files:
 
@@ -383,7 +427,8 @@ git pull --ff-only || exit 1
 ```
 
 Resolve local source changes before pulling. The installer preserves existing
-user TOML files, `config.h`, `.xinitrc`, and application configuration. It
+user TOML files, `config.h`, and `.xinitrc`. It reapplies theme integration
+keys in GTK/Qt and terminal configuration while preserving unrelated values. It
 replaces the managed Quickshell directory to match the installed helpers.
 Log out and select dwm again, then run:
 
@@ -403,19 +448,39 @@ recorded paths and builds the saved source in a separate directory, leaving the
 failed checkout available for inspection:
 
 ```bash
-test -f "$backup_dir/source.tar" && test -f "$backup_dir/user.tar" || exit 1
+test -f "$backup_dir/source.tar" && test -f "$backup_dir/user.tar" \
+    && test -f "$backup_dir/themes.tar" || exit 1
 restore_dir=$(mktemp -d "$HOME/dwm-titus-restored.XXXXXX") || exit 1
 tar -C "$restore_dir" -xpf "$backup_dir/source.tar" || exit 1
 tar -C / --keep-directory-symlink -xpf "$backup_dir/user.tar" || exit 1
 source "$backup_dir/xdg.env"
 cd "$restore_dir" || exit 1
 ./install.sh --non-interactive --yes --profile recommended || exit 1
-./scripts/dev-sync-install.sh
+./scripts/dev-sync-install.sh || exit 1
+# Keep the next startup's automatic theme apply from rewriting restored files.
+# This uses the same source-hash suppression as Settings theme rollback.
+state_home=${XDG_STATE_HOME:-$HOME/.local/state}
+case "$state_home" in /*) ;; *) state_home=$HOME/.local/state ;; esac
+appearance_state=$state_home/dwm-titus/appearance
+mkdir -p -- "$appearance_state" || exit 1
+chmod 700 -- "$appearance_state" || exit 1
+theme_hash=$(sha256sum -- "$XDG_CONFIG_HOME/dwm-titus/themes.toml") || exit 1
+suppression=$(umask 077; mktemp "$appearance_state/.integration-suppress.XXXXXX") || exit 1
+printf '%s\n' "${theme_hash%% *}" >"$suppression" || exit 1
+mv -f -- "$suppression" "$appearance_state/integration-suppress" || exit 1
+# Reapply saved files after installation; managed Quickshell is excluded.
+tar -C / --keep-directory-symlink -xpf "$backup_dir/themes.tar" || exit 1
 ```
 
 Log in again and run `./scripts/dev-sync-install.sh --check` from the restored
-checkout. Keep both directories until runtime verification passes. This
-procedure does not downgrade RPMs, remove files created after the backup, or
+checkout. The suppression marker prevents automatic integration-file writes
+while `themes.toml` has the restored hash, including on first login; it does not
+freeze dwm's runtime theme. Selecting a theme in Settings, changing the theme
+source, or manually running `theme-apply.sh` can replace the restored integration
+values again. To explicitly resume automatic convergence without changing the
+source, remove `$appearance_state/integration-suppress` (reconstruct that path
+from the recovery block in a new shell). Keep both directories until runtime
+verification passes. This procedure does not downgrade RPMs, remove files created after the backup, or
 undo external service and firmware changes. Package update recovery is a
 separate operation in Settings; follow its recorded transaction guidance.
 
@@ -487,7 +552,13 @@ hotplug events before replaying saved values for returning devices.
 startx
 ```
 
-The provided `.xinitrc` disables screen blanking, starts the configured Quickshell panel, and runs dwm.
+The installer creates `.xinitrc` from the project template when the file is
+missing and preserves an existing file. dwm launches the project's
+`scripts/autostart.sh`, which applies the saved power and locking policy,
+disables screen blanking and DPMS by default, starts the configured Quickshell
+panel, and activates XDG autostart. For `startx`, the shipped template runs dwm
+under `dbus-run-session`. If the login path already creates a user D-Bus
+session, a custom `.xinitrc` can use `exec dwm` instead.
 
 ## Minimal Session Profile
 

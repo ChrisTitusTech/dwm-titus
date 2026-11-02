@@ -38,12 +38,17 @@ Tags 1-9 act as workspaces. Use `Super` + a number from `1` through `9` to switc
 
 ## Layouts
 
-Three layouts are available — switch between them instantly.
+Tiling and floating layouts have direct shortcuts. `Super` + `M` toggles the
+monocle layout and the bar. It does not make an individual window fullscreen.
 
 | Layout | Keys |
 |--------|------|
 | Tiling (master + stack) | `Super` + `T` |
-| Floating | `Super` + `Shift` + `M` |
-| Fullscreen (monocle) | `Super` + `M` |
+| Floating | `Super` + `F` |
+| Monocle focus mode | `Super` + `M` |
+| Toggle floating for one window | `Super` + `Shift` + `M` |
 
-See [Keybindings](./keybinds.html) for the full reference.
+The monocle layout is used by `Super` + `M`; there is no separate direct layout
+binding. The saved pre-focus layout is shared across tags and monitors, so
+switching tags before pressing `Super` + `M` again may restore a different
+layout. See [Keybindings](./keybinds.html) for the full reference.
