@@ -179,14 +179,15 @@ class DesktopUpdate(unittest.TestCase):
                                        check=True, env={"PATH": "/usr/bin:/bin", "HOME": "/root", "LANG": "C.UTF-8"},
                                        stdin=None, cwd="/", timeout=1800)
 
-    def test_power_profiles_provider_detection(self):
-        with patch.object(privileged.subprocess, "run", return_value=SimpleNamespace(returncode=0)) as probe:
-            self.assertTrue(privileged.power_profiles_provider_installed())
-            probe.assert_called_once_with(["/usr/bin/rpm", "-q", "--whatprovides", "ppd-service"],
-                                          stdout=privileged.subprocess.DEVNULL, stderr=privileged.subprocess.DEVNULL,
-                                          stdin=privileged.subprocess.DEVNULL, timeout=10)
-        with patch.object(privileged.subprocess, "run", return_value=SimpleNamespace(returncode=1)):
-            self.assertFalse(privileged.power_profiles_provider_installed())
+    def test_shared_provider_policy_detection(self):
+        policy = "example-package\tvirtual-provider\t-\n"
+        with patch.object(privileged.subprocess, "run", side_effect=[SimpleNamespace(stdout=policy), SimpleNamespace(returncode=0)]) as probe:
+            self.assertEqual(privileged.installed_provider_packages(Path("/trusted/map")), {"example-package"})
+            self.assertEqual(probe.call_args.args[0], ["/usr/bin/rpm", "-q", "--whatprovides", "virtual-provider"])
+
+    def test_mutating_start_rejects_contended_lock(self):
+        with update.locked(self.state), patch.object(sys, "argv", ["dwm-desktop-update", "start", "a" * 40]), self.assertRaisesRegex(RuntimeError, "Desktop operation is busy"):
+            update.main()
 
     def test_dependency_repair_profiles_and_power_profiles_filtering(self):
         mapping = self.base / "bin/dwm-packages.sh"
@@ -215,7 +216,7 @@ class DesktopUpdate(unittest.TestCase):
                 patch.object(privileged, "trusted"), \
                 patch.object(privileged.sys.stdin, "isatty", return_value=True), \
                 patch.object(privileged, "supported_terminal_installed", return_value=False), \
-                patch.object(privileged, "power_profiles_provider_installed", return_value=True), \
+                patch.object(privileged, "installed_provider_packages", return_value={"power-profiles-daemon"}), \
                 patch.object(privileged, "install_packages", side_effect=mock_install):
             privileged.perform(["repair-dependencies", generation], 1000)
 
@@ -243,7 +244,7 @@ class DesktopUpdate(unittest.TestCase):
                 patch.object(privileged, "trusted"), \
                 patch.object(privileged.sys.stdin, "isatty", return_value=True), \
                 patch.object(privileged, "supported_terminal_installed", return_value=True), \
-                patch.object(privileged, "power_profiles_provider_installed", return_value=False), \
+                patch.object(privileged, "installed_provider_packages", return_value=set()), \
                 patch.object(privileged, "install_packages", side_effect=mock_install):
             privileged.perform(["repair-dependencies", generation], 1000)
 
@@ -270,8 +271,8 @@ class DesktopUpdate(unittest.TestCase):
                 patch.object(privileged, "trusted"), \
                 patch.object(privileged.sys.stdin, "isatty", return_value=True), \
                 patch.object(privileged, "supported_terminal_installed", return_value=True), \
-                patch.object(privileged, "power_profiles_provider_installed", return_value=False), \
-                patch.object(privileged, "xserver_installed", return_value=True), \
+                patch.object(privileged, "installed_provider_packages", return_value=set()), \
+                patch.object(privileged, "installed_provider_packages", return_value={"xorg-x11-server-Xorg"}), \
                 patch.object(privileged, "install_packages", side_effect=mock_install):
             privileged.perform(["repair-dependencies", generation], 1000)
 
@@ -286,8 +287,8 @@ class DesktopUpdate(unittest.TestCase):
                 patch.object(privileged, "trusted"), \
                 patch.object(privileged.sys.stdin, "isatty", return_value=True), \
                 patch.object(privileged, "supported_terminal_installed", return_value=True), \
-                patch.object(privileged, "power_profiles_provider_installed", return_value=False), \
-                patch.object(privileged, "xserver_installed", return_value=False), \
+                patch.object(privileged, "installed_provider_packages", return_value=set()), \
+                patch.object(privileged, "installed_provider_packages", return_value=set()), \
                 patch.object(privileged, "install_packages", side_effect=mock_install):
             privileged.perform(["repair-dependencies", generation], 1000)
 
@@ -303,8 +304,8 @@ class DesktopUpdate(unittest.TestCase):
                 patch.object(privileged, "trusted"), \
                 patch.object(privileged.sys.stdin, "isatty", return_value=True), \
                 patch.object(privileged, "supported_terminal_installed", return_value=True), \
-                patch.object(privileged, "power_profiles_provider_installed", return_value=False), \
-                patch.object(privileged, "xserver_installed", return_value=False), \
+                patch.object(privileged, "installed_provider_packages", return_value=set()), \
+                patch.object(privileged, "installed_provider_packages", return_value=set()), \
                 patch.object(privileged, "install_packages", side_effect=mock_install):
             privileged.perform(["repair-dependencies", generation, "keep-terminal"], 1000)
 

@@ -1479,7 +1479,7 @@ def load_worker_environment(path):
     os.environ.update(environment)
 
 
-def main():
+def command_main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     guard = commands.add_parser("guard-system-install")
@@ -1567,6 +1567,17 @@ def main():
         value = check(args.force) if args.command == "check" else launch(args.revision) if args.command == "start" else recover(args.operation)
     print(json.dumps(value), flush=True)
     return 0
+
+
+def main():
+    try:
+        return command_main()
+    except BlockingIOError as error:
+        # Read-only views may reuse the last snapshot. Mutation must never
+        # report stale canUpdate=true as though an operation was launched.
+        if len(sys.argv) > 1 and sys.argv[1] in ("check", "status"):
+            raise
+        raise RuntimeError("Desktop operation is busy; finish dependency repair or the active update first") from error
 
 
 if __name__ == "__main__":

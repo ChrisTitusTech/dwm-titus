@@ -6,6 +6,10 @@ dwm_packages() {
 	local profile=$2
 
 	case "$family:$profile" in
+	fedora:provider-policy)
+		# package, virtual capability, alternative executable commands
+		printf '%s\n' $'power-profiles-daemon\tppd-service\t-' $'xorg-x11-server-Xorg\txserver\tXorg,Xlibre'
+		;;
 	fedora:build)
 		printf '%s\n' \
 			gcc make pkgconf-pkg-config libX11-devel libXft-devel \
@@ -167,9 +171,9 @@ dwm_install_package_profile() {
 
 	while IFS= read -r package; do
 		[[ -n $package ]] || continue
-		if [[ $package == power-profiles-daemon ]] && dwm_power_profiles_provider_installed; then
+		if dwm_package_provider_installed "$package"; then
 			printf '%s\n' \
-				'Retaining installed Power Profiles provider (ppd-service); skipping power-profiles-daemon.' >&2
+				"Retaining installed provider; skipping $package." >&2
 			continue
 		fi
 		packages+=("$package")
@@ -182,9 +186,19 @@ dwm_install_package_profile() {
 	install_packages "${packages[@]}"
 }
 
-dwm_power_profiles_provider_installed() {
-	command -v rpm >/dev/null 2>&1 &&
-		rpm -q --whatprovides ppd-service >/dev/null 2>&1
+dwm_package_provider_installed() {
+	local package=$1 candidate capability commands command
+	local -a alternatives=()
+	while IFS=$'\t' read -r candidate capability commands; do
+		[[ $candidate == "$package" ]] || continue
+		IFS=, read -r -a alternatives <<<"$commands"
+		for command in "${alternatives[@]}"; do
+			[[ $command == - ]] || { command -v "$command" >/dev/null 2>&1 && return 0; }
+		done
+		command -v rpm >/dev/null 2>&1 && rpm -q --whatprovides "$capability" >/dev/null 2>&1
+		return $?
+	done < <(dwm_packages fedora provider-policy)
+	return 1
 }
 
 dwm_install_available_package_profile() {
