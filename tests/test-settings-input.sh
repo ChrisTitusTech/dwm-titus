@@ -1053,6 +1053,20 @@ test ! -s "$work/actions.log"
 test -f "$work/runtime/dwm-settings-input/part-ambiguous.state"
 env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" TEST_DUPLICATE_CAPABILITIES=1 "$helper" revert part-ambiguous >/dev/null
 
+# Enumeration succeeding does not make a later property-query failure safe.
+for action in revert keep; do
+	token="query-failed-$action"
+	env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" "$helper" preview "$token" 10 "$twin_key" natural-scroll 1 >/dev/null
+	rm -f "$work/actions.log" "$work/list-props.count"
+	if env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" TEST_DISAPPEAR_ID=17 "$helper" "$action" "$token" >/dev/null 2>"$work/query-failed.err"; then
+		printf '%s discarded recovery after a property query failed\n' "$action" >&2
+		exit 1
+	fi
+	test -f "$work/runtime/dwm-settings-input/$token.state"
+	test ! -s "$work/actions.log"
+	env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" "$helper" revert "$token" >/dev/null
+done
+
 # A journal append failure happens before any live member is changed.
 cat >"$work/bin/stat" <<'STAT'
 #!/bin/sh

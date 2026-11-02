@@ -282,22 +282,26 @@ members_share_port() {
 	done
 }
 
-# One member's own value of a setting, or failure when it lacks it.
+# A member value: status 1 means unsupported, 2 means the query failed.
 member_value() {
-	local id=$1 setting=$2 property properties value
+	local id=$1 setting=$2 property properties value query
 	case $setting in
 	keyboard-layout)
-		setxkbmap -device "$id" -query | awk '$1 == "layout:" {print $2; exit}'
+		query=$(setxkbmap -device "$id" -query) || return 2
+		value=$(awk '$1 == "layout:" {print $2; exit}' <<<"$query")
+		[[ -n $value ]] || return 1
+		printf '%s\n' "$value"
 		;;
 	modifier-options)
-		setxkbmap -device "$id" -query | awk '$1 == "options:" {$1=""; sub(/^[[:space:]]+/, ""); print; exit}'
+		query=$(setxkbmap -device "$id" -query) || return 2
+		awk '$1 == "options:" {$1=""; sub(/^[[:space:]]+/, ""); print; exit}' <<<"$query"
 		;;
 	*)
 		property=$(setting_property "$setting") || return 1
-		properties=$(mktemp)
+		properties=$(mktemp) || return 2
 		xinput list-props "$id" >"$properties" 2>/dev/null || {
 			rm -f "$properties"
-			return 1
+			return 2
 		}
 		value=$(property_value "$properties" "$property")
 		rm -f "$properties"
@@ -359,7 +363,7 @@ capture_members() {
 # Resolve the complete rollback plan before writing. Re-enumerated members
 # require a unique physical-part signature in both snapshots.
 restore_members() {
-	local token=$1 key=$2 setting=$3 previous=$4 file id value identity old failed=0
+	local token=$1 key=$2 setting=$3 previous=$4 file id value identity old failed=0 status
 	local -A values=() identities=() counts=() current_counts=() current_identity=()
 	local -a restore=()
 	file=$(token_file "$token" members)
@@ -374,7 +378,13 @@ restore_members() {
 		counts[$identity]=$((${counts[$identity]:-0} + 1))
 	done <"$(token_file "$token" identities)"
 	for id in "${member_ids[@]}"; do
-		member_value "$id" "$setting" >/dev/null || continue
+		if member_value "$id" "$setting" >/dev/null; then
+			:
+		else
+			status=$?
+			[[ $status == 1 ]] && continue
+			return 1
+		fi
 		identity=$(member_identity "$id") || return 1
 		current_identity[$id]=$identity
 		current_counts[$identity]=$((${current_counts[$identity]:-0} + 1))
@@ -432,7 +442,7 @@ apply_preview_members() {
 # that has the setting, also one a replug gave a new XInput id. A device that
 # is gone gets it from the saved setting when it comes back.
 reapply_members() {
-	local token=$1 key=$2 setting=$3 value=$4 file id old pair
+	local token=$1 key=$2 setting=$3 value=$4 file id old pair status
 	local -a retry_values=() written=()
 	file=$(token_file "$token" members)
 	[[ $key != "$accessibility_key" && -s $file ]] || return 0
@@ -442,7 +452,13 @@ reapply_members() {
 	members_share_port "$key" || return 1
 	# Read every old value before writes: keyboard rules names are shared.
 	for id in "${member_ids[@]}"; do
-		old=$(member_value "$id" "$setting") || continue
+		if old=$(member_value "$id" "$setting"); then
+			:
+		else
+			status=$?
+			[[ $status == 1 ]] && continue
+			return 1
+		fi
 		retry_values+=("$id"$'\t'"$old")
 	done
 	for pair in "${retry_values[@]}"; do
