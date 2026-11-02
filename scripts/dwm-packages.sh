@@ -20,7 +20,7 @@ dwm_packages() {
 		dwm_packages "$family" build
 		printf '%s\n' quickshell python3 dbus-daemon util-linux procps-ng \
 			xorg-x11-server-Xvfb xdotool xprop xrandr xset xsettingsd \
-			jq inotify-tools gawk google-noto-sans-fonts
+			jq inotify-tools gawk google-noto-sans-fonts setxkbmap xkbcomp xmodmap xinput
 		;;
 	fedora:image-build)
 		printf '%s\n' xorriso rsync squashfs-tools-ng isomd5sum python3-pillow fontconfig google-noto-sans-fonts
@@ -59,7 +59,8 @@ dwm_packages() {
 			quickshell picom python3 feh dex-autostart mate-polkit xsettingsd bubblewrap libseccomp \
 			alsa-utils brightnessctl dbus-tools inotify-tools jq pulseaudio-utils pipewire pavucontrol \
 			pipewire-pulseaudio wireplumber libnotify light-locker xorg-x11-drv-libinput \
-			bluez blueman playerctl upower power-profiles-daemon flatpak xdg-desktop-portal-gtk
+			bluez blueman playerctl upower power-profiles-daemon flatpak xdg-desktop-portal-gtk \
+			nm-connection-editor
 		;;
 	fedora:system-management)
 		printf '%s\n' \
