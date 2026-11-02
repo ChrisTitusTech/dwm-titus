@@ -19,6 +19,13 @@ Scope {
     // session, but nothing is written to disk until persistence is enabled.
     property bool persistenceEnabled: false
     property bool historyReady: false
+    property bool historyLoaded: false
+    property bool settingsReady: false
+    property bool settingsWriting: false
+    property bool requestedPersistence: false
+    property bool historyWiping: false
+    property bool confirmedPersistence: false
+    property bool storageReady: false
     property bool saveFailed: false
     property bool savePending: false
     property bool wipePending: false
@@ -32,7 +39,8 @@ Scope {
     readonly property string historyPath: root.cacheDir + "/clipboard-history.json"
     readonly property string status: {
         if (root.saveFailed) {
-            return "History write failed - entries are only in memory";
+            return root.wipePending ? "Stored history could not be cleared - retry save"
+                : "History write failed - entries are only in memory";
         }
         if (root.settingsSaveFailed) {
             return "Settings write failed - persistence state unchanged on disk";
@@ -44,10 +52,20 @@ Scope {
         return root.persistenceEnabled ? count : count + " - not saved";
     }
 
-    Component.onCompleted: {
-        Quickshell.execDetached(["mkdir", "-p", root.configDir]);
-        Quickshell.execDetached(["sh", "-c",
-            "mkdir -p \"$1\" && chmod 700 \"$1\"", "sh", root.cacheDir]);
+    // Establish private storage before FileView can read or write history.
+    Process {
+        id: prepareStorage
+        command: ["sh", "-c", "umask 077; test ! -L \"$1\" && mkdir -p -- \"$1\" \"$2\" && chmod 700 -- \"$1\"",
+            "sh", root.cacheDir, root.configDir]
+        running: true
+        onExited: (exitCode, exitStatus) => { // qmllint disable signal-handler-parameters
+            root.storageReady = exitCode === 0 && exitStatus === 0;
+            if (!root.storageReady) {
+                root.settingsSaveFailed = true;
+                root.historyReady = true;
+                root.flushPendingCaptures();
+            }
+        }
     }
 
     onEntriesChanged: root.refreshFilteredEntries()
@@ -153,7 +171,9 @@ Scope {
     }
 
     function loadHistory() {
-        const stored = root.toArray(historyFile.entries);
+        root.historyLoaded = true;
+        if (!root.settingsReady || root.historyReady) return;
+        const stored = root.confirmedPersistence ? root.toArray(historyFile.entries) : [];
         const entries = [];
 
         for (const item of stored) {
@@ -170,6 +190,7 @@ Scope {
 
         root.entries = entries.slice(0, root.maxEntries);
         root.historyReady = true;
+        root.flushPendingWipe();
         root.flushPendingCaptures();
 
         if (root.savePending) {
@@ -179,55 +200,56 @@ Scope {
     }
 
     function applyLoadedSettings() {
-        root.persistenceEnabled = settingsFile.persistenceEnabled === true;
-
-        // Captures flushed between the history and settings loads could only
-        // be held in memory; persist them now that the stored choice is known.
-        if (root.persistenceEnabled) {
-            root.saveHistory();
-        }
+        root.confirmedPersistence = settingsFile.persistenceEnabled === true;
+        root.persistenceEnabled = root.confirmedPersistence;
+        root.settingsReady = true;
+        if (root.historyLoaded) root.loadHistory();
+        if (root.persistenceEnabled) root.saveHistory();
     }
 
     function setPersistence(enabled) {
-        if (root.persistenceEnabled === enabled) {
-            return;
-        }
-
+        if (!root.storageReady || !root.settingsReady || root.settingsWriting
+                || root.historyWiping || root.persistenceEnabled === enabled) return;
+        root.requestedPersistence = enabled;
         root.persistenceEnabled = enabled;
         settingsFile.persistenceEnabled = enabled;
-        settingsFile.writeAdapter();
+        root.settingsWriting = true;
+        root.wipePending = !enabled;
+        settingsFile.setText(JSON.stringify({ "persistenceEnabled": enabled }) + "\n");
+    }
 
-        if (enabled) {
-            root.saveHistory();
-        } else {
-            // The wipe is destructive, so only run it once the settings file
-            // has actually recorded the disabled state; a failed write must
-            // not leave the stored setting enabled with the history deleted.
-            root.wipePending = true;
+    function flushPendingWipe() {
+        if (root.wipePending && !root.settingsWriting && !root.confirmedPersistence && root.historyReady) {
+            root.historyWiping = true;
+            historyFile.entries = [];
+            historyFile.writeAdapter();
         }
     }
 
     function finishSettingsWrite() {
+        root.confirmedPersistence = root.persistenceEnabled;
+        root.settingsWriting = false;
         root.settingsSaveFailed = false;
-
-        if (root.wipePending && !root.persistenceEnabled) {
-            root.wipePending = false;
-
-            // Completing the deletion contract: disabling persistence wipes
-            // the stored copy instead of leaving a stale one behind.
-            if (root.historyReady) {
-                historyFile.entries = [];
-                historyFile.writeAdapter();
-            }
-        }
+        root.flushPendingWipe();
+        if (root.confirmedPersistence) root.saveHistory();
     }
 
     function settingsWriteFailed() {
-        // The stored preference is still whatever was on disk, so undo the UI
-        // change instead of letting the switch silently diverge from the file.
         root.wipePending = false;
+        root.settingsWriting = false;
         root.settingsSaveFailed = true;
-        settingsFile.reload();
+        root.persistenceEnabled = root.confirmedPersistence;
+        settingsFile.persistenceEnabled = root.confirmedPersistence;
+        // Reset FileView's failed-write cache once. Missing-file loads do not
+        // write defaults, so this cannot become a reload/write retry loop.
+        root.settingsReady = false;
+        Qt.callLater(settingsFile.reload);
+    }
+
+    function retrySave() {
+        if (root.settingsSaveFailed) root.setPersistence(root.requestedPersistence);
+        else if (root.wipePending) root.flushPendingWipe();
+        else root.saveHistory();
     }
 
     function saveHistory() {
@@ -238,7 +260,7 @@ Scope {
             return;
         }
 
-        if (!root.persistenceEnabled) {
+        if (!root.storageReady || !root.persistenceEnabled || !root.confirmedPersistence) {
             return;
         }
 
@@ -392,7 +414,7 @@ Scope {
 
         property alias entries: clipboardAdapter.entries
 
-        path: root.historyPath
+        path: root.storageReady ? root.historyPath : ""
         atomicWrites: true
         printErrors: false
         onLoaded: {
@@ -401,17 +423,18 @@ Scope {
         }
         onSaved: {
             root.saveFailed = false;
+            if (root.historyWiping) root.wipePending = false;
+            root.historyWiping = false;
             root.restrictHistoryFileMode();
         }
-        onSaveFailed: root.saveFailed = true
+        onSaveFailed: {
+            root.saveFailed = true;
+            root.historyWiping = false;
+            Qt.callLater(historyFile.reload);
+        }
         onLoadFailed: error => {
-            root.historyReady = true;
-
-            if (error === 2) {
-                root.saveHistory();
-            }
-
-            root.flushPendingCaptures();
+            root.historyLoaded = true;
+            root.loadHistory();
         }
 
         // qmllint disable unresolved-type
@@ -427,17 +450,18 @@ Scope {
 
         property alias persistenceEnabled: clipboardSettings.persistenceEnabled
 
-        path: root.settingsPath
+        path: root.storageReady ? root.settingsPath : ""
         atomicWrites: true
         printErrors: false
         onLoaded: root.applyLoadedSettings()
         onSaved: root.finishSettingsWrite()
         onSaveFailed: root.settingsWriteFailed()
         onLoadFailed: error => {
-            if (error === 2) {
-                root.applyLoadedSettings();
-                settingsFile.writeAdapter();
-            }
+            root.settingsReady = error === 2;
+            if (error !== 2) root.settingsSaveFailed = true;
+            root.confirmedPersistence = false;
+            root.persistenceEnabled = false;
+            if (root.historyLoaded && root.settingsReady) root.loadHistory();
         }
 
         // qmllint disable unresolved-type

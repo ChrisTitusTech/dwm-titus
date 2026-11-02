@@ -148,7 +148,7 @@ def migrate_window_rules(path):
     rules = document.get("rules")
     if not isinstance(rules, list):
         raise ValueError("missing top-level rules array")
-    present = any(all(rule.get(key) == value for key, value in CLIPBOARD_RULE.items())
+    present = any(rule.get("title") == CLIPBOARD_RULE["title"]
                   for rule in rules if isinstance(rule, dict))
     if present:
         return False
@@ -164,12 +164,12 @@ def super_bound(binding):
         return False
     modifiers = binding.get("mod", "")
     if isinstance(modifiers, str):
-        tokens = set(modifiers.split())
+        tokens = {token.upper() for token in modifiers.split()}
     elif isinstance(modifiers, list):
-        tokens = {str(token).strip() for token in modifiers}
+        tokens = {str(token).strip().upper() for token in modifiers}
     else:
         return False
-    return tokens in ({"SUPER"}, {"MODKEY"})
+    return bool(tokens) and tokens <= {"SUPER", "MODKEY", "MOD4MASK"}
 
 
 def migrate_hotkeys(path):

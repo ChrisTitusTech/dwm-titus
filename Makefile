@@ -471,6 +471,10 @@ check-status:
 check-monitor-tags:
 	tests/test-monitor-tag-switching.sh
 
+check-clipboard:
+	python3 tests/test-clipboard-migration.py
+	python3 tests/test-clipboard-runtime.py
+
 check-quickshell-launcher:
 	tests/test-quickshell-launcher.sh
 
@@ -773,6 +777,7 @@ check: check-picom check-picom-xvfb
 	$(MAKE) check-display-profile
 	$(MAKE) check-display-setup
 	$(MAKE) check-monitor-tags
+	$(MAKE) check-clipboard
 	$(MAKE) check-quickshell-launcher
 	$(MAKE) check-quickshell-controls
 	$(MAKE) check-quickshell-audio
@@ -837,3 +842,5 @@ check: check-picom check-picom-xvfb
 	check-session-guards check-session-migration check-screenshot check-release-helper check-shell check-webapp-launch check-diagnostics check-status check-system-health check-system-management check-quickshell-system-management check-settings \
 	check-quickshell-launcher check-quickshell-controls check-quickshell-audio check-quickshell-controlcenter check-quickshell-power check-quickshell-power-backend check-quickshell-power-model check-quickshell-session-actions check-quickshell-defaults-model check-quickshell-appearance-model check-quickshell-design-system check-quickshell-large-surfaces check-quickshell-large-surfaces-xvfb check-quickshell-panel-menus check-quickshell-panel-settings check-quickshell-command-menu check-quickshell-notifications check-quickshell-tray check-quickshell-health-xvfb check-quickshell-settings-xvfb check-quickshell-settings-responsiveness-xvfb check-quickshell-network check-quickshell-connectivity check-quickshell-qml check-lightdm-config check-terminal check-xvfb-runtime install install-system install-user \
 	install-cursors install-app-themes check-app-themes native release release-check uninstall uninstall-files
+
+.PHONY: check-clipboard

@@ -23,6 +23,7 @@ Bindings are defined in `config/hotkeys.toml` and reload instantly on save — n
 | `Super` + `R` | App launcher (Quickshell) |
 | `Super` + `X` | Alacritty terminal |
 | `Super` + `E` | File manager |
+| `Super` + `V` | Clipboard history (disk persistence is opt-in) |
 | `Super` + `B` | Browser |
 | `Super` + `/` | Keybind viewer |
 | `Super` + `F1` | Control Center |
