@@ -188,8 +188,8 @@ PanelWindow {
                                     target: titleViewport
                                     property: "titleOffset"
                                     to: 0
-                                    duration: Math.max(1400,
-                                        (activeTitle.implicitWidth - titleViewport.width) * 16)
+                                    duration: Math.min(6000, Math.max(1400,
+                                        (activeTitle.implicitWidth - titleViewport.width) * 16))
                                     easing.type: Easing.InOutSine
                                 }
                             }
