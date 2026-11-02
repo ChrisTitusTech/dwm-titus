@@ -311,8 +311,8 @@ New Fedora installs and both image variants enable `systemd-timesyncd.service`
 for automatic network time synchronization. Fedora provides the service in the
 `systemd-udev` package tracked by the shared dependency map. The existing-system
 installer and offline compressed-image bootstrap keep an enabled or active
-chronyd, ntpd, ntpsec, or openntpd provider and preserve an explicit timesyncd
-mask. They never stop an existing provider or edit its servers.
+chronyd, chronyd-restricted, ntpd, ntpsec, or openntpd provider and preserve an
+explicit timesyncd mask. They never stop an existing provider or edit its servers.
 
 Existing installations can apply the default by rerunning `./install.sh` with
 their usual profile. No migration is needed when an existing provider already

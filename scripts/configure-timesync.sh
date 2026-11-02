@@ -16,7 +16,7 @@ manager_version=$(systemctl show --property=Version --value 2>/dev/null || true)
 # Offline/chroot systemctl supports enablement but cannot query active services.
 # Check enabled providers as well so image provisioning and repeated installs
 # never introduce a second clock discipline service.
-for provider in chronyd.service ntpd.service ntpsec.service openntpd.service; do
+for provider in chronyd.service chronyd-restricted.service ntpd.service ntpsec.service openntpd.service; do
 	if systemctl is-enabled --quiet "$provider" 2>/dev/null ||
 		{ [[ -n $manager_version ]] && systemctl is-active --quiet "$provider" 2>/dev/null; }; then
 		printf 'Preserving existing time synchronization provider: %s\n' "$provider"

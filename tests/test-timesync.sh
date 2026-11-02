@@ -50,13 +50,15 @@ run
 grep -Fxq 'start systemd-timesyncd.service' "$TIMESYNC_LOG"
 run # repeated enable/start is safe and does not disable another provider
 if grep -Eq '^(disable|stop|mask) ' "$TIMESYNC_LOG"; then exit 1; fi
-for provider in chronyd.service ntpd.service ntpsec.service openntpd.service; do
+for provider in chronyd.service chronyd-restricted.service ntpd.service ntpsec.service openntpd.service; do
 	export ENABLED_PROVIDER=$provider
 	run
+	grep -Fxq "Preserving existing time synchronization provider: $provider" "$work/output"
 	if grep -Eq '^(enable|start) ' "$TIMESYNC_LOG"; then exit 1; fi
 	unset ENABLED_PROVIDER
 	export ACTIVE_PROVIDER=$provider
 	run
+	grep -Fxq "Preserving existing time synchronization provider: $provider" "$work/output"
 	if grep -Eq '^(enable|start) ' "$TIMESYNC_LOG"; then exit 1; fi
 	unset ACTIVE_PROVIDER
 done
