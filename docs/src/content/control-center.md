@@ -74,7 +74,9 @@ The dashboard groups checks into:
 
 - Boot and kernel errors from `journalctl`, with `dmesg` as a fallback
 - Failed user and system services, one service per row
-- Memory, pressure, load, swap, filesystem space, and inode use
+- Memory, pressure, load, swap, filesystem space, and inode use; firmware
+  variable storage (`efivarfs`) is reported as information rather than as a
+  cleanable disk error
 - Local routing, resolver, and NetworkManager state
 - X11, D-Bus, dwm, Quickshell, Picom, audio, and managed configuration
 - Required commands, libraries, terminals, and package-database consistency

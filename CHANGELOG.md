@@ -40,6 +40,11 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Report `efivarfs` firmware-variable usage as information in System Health
+  instead of a storage error. The fixed-size firmware NVRAM store is not a
+  cleanable filesystem, so a nearly full store no longer raises a false
+  positive on every scan.
+
 - Make Kitty follow the selected theme instead of Nord. The shipped
   `kitty.conf` no longer sets its own palette or includes `nord.conf`. Theme
   apply, including from Settings, updates an existing `kitty.conf` once: it
