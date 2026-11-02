@@ -54,14 +54,20 @@ Controlled via window rules in `config.h`:
 { "Alacritty", NULL, NULL, 0, 0, 1, 0, -1 },  /* isterminal = 1 */
 ```
 
-### Fullscreen (3-State)
-Three fullscreen modes available:
+### Focus Modes and Fullscreen
+
+`Super` + `M` toggles the monocle layout and the bar; it does not request
+per-window EWMH fullscreen. Actual fullscreen is requested by the application
+or configured through a window rule. The saved pre-focus layout is shared
+across tags and monitors.
 
 | Mode | Keys | Description |
 |------|------|-------------|
-| True fullscreen | `Super` + `M` | Hides bar, takes full screen |
+| Monocle focus mode | `Super` + `M` | Toggles monocle and the bar; the saved layout is process-global |
 | Fake fullscreen | `Super` + `Shift` + `Y` | Looks fullscreen, bar still usable |
-| Monocle layout | — | Single window view, bar visible |
+| EWMH fullscreen | Application or window rule | Real per-window fullscreen; no default binding |
+
+To use monocle without the bar toggle, bind `setlayout` with `layout_idx=2`.
 
 ---
 

@@ -10,6 +10,13 @@ eyebrow: Start here
 > **dwm-titus is Fedora-only.** Fedora Linux with Xorg is required for every
 > supported installation, package, test, and release path.
 
+The released images and this guide are validated against Fedora 44. Newer
+Fedora releases, including Fedora 45, are accepted by the existing-system
+installer when `/etc/os-release` reports `ID=fedora`, but they are not yet
+release-qualified. Dependency resolution and the desktop are expected to work;
+run `dwm-diagnostics` first and report release-specific problems on the issue
+tracker.
+
 ## Dependencies
 
 See [Desktop Dependencies](/dependencies.html) for a component-by-component
@@ -112,6 +119,10 @@ install-herdr
 
 ## Manual Install
 
+Run the commands in this section from the cloned `dwm-titus` directory.
+`./install.sh` refers to the copy in the directory you are currently in, so a
+new terminal must `cd` into the checkout first.
+
 ### 1. Dependencies
 
 The supported dependency path is the installer because it resolves Fedora
@@ -119,11 +130,11 @@ package names from the shared map:
 
 ```bash
 ./install.sh --dry-run --non-interactive --profile core
-./install.sh --profile full
+./install.sh --profile recommended
 ```
 
 Use `core` for the required build/X11/session packages, Alacritty, and media applications,
-`recommended` for the complete desktop layer, or `full` for optional extras
+`recommended` for the complete everyday desktop, or `full` for optional extras
 such as file-manager integration, wallpapers, and
 display-manager setup. On x86_64 Fedora, `full` can also install Steam,
 Gamescope, GameMode, and MangoHud after repository approval.
@@ -487,7 +498,13 @@ hotplug events before replaying saved values for returning devices.
 startx
 ```
 
-The provided `.xinitrc` disables screen blanking, starts the configured Quickshell panel, and runs dwm.
+The installer creates `.xinitrc` from the project template when the file is
+missing and preserves an existing file. dwm launches the project's
+`scripts/autostart.sh`, which applies the saved power and locking policy,
+disables screen blanking and DPMS by default, starts the configured Quickshell
+panel, and activates XDG autostart. For `startx`, the shipped template runs dwm
+under `dbus-run-session`. If the login path already creates a user D-Bus
+session, a custom `.xinitrc` can use `exec dwm` instead.
 
 ## Minimal Session Profile
 
