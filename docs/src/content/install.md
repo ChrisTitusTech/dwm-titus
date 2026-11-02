@@ -365,7 +365,7 @@ def manifest(paths):
 
 config_root = sys.argv[3]
 theme_roots = [os.path.join(config_root, name) for name in
-               ("alacritty", "kitty", "gtk-3.0", "gtk-4.0", "qt5ct", "qt6ct")]
+               ("alacritty", "kitty", "dwmterm", "gtk-3.0", "gtk-4.0", "qt5ct", "qt6ct")]
 theme_paths = archive_paths(theme_roots + [sys.argv[5]])
 managed_shell = os.path.realpath(os.path.join(config_root, "quickshell"))
 if any(os.path.commonpath([path, managed_shell]) == managed_shell for path in theme_paths):
@@ -388,7 +388,7 @@ archive records the effective XDG paths, symlink layout, and the contents of
 referenced writable targets, including dotfiles outside the checkout. A missing
 or read-only link target stops the recipe; resolve it or back it up separately
 before updating. Keep the XDG parent-directory layout unchanged during recovery. The separate
-`themes.tar` archive captures existing GTK2, GTK3/4, Qt5/6, Alacritty, and Kitty
+`themes.tar` archive captures existing GTK2, GTK3/4, Qt5/6, Dwmterm, Alacritty, and Kitty
 configuration and writable symlink targets for selective post-install restoration.
 It does not include the managed Quickshell tree. Theme preferences held by running
 services or D-Bus are outside this file backup; close the session as instructed.

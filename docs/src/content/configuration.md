@@ -44,7 +44,7 @@ managed ones.
 | `.xinitrc` and `config.h` | Installed `dwm-*` commands |
 
 Source installs also apply the selected theme: `make install` regenerates
-Alacritty and Kitty active-theme files, updates their theme imports/includes,
+Dwmterm colors and Alacritty/Kitty active-theme files, updates their theme imports/includes,
 and writes managed GTK/Qt appearance keys. Unrelated application settings are
 preserved, but these theme integration values are not. Back up your effective
 XDG configuration directory and `$HOME/.gtkrc-2.0` (including its target if it
