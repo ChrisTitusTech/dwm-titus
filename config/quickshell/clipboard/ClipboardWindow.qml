@@ -166,14 +166,14 @@ FloatingWindow {
                 PanelToggleSwitch {
                     checked: root.clipboardModel.persistenceEnabled
                     enabled: root.clipboardModel.storageReady && root.clipboardModel.settingsReady
-                        && !root.clipboardModel.settingsWriting
+                        && !root.clipboardModel.settingsWriting && !root.clipboardModel.settingsLoadFailed
                     accessibleName: "Persist clipboard history across restarts"
                     accessibleDescription: "When enabled, clipboard entries are written to the private history file"
                     onToggled: root.clipboardModel.setPersistence(!root.clipboardModel.persistenceEnabled)
                 }
 
                 ShellButton {
-                    label: "Retry save"
+                    label: root.clipboardModel.settingsLoadFailed ? "Retry load" : "Retry save"
                     visible: root.clipboardModel.saveFailed || root.clipboardModel.settingsSaveFailed
                     enabled: root.clipboardModel.settingsReady && !root.clipboardModel.settingsWriting
                         && !root.clipboardModel.historyWiping

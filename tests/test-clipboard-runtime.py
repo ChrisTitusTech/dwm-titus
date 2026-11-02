@@ -144,7 +144,22 @@ with tempfile.TemporaryDirectory(prefix="clipboard-runtime-") as directory, \
                 break
             time.sleep(.05)
         assert not json.loads(history.read_text())['entries'], 'restart retained opted-out history'
-        print('Clipboard opt-in, private storage, failed saves, idle and restarted opt-out: PASS')
+        if os.geteuid() != 0:
+            process.terminate()
+            process.wait(timeout=5)
+            settings.write_text(json.dumps({'persistenceEnabled': True}))
+            history.write_text(json.dumps({'entries': [{'text': 'retained on disk', 'timestamp': 1}]}))
+            settings.chmod(0)
+            process = subprocess.Popen(['quickshell', '--no-duplicate', '--path', str(shell / 'shell.qml')],
+                                       env=env, stdout=shell_log, stderr=subprocess.STDOUT)
+            wait_state(lambda state: state['ready'] and state['failed'])
+            action('capture', 'memory despite unreadable settings')
+            wait_state(lambda state: state['count'] == 1)
+            assert json.loads(history.read_text())['entries'][0]['text'] == 'retained on disk'
+            settings.chmod(0o600)
+            action('retry')
+            wait_state(lambda state: state['confirmed'] and not state['failed'] and state['count'] == 2)
+        print('Clipboard opt-in, private storage, failure recovery, idle and restarted opt-out: PASS')
     except BaseException:
         shell_log.flush()
         print((work / 'quickshell.log').read_text())

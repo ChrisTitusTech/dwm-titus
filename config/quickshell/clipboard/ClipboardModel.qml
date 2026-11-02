@@ -30,6 +30,7 @@ Scope {
     property bool savePending: false
     property bool wipePending: false
     property bool settingsSaveFailed: false
+    property bool settingsLoadFailed: false
     property var pendingCaptures: []
 
     readonly property string homeDir: Quickshell.env("HOME") || ""
@@ -42,6 +43,7 @@ Scope {
             return root.wipePending ? "Stored history could not be cleared - retry save"
                 : "History write failed - entries are only in memory";
         }
+        if (root.settingsLoadFailed) return "Settings unreadable - session only; retry to reload";
         if (root.settingsSaveFailed) {
             return "Settings write failed - persistence state unchanged on disk";
         }
@@ -203,6 +205,12 @@ Scope {
     }
 
     function applyLoadedSettings() {
+        if (root.settingsLoadFailed) {
+            root.pendingCaptures = root.entries.map(entry => entry.text).reverse().concat(root.pendingCaptures);
+            root.historyReady = false;
+            root.settingsLoadFailed = false;
+            root.settingsSaveFailed = false;
+        }
         root.confirmedPersistence = settingsFile.persistenceEnabled === true;
         root.persistenceEnabled = root.confirmedPersistence;
         root.settingsReady = true;
@@ -212,7 +220,7 @@ Scope {
 
     function setPersistence(enabled) {
         if (!root.storageReady || !root.settingsReady || root.settingsWriting
-                || root.historyWiping || root.persistenceEnabled === enabled) return;
+                || root.settingsLoadFailed || root.historyWiping || root.persistenceEnabled === enabled) return;
         root.requestedPersistence = enabled;
         root.persistenceEnabled = enabled;
         settingsFile.persistenceEnabled = enabled;
@@ -250,7 +258,8 @@ Scope {
     }
 
     function retrySave() {
-        if (root.settingsSaveFailed) root.setPersistence(root.requestedPersistence);
+        if (root.settingsLoadFailed) settingsFile.reload();
+        else if (root.settingsSaveFailed) root.setPersistence(root.requestedPersistence);
         else if (root.wipePending) root.flushPendingWipe();
         else root.saveHistory();
     }
@@ -460,11 +469,16 @@ Scope {
         onSaved: root.finishSettingsWrite()
         onSaveFailed: root.settingsWriteFailed()
         onLoadFailed: error => {
-            root.settingsReady = error === 2;
-            if (error !== 2) root.settingsSaveFailed = true;
+            root.settingsReady = true;
+            if (error !== 2) {
+                root.settingsSaveFailed = true;
+                root.settingsLoadFailed = true;
+                root.historyReady = true;
+            }
             root.confirmedPersistence = false;
             root.persistenceEnabled = false;
-            if (root.historyLoaded && root.settingsReady) root.loadHistory();
+            if (root.settingsLoadFailed) root.flushPendingCaptures();
+            else if (root.historyLoaded) root.loadHistory();
         }
 
         // qmllint disable unresolved-type
