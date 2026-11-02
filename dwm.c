@@ -2850,7 +2850,7 @@ run(void)
 			XNextEvent(dpy, &ev);
 			if (xkbeventbase >= 0 && ev.type == xkbeventbase)
 				xkbevent(&ev);
-			else if (handler[ev.type])
+			else if (ev.type >= 0 && (size_t)ev.type < LENGTH(handler) && handler[ev.type])
 				handler[ev.type](&ev);
 		}
 		if (!running) break;
@@ -5200,7 +5200,7 @@ kbnormalize(int group, int count)
 	}
 }
 
-static void
+static int
 kbpublishnames(XkbDescPtr xkb)
 {
 	Atom names[XkbNumKbdGroups + 1] = { 0 }, symbols = None;
@@ -5215,32 +5215,35 @@ kbpublishnames(XkbDescPtr xkb)
 	}
 	/* Each property is rewritten only when its own value changed. */
 	if (!kbsymbolscachevalid || symbols != kbsymbolscache) {
-		kbsymbolscache = symbols;
-		kbsymbolscachevalid = 1;
 		name = symbols ? XGetAtomName(dpy, symbols) : NULL;
+		if (symbols && !name)
+			return 0;
 		if (name)
 			XChangeProperty(dpy, root, kbsymbolsatom, XA_STRING, 8,
 				PropModeReplace, (unsigned char *)name, (int)strlen(name));
 		else
 			XDeleteProperty(dpy, root, kbsymbolsatom);
 		XFree(name);
+		kbsymbolscache = symbols;
+		kbsymbolscachevalid = 1;
 	}
 	/* the names property has one entry per group, so a new count rewrites it */
 	names[XkbNumKbdGroups] = (Atom)kbgroups;
 	if (kbnamecachevalid && !memcmp(names, kbnamecache, sizeof(names)))
-		return;
-	memcpy(kbnamecache, names, sizeof(names));
-	kbnamecachevalid = 1;
+		return 1;
 
 	/* NUL-separated like _NET_DESKTOP_NAMES, one entry per group */
 	for (i = 0; i < kbgroups; i++) {
 		name = names[i] ? XGetAtomName(dpy, names[i]) : NULL;
+		if (names[i] && !name) {
+			free(buf);
+			return 0;
+		}
 		n = name ? strlen(name) : 0;
 		if (!(tmp = realloc(buf, len + n + 1))) {
 			XFree(name);
 			free(buf);
-			kbnamecachevalid = 0;
-			return;
+			return 0;
 		}
 		buf = tmp;
 		if (n)
@@ -5255,6 +5258,9 @@ kbpublishnames(XkbDescPtr xkb)
 	else
 		XDeleteProperty(dpy, root, kbnamesatom);
 	free(buf);
+	memcpy(kbnamecache, names, sizeof(names));
+	kbnamecachevalid = 1;
+	return 1;
 }
 
 /* Group switches come with the group in the event, so they need no round trip. */
@@ -5293,10 +5299,9 @@ updatekeyboard(void)
 		goto done;
 	kbgroups = groups;
 	kbwrap = xkb->ctrls->groups_wrap;
-	kbretry = 0;
 	/* group and count first, so a reader of the names already sees the new count */
 	kbpublishgroup(st.group);
-	kbpublishnames(xkb);
+	kbretry = !kbpublishnames(xkb);
 done:
 	XkbFreeKeyboard(xkb, 0, True);
 }
@@ -5398,6 +5403,9 @@ keyboardsetup(void)
 	    || !XkbSelectEventDetails(dpy, XkbUseCoreKbd, XkbStateNotify,
 	        XkbGroupStateMask, XkbGroupStateMask)
 	    || !XkbSelectEvents(dpy, XkbUseCoreKbd, mask, mask)) {
+		/* A previous selection can have succeeded before a later one failed. */
+		if (xkbeventbase >= 0)
+			XkbSelectEvents(dpy, XkbUseCoreKbd, mask | XkbStateNotifyMask, 0);
 		xkbeventbase = -1;
 		XDeleteProperty(dpy, root, kbgroupatom);
 		XDeleteProperty(dpy, root, kbnamesatom);
