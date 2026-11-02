@@ -78,15 +78,36 @@ desktop_names() {
 	fi
 }
 
-# Layout codes per group from the keymap symbols name that dwm publishes, e.g.
-# "pc+us+de(nodeadkeys):2+gr:3+inet(evdev)" -> us|de|gr. That name comes from
-# the loaded keymap itself. _XKB_RULES_NAMES is only a hint for when it is
-# missing, because a keymap loaded another way does not update it.
+# Classify symbol components using the installed layout catalogue, not their
+# position among model/option includes. localectl exposes the machine list;
+# the rules data is a fallback when that optional frontend is unavailable.
+keyboard_catalog_loaded=0
+keyboard_layout_catalog=
+load_keyboard_layout_catalog() {
+	[ "$keyboard_catalog_loaded" -eq 0 ] || return 0
+	keyboard_catalog_loaded=1
+	catalog=
+	if command -v localectl >/dev/null 2>&1; then
+		catalog=$(timeout 2 localectl list-x11-keymap-layouts 2>/dev/null || true)
+	fi
+	if [ -z "$catalog" ]; then
+		for rules in /usr/share/X11/xkb/rules/evdev.lst /usr/share/X11/xkb/rules/base.lst; do
+			[ -r "$rules" ] || continue
+			catalog=$(awk '$1 == "!" { section = $2; next } section == "layout" { print $1 }' "$rules")
+			[ -z "$catalog" ] || break
+		done
+	fi
+	keyboard_layout_catalog=$(printf '%s\n' "$catalog" | awk '/^[A-Za-z0-9_-]+$/ { print }' | paste -sd '|' -)
+}
+
+# _DWM_KEYBOARD_SYMBOLS describes the loaded map. The rules-names hint is used
+# only if symbols are absent, since xkbcomp can leave rules names stale.
 keyboard_codes() {
 	symbols=$1
 	hint=$2
 	groups=$3
-	awk -v symbols="$symbols" -v hint="$hint" -v groups="$groups" '
+	catalog=${4:-}
+	awk -v symbols="$symbols" -v hint="$hint" -v groups="$groups" -v catalog="$catalog" '
 		function base(token) {
 			sub(/^.*\//, "", token)
 			sub(/:[1-4]$/, "", token)
@@ -94,46 +115,30 @@ keyboard_codes() {
 			return token
 		}
 		BEGIN {
-			if (groups !~ /^[1-4]$/) {
-				exit
-			}
+			if (groups !~ /^[1-4]$/) exit
+			split(catalog, layouts, "|")
+			for (i in layouts) known[layouts[i]] = 1
 			if (symbols != "") {
-				# Group 1 usually has no ":1" suffix: it is the token just
-				# before the first ":2" one. A keymap loaded with xkbcomp may
-				# spell it out (pc+us:1+inet(evdev)+gr:2), and then that
-				# token wins. Only a ":1" before the first ":2" counts: the
-				# rules add options after the layouts with a ":1" too
-				# (pc+us+gr:2+inet(evdev)+group(alts_toggle):1+...).
 				n = split(symbols, tokens, "+")
 				for (i = 1; i <= n; i++) {
 					token = tokens[i]
-					if (token ~ /:1$/ && token !~ /^group\(/ && explicit == "" && first == "") {
-						explicit = base(token)
-					}
-					if (match(token, /:[2-4]$/)) {
+					code = base(token)
+					if (!(code in known)) continue
+					if (match(token, /:[1-4]$/)) {
 						group = substr(token, RSTART + 1) + 0
-						if (codes[group] == "") {
-							codes[group] = base(substr(token, 1, RSTART - 1))
-						}
-						if (group == 2 && first == "" && i > 1) {
-							first = base(tokens[i - 1])
-						}
+						if (codes[group] == "") codes[group] = code
+					} else if (implicit == "") {
+						implicit = code
 					}
 				}
-				# Without a second group: skip the leading model part.
-				fallback = (n > 1 && (tokens[1] == "pc" || tokens[1] ~ /\//)) ? tokens[2] : tokens[1]
-				codes[1] = explicit != "" ? explicit : (first != "" ? first : base(fallback))
+				if (codes[1] == "") codes[1] = implicit
 			} else if (hint != "") {
 				split(hint, layouts, ",")
-				for (i = 1; i <= groups; i++) {
-					codes[i] = base(layouts[i])
-				}
+				for (i = 1; i <= groups; i++) codes[i] = base(layouts[i])
 			}
 			for (i = 1; i <= groups; i++) {
 				code = codes[i]
-				if (code !~ /^[A-Za-z0-9_-]+$/) {
-					code = ""
-				}
+				if (code !~ /^[A-Za-z0-9_-]+$/) code = ""
 				printf "%s%s", (i > 1 ? "|" : ""), code
 			}
 		}
@@ -143,6 +148,7 @@ keyboard_codes() {
 # One xprop read for all keyboard fields. dwm publishes _DWM_KEYBOARD_GROUP as
 # "effective group, group count"; a missing property means no XKB data.
 keyboard_state() {
+	load_keyboard_layout_catalog
 	props=$(xprop -root _DWM_KEYBOARD_GROUP _DWM_KEYBOARD_GROUP_NAMES \
 		_DWM_KEYBOARD_SYMBOLS _XKB_RULES_NAMES 2>/dev/null || true)
 	pair=$(printf '%s\n' "$props" | sed -n 's/^_DWM_KEYBOARD_GROUP(CARDINAL) = //p')
@@ -162,7 +168,7 @@ keyboard_state() {
 	printf 'keyboard_group=%s\n' "$group"
 	printf 'keyboard_groups=%s\n' "$groups"
 	printf 'keyboard_names=%s\n' "$names"
-	printf 'keyboard_layouts=%s\n' "$(keyboard_codes "$symbols" "$hint" "$groups")"
+	printf 'keyboard_layouts=%s\n' "$(keyboard_codes "$symbols" "$hint" "$groups" "$keyboard_layout_catalog")"
 }
 
 # A group switch only changes _DWM_KEYBOARD_GROUP, and its value is already in
