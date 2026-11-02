@@ -13,6 +13,7 @@
     property var scaleNotificationPopup: null
     property int scaleNotificationDismissed: -1
     property var scaleNetworkPopup: null
+    property var scaleHiddenNetworkPopup: null
     property var scaleAudioPopup: null
     property var scaleRows: []
     property var scaleBluetoothPane: null
@@ -360,9 +361,25 @@
                     root.scaleNetworkPopup = network.createObject(root, {panelWindow: root.defaultPanelWindow,
                         networkModel: {visible: true, busy: false, actionsAvailable: true, editorAvailable: false,
                             wifiPasswordPromptVisible: true, wifiPasswordPromptOrigin: "panel", wifiPassword: "",
+                            promptVisible: true, hiddenPromptVisible: false, hiddenPromptOrigin: "", wifiDevices: [],
+                            hiddenSsid: "", hiddenSecurity: "wpa-psk", hiddenDevice: "", hiddenError: "",
+                            hiddenSsidError: "", hiddenPasswordError: "", hiddenFormValid: false,
                             statusText: "Online", message: "", activeConnections: [], savedProfiles: [], wifiNetworks: [],
                             selectedWifiIndex: -1, selectedWifiNetwork: () => ({ssid: "Test network"}),
                             cancelWifiPasswordPrompt: () => {}, close: () => {}}});
+                    root.scaleHiddenNetworkPopup = network.createObject(root, {panelWindow: root.defaultPanelWindow,
+                        networkModel: {visible: true, busy: false, actionsAvailable: true, editorAvailable: false,
+                            wifiPasswordPromptVisible: false, wifiPasswordPromptOrigin: "", wifiPassword: "",
+                            promptVisible: true, hiddenPromptVisible: true, hiddenPromptOrigin: "panel",
+                            hiddenSsid: "Hidden network", hiddenSecurity: "wpa-psk", hiddenDevice: "wlan0",
+                            hiddenError: "authentication to Hidden network failed; check the password and security type",
+                            hiddenSsidError: "", hiddenPasswordError: "8 to 63 characters, or 64 hex digits",
+                            hiddenFormValid: false,
+                            wifiDevices: [{device: "wlan0", type: "wifi", state: "disconnected", connection: ""},
+                                {device: "wlan1", type: "wifi", state: "disconnected", connection: ""}],
+                            statusText: "Online", message: "", activeConnections: [], savedProfiles: [], wifiNetworks: [],
+                            selectedWifiIndex: -1, selectedWifiNetwork: () => null,
+                            cancelWifiPasswordPrompt: () => {}, cancelHiddenPrompt: () => {}, close: () => {}}});
                     const audio = Qt.createComponent("controls/ControlsWindow.qml");
                     root.scaleAudioPopup = audio.createObject(root, {panelWindow: root.defaultPanelWindow,
                         controlsModel: {visible: true, busy: false, volumeMuted: false, volumeDisplayText: "50%",
@@ -451,6 +468,20 @@
                 root.responseCheck(actionPosition.y >= -1
                     && actionPosition.y + connect.height <= passwordViewport.height + 1,
                     "Wi-Fi Connect action is reachable at maximum scale");
+                const hiddenSurface = root.scaleHiddenNetworkPopup.popupContent.find(item => item.content !== undefined);
+                const hiddenPrompt = hiddenSurface.content.find(item => item.title === "dwm network password"
+                    && item.origin !== undefined);
+                root.responseCheck(hiddenPrompt && hiddenPrompt.visible && hiddenPrompt.height <= hiddenPrompt.screen.height,
+                    "200 percent hidden Wi-Fi prompt fits the screen");
+                const hiddenViewport = root.responseItems(hiddenPrompt.contentItem,
+                    item => item.objectName === "hiddenViewport")[0];
+                const hiddenConnect = root.responseItems(hiddenPrompt.contentItem, item => item.label === "Connect")[0];
+                root.responseCheck(hiddenViewport && hiddenConnect, "Hidden Wi-Fi prompt keeps its action controls");
+                hiddenViewport.contentY = Math.max(0, hiddenViewport.contentHeight - hiddenViewport.height);
+                const hiddenActionPosition = hiddenConnect.mapToItem(hiddenViewport, 0, 0);
+                root.responseCheck(hiddenActionPosition.y >= -1
+                    && hiddenActionPosition.y + hiddenConnect.height <= hiddenViewport.height + 1,
+                    "Hidden Wi-Fi Connect action is reachable at maximum scale");
                 const notificationViewport = root.responseItems(root.scaleNotificationPopup.contentItem,
                     item => item.objectName === "notificationViewport")[0];
                 root.responseCheck(root.scaleNotificationPopup.height + Theme.panelHeight
@@ -468,6 +499,7 @@
                 root.responseCheck(root.scaleNotificationDismissed === 3, "Final notification dismiss reaches its model");
                 root.scaleNotificationPopup.destroy();
                 root.scaleNetworkPopup.destroy();
+                root.scaleHiddenNetworkPopup.destroy();
                 root.scaleAudioPopup.destroy();
                 for (const row of root.scaleRows) row.destroy();
                 root.scaleBluetoothPane.destroy();
