@@ -35,7 +35,6 @@ static xcb_atom_t clipboard, targets, utf8, property, secret[5];
 static uint64_t generation;
 static int pending;
 static xcb_xfixes_selection_notify_event_t latest;
-static uint32_t started;
 
 static int eligible_path(const char *path)
 {
@@ -75,11 +74,18 @@ static int eligible_command(uint32_t pid, const char *exe)
         if (!ch) {
             argument[used] = 0;
             /* Only executable-shaped arguments, never arbitrary shell text. */
+            if (argument_index && (!strcmp(argument, "-c") || !strcmp(argument, "-e") ||
+                !strcmp(argument, "--command") ||
+                ((!strcmp(base, "bash") || !strcmp(base, "sh") || !strcmp(base, "dash") ||
+                  !strcmp(base, "zsh")) && argument[0] == '-' && argument[1] != '-' && strchr(argument, 'c')))) {
+                /* Inline interpreter code has no reliable executable identity.
+                 * Do not inspect it as a path or infer secrets from its text. */
+                used = 0;
+                break;
+            }
             if (argument_index && used && argument[0] != '-') {
-                /* First non-option launch argument is the script/app. Inline
-                 * shell code cannot safely be classified from its contents. */
-                if (!strchr(argument, ' ') && strcmp(argument, "/") && argument[used - 1] != '/' &&
-                    !eligible_path(argument)) ok = 0;
+                /* Spaces are valid in a script/app pathname (notably Mono). */
+                if (strcmp(argument, "/") && argument[used - 1] != '/' && !eligible_path(argument)) ok = 0;
                 used = 0;
                 break;
             }
@@ -122,7 +128,7 @@ static void notice(xcb_generic_event_t *event)
         if (n->selection == clipboard) {
             latest = *n;
             generation++;
-            pending = n->owner && (int32_t)(n->selection_timestamp - started) > 0;
+            pending = n->owner != XCB_NONE;
         }
     }
 }
@@ -374,11 +380,9 @@ static int initialize(void)
     xcb_query_extension_reply_t *extension;
     xcb_xfixes_query_version_reply_t *fixes;
     xcb_res_query_version_reply_t *res;
-    xcb_generic_event_t *event;
     xcb_window_t window;
-    uint32_t mask = XCB_EVENT_MASK_PROPERTY_CHANGE;
+    xcb_get_input_focus_reply_t *barrier;
     int screen_number, i, ok;
-    int64_t deadline;
     const char *display = getenv("DISPLAY");
     const char *markers[] = {"x-kde-passwordManagerHint", "application/x-keepassxc",
         "application/x-nspasteboard-concealed-type", "ExcludeClipboardContentFromMonitorProcessing",
@@ -409,23 +413,18 @@ static int initialize(void)
     property = atom("_DWM_CLIPBOARD_READ");
     for (i = 0; i < 5; i++) if (!(secret[i] = atom(markers[i]))) return 0;
     if (!clipboard || !targets || !utf8 || !property) return 0;
-    /* Obtain server time. Never import a pre-existing clipboard on startup. */
     window = xcb_generate_id(connection);
     xcb_create_window(connection, XCB_COPY_FROM_PARENT, window, root, 0, 0, 1, 1,
-        0, XCB_WINDOW_CLASS_INPUT_ONLY, XCB_COPY_FROM_PARENT, XCB_CW_EVENT_MASK, &mask);
-    xcb_change_property(connection, XCB_PROP_MODE_REPLACE, window, property, XCB_ATOM_INTEGER, 8, 0, NULL);
-    xcb_flush(connection);
-    deadline = now_ms() + WAIT_MS;
-    while (!started) {
-        while ((event = xcb_poll_for_event(connection))) {
-            if ((event->response_type & 127) == XCB_PROPERTY_NOTIFY && !(event->response_type & 128))
-                started = ((xcb_property_notify_event_t *)event)->time;
-            free(event);
-        }
-        if (!started && !wait_fd(deadline)) return 0;
-    }
+        0, XCB_WINDOW_CLASS_INPUT_ONLY, XCB_COPY_FROM_PARENT, 0, NULL);
     xcb_xfixes_select_selection_input(connection, window, clipboard, 7);
-    xcb_flush(connection);
+    /* Synchronize subscription and discard only startup events. No fixed
+     * timestamp cutoff survives initialization (X timestamps wrap). The focus
+     * reply is only a server ordering barrier, never source attribution. */
+    barrier = reply(xcb_get_input_focus(connection).sequence);
+    if (!barrier) return 0;
+    free(barrier);
+    drain();
+    pending = 0;
     return 1;
 }
 
