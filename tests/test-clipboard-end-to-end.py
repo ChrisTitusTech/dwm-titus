@@ -110,6 +110,14 @@ ShellRoot {
                                            env=env, text=True).strip()
         print('Clipboard window identity: ' + identity, flush=True)
         assert 'not found.' in identity, 'Update migration identity selectors for the new runtime WM_CLASS'
+        evidence = os.environ.get('DWM_CLIPBOARD_EVIDENCE_DIR')
+        if evidence:
+            destination = Path(evidence)
+            destination.mkdir(parents=True, exist_ok=True)
+            subprocess.run(['maim', '-i', windows.stdout.splitlines()[0], destination / 'clipboard-opt-in.png'],
+                           env=env, check=True, timeout=10)
+            (destination / 'clipboard-opt-in.xprop').write_text(identity + '\n')
+
         ipc('close')
         time.sleep(.1)
         assert not json.loads(ipc('state'))['capture'] and not history.exists()
