@@ -366,9 +366,9 @@ scan_storage() {
 	# efivarfs reports fixed-size firmware NVRAM, not a cleanable filesystem.
 	# Surface its usage as information instead of a disk error.
 	if command -v findmnt >/dev/null 2>&1 &&
-		[[ $(findmnt -n -o FSTYPE /sys/firmware/efi/efivars 2>/dev/null) == efivarfs ]]; then
+		[[ $(run_bounded findmnt -n -o FSTYPE /sys/firmware/efi/efivars 2>/dev/null) == efivarfs ]]; then
 		local efivars_usage
-		efivars_usage=$(findmnt -n -o USE% /sys/firmware/efi/efivars 2>/dev/null || true)
+		efivars_usage=$(run_bounded findmnt -n -o USE% /sys/firmware/efi/efivars 2>/dev/null || true)
 		emit_check storage info disk-efivars "Firmware variables (efivarfs)" \
 			"${efivars_usage:-unknown} used" "Firmware NVRAM; not a cleanable filesystem"
 	fi

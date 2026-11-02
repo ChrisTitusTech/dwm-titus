@@ -37,6 +37,15 @@ case " $* " in
 *) exit 1 ;;
 esac
 SCRIPT
+cat >"$work/bin/findmnt" <<'SCRIPT'
+#!/bin/sh
+case "$*" in
+'-n -o FSTYPE /sys/firmware/efi/efivars') printf 'efivarfs\n' ;;
+'-n -o USE% /sys/firmware/efi/efivars') printf '99%%\n' ;;
+*) exec /usr/bin/findmnt "$@" ;;
+esac
+SCRIPT
+chmod +x "$work/bin/findmnt"
 chmod +x "$work/bin/dnf" "$work/bin/quickshell" "$work/bin/systemctl" "$work/bin/xclip"
 
 DWM_HEALTH_XCLIP_OUTPUT="$work/clipboard.txt" \
@@ -90,12 +99,10 @@ grep -Fq $'meta\toverview\tok\tscan-user-complete' "$work/user.tsv"
 # efivarfs is fixed-size firmware NVRAM, never a cleanable disk error.
 grep -Fq 'df -P -l -x tmpfs -x devtmpfs -x squashfs -x efivarfs' "$HELPER"
 grep -Fq 'df -Pi -l -x tmpfs -x devtmpfs -x squashfs -x efivarfs' "$HELPER"
-if findmnt -n -o FSTYPE /sys/firmware/efi/efivars 2>/dev/null | grep -qx efivarfs; then
-	grep -Fq $'check\tstorage\tinfo\tdisk-efivars' "$work/user.tsv"
-	if grep -Fq $'check\tstorage\terror\tdisk-sys-firmware-efi-efivars' "$work/user.tsv"; then
-		printf 'efivarfs storage was reported as an error\n' >&2
-		exit 1
-	fi
+grep -Fq $'check\tstorage\tinfo\tdisk-efivars\tFirmware variables (efivarfs)\t99% used' "$work/user.tsv"
+if grep -Fq $'check\tstorage\terror\tdisk-sys-firmware-efi-efivars' "$work/user.tsv"; then
+	printf 'efivarfs storage was reported as an error\n' >&2
+	exit 1
 fi
 
 HOME="$work/home" \
