@@ -177,7 +177,7 @@ Scope {
 
     function loadHistory() {
         root.historyLoaded = true;
-        if (!root.settingsReady || root.historyReady) return;
+        if (!root.settingsReady || root.settingsLoadFailed || root.historyLoadFailed || root.historyReady) return;
         const savedEntries = root.toArray(historyFile.entries);
         if (!root.confirmedPersistence && savedEntries.length > 0) root.wipePending = true;
         const stored = root.confirmedPersistence && !root.clearPending ? savedEntries : [];
@@ -218,7 +218,8 @@ Scope {
         root.confirmedPersistence = settingsFile.persistenceEnabled === true;
         root.persistenceEnabled = root.confirmedPersistence;
         root.settingsReady = true;
-        if (root.historyLoaded) root.loadHistory();
+        if (root.historyLoadFailed) Qt.callLater(historyFile.reload);
+        else if (root.historyLoaded) root.loadHistory();
         if (root.persistenceEnabled) root.saveHistory();
     }
 
@@ -234,7 +235,8 @@ Scope {
     }
 
     function flushPendingWipe() {
-        if (root.wipePending && !root.settingsWriting && !root.confirmedPersistence && root.historyReady) {
+        if (root.wipePending && !root.settingsWriting && !root.settingsLoadFailed
+                && !root.historyLoadFailed && !root.confirmedPersistence && root.historyReady) {
             root.historyWiping = true;
             historyFile.entries = [];
             historyFile.writeAdapter();
@@ -262,8 +264,8 @@ Scope {
     }
 
     function retrySave() {
-        if (root.historyLoadFailed) historyFile.reload();
-        else if (root.settingsLoadFailed) settingsFile.reload();
+        if (root.settingsLoadFailed) settingsFile.reload();
+        else if (root.historyLoadFailed) historyFile.reload();
         else if (root.settingsSaveFailed) root.setPersistence(root.requestedPersistence);
         else if (root.wipePending) root.flushPendingWipe();
         else root.saveHistory();

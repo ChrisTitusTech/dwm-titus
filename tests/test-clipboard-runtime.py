@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 
@@ -60,6 +61,13 @@ with tempfile.TemporaryDirectory(prefix="clipboard-runtime-") as directory, \
         env = dict(os.environ, HOME=str(home), DISPLAY=':' + number, XDG_RUNTIME_DIR=str(runtime),
                    XDG_CONFIG_HOME=str(home / '.config'), XDG_CACHE_HOME=str(home / '.cache'),
                    XDG_DATA_HOME=str(home / '.local/share'), QT_QPA_PLATFORMTHEME='')
+        # Exercise the actual Xlib modifier-map path on this private X server.
+        probe = subprocess.run([sys.executable, '-c',
+            'import json,runpy,sys; print(json.dumps(runpy.run_path(sys.argv[1])["numlock_masks"]()))',
+            str(root / 'scripts/dwm-migrate-clipboard-surface')], env=env, capture_output=True,
+            text=True, timeout=5, check=True)
+        masks = json.loads(probe.stdout)
+        assert len(masks) == 1 and 0 <= masks[0] <= 255, masks
         process = subprocess.Popen(['quickshell', '--no-duplicate', '--path', str(shell / 'shell.qml')],
                                    env=env, stdout=shell_log, stderr=subprocess.STDOUT)
         def ipc(*args):
@@ -218,6 +226,23 @@ with tempfile.TemporaryDirectory(prefix="clipboard-runtime-") as directory, \
                     break
                 time.sleep(.05)
             assert not json.loads(history.read_text())['entries'], 'Clear intent lost after settings reload'
+            process.terminate()
+            process.wait(timeout=5)
+            settings.write_text(json.dumps({'persistenceEnabled': True}))
+            history.write_text(json.dumps({'entries': [{'text': 'both files unreadable', 'timestamp': 1}]}))
+            settings.chmod(0)
+            history.chmod(0)
+            process = subprocess.Popen(['quickshell', '--no-duplicate', '--path', str(shell / 'shell.qml')],
+                                       env=env, stdout=shell_log, stderr=subprocess.STDOUT)
+            wait_state(lambda state: state['ready'] and state['historyFailed'] and state['failed'])
+            history.chmod(0o600)
+            action('retry')
+            time.sleep(.2)
+            assert json.loads(history.read_text())['entries'][0]['text'] == 'both files unreadable'
+            settings.chmod(0o600)
+            action('retry')
+            wait_state(lambda state: not state['historyFailed'] and not state['failed'] and state['count'] == 1)
+            assert json.loads(history.read_text())['entries'][0]['text'] == 'both files unreadable'
         action('deferHistory')
         action('capture', 'queued before Clear')
         action('clear')
