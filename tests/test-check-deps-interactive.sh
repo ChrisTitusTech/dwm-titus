@@ -64,6 +64,20 @@ if grep -Fq "press any key to quit" <<<"$output"; then
 	exit 1
 fi
 
+# A validated caller-selected terminal is enough without any built-in terminal.
+rm -f "$work/bin/alacritty"
+cat >"$work/bin/dwm-terminal" <<'SH'
+#!/bin/sh
+[ "$1" = --print-command ] || exit 1
+printf '%s\n' custom-terminal
+SH
+chmod +x "$work/bin/dwm-terminal"
+output=$(env HOME="$work/home" PATH="$work/bin" bash "$CHECK_DEPS" </dev/null)
+grep -Fq 'All dependencies satisfied' <<<"$output"
+rm -f "$work/bin/dwm-terminal"
+printf '#!/bin/sh\nexit 0\n' >"$work/bin/alacritty"
+chmod +x "$work/bin/alacritty"
+
 # 2. Interactive mode when all dependencies satisfied
 output=$(printf '\n' | env HOME="$work/home" PATH="$work/bin" \
 	bash "$CHECK_DEPS" --interactive)

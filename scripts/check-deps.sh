@@ -184,6 +184,10 @@ echo ""
 # ── Terminal emulators ──────────────────────────────────
 echo "Terminal Emulators (at least one required):"
 TERM_FOUND=0
+if command -v dwm-terminal >/dev/null 2>&1 && dwm-terminal --print-command >/dev/null 2>&1; then
+	printf '  Configured terminal is available\n'
+	TERM_FOUND=1
+fi
 for term in dwmterm alacritty kitty st warp-terminal xterm; do
 	if command -v "$term" &>/dev/null; then
 		printf "  ${GREEN}✓${NC} %s\n" "$term"
