@@ -55,7 +55,8 @@ dwm_packages() {
 			quickshell picom python3 feh dex-autostart mate-polkit xsettingsd bubblewrap libseccomp \
 			alsa-utils brightnessctl dbus-tools inotify-tools jq pulseaudio-utils pipewire pavucontrol \
 			pipewire-pulseaudio wireplumber libnotify light-locker xorg-x11-drv-libinput \
-			bluez blueman playerctl upower power-profiles-daemon flatpak xdg-desktop-portal-gtk
+			bluez blueman playerctl upower power-profiles-daemon flatpak xdg-desktop-portal-gtk \
+			nm-connection-editor
 		;;
 	fedora:system-management)
 		printf '%s\n' \

@@ -372,6 +372,11 @@ ShellRoot {
             networkModel.open();
         }
 
+        function openHiddenPrompt(): void {
+            if (!networkModel.visible) networkModel.open();
+            networkModel.openHiddenPrompt("panel");
+        }
+
         function refresh(): void {
             networkModel.refresh();
         }
