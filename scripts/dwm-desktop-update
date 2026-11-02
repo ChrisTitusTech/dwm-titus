@@ -393,6 +393,14 @@ def record_system(args):
                 "layout": layout, "packages": sorted(set(args.packages)),
                 "files": {str(path): fingerprint(stage / str(path).lstrip("/")) for path in sorted(files)}}
     target = stage / str(prefix / "share/dwm-titus/desktop-install.json").lstrip("/")
+    if not args.destdir and target.exists():
+        trusted_installation(target)
+        previous = read_json(target)
+        # A source reinstall can have an older command list. Keep ownership of
+        # surviving managed files without blessing any local content changes.
+        for name, record in previous["files"].items():
+            if name not in manifest["files"] and os.path.lexists(name):
+                manifest["files"][name] = record
     target.parent.mkdir(parents=True, exist_ok=True, mode=0o755)
     os.chmod(target.parent, 0o755)
     write_json(target, manifest)
@@ -899,6 +907,26 @@ def installed_worker(manifest_path):
     return worker
 
 
+def install_dependencies():
+    """Open a package-only repair without changing desktop update receipts or status."""
+    if not sys.stdin.isatty():
+        raise RuntimeError("Dependency repair requires an interactive terminal")
+    with locked(paths()[2]):
+        if status_read(paths()[2])["state"] in ACTIVE | {"interrupted"}:
+            raise RuntimeError("Finish or recover the desktop update before repairing dependencies")
+        manifest_path, manifest = installation()
+        helper = Path(manifest["layout"]["prefix"]) / "libexec/dwm-titus/dwm-desktop-update-root"
+        trusted_file(helper, executable=True)
+        authorization = ["/usr/bin/pkexec"]
+        try:
+            if subprocess.run(["/usr/bin/sudo", "-n", "true"], capture_output=True, timeout=10).returncode == 0:
+                authorization = ["/usr/bin/sudo", "-n"]
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+        print("Install missing desktop dependencies. Review and confirm DNF's package transaction.", flush=True)
+        run([*authorization, helper, "repair-dependencies", digest(manifest_path)], timeout=1800, capture=False)
+
+
 def launch(expected):
     validate_update_paths()
     if not re.fullmatch(r"[0-9a-f]{40}", expected):
@@ -1260,13 +1288,14 @@ def worker(operation):
             except (OSError, ValueError, KeyError, RuntimeError, subprocess.SubprocessError) as error:
                 print(str(error), flush=True)
                 denied = isinstance(error, CommandFailure) and error.returncode in (126, 127)
-                if denied and not system_applied:
+                if denied and not system_applied and not getattr(privileged, "broken", False):
                     system_started = False
                 if isinstance(error, AuthorizationTimeout) and reservation_started:
                     # pkexec may already have dispatched. Retain recovery ownership,
                     # but do not hide another password request behind the timeout.
                     system_started = True
-                if reservation_started and not system_started:
+                if (reservation_started and not system_applied
+                        and not isinstance(error, AuthorizationTimeout) and not getattr(privileged, "broken", False)):
                     save_status(state, value, state="recovering", percent=-1,
                                 detail="Update failed: " + str(error) + ". Releasing the preparation reservation...")
                     try:
@@ -1274,6 +1303,7 @@ def worker(operation):
                         if not denied or reservation_confirmed:
                             authorize(state, value, privileged, "rollback", operation)
                             authorize(state, value, privileged, "complete", operation)
+                            system_started = False
                     except (OSError, RuntimeError, subprocess.SubprocessError) as cleanup_error:
                         system_started = True
                         error = RuntimeError(str(error) + "; preparation recovery failed: " + str(cleanup_error))
@@ -1317,8 +1347,11 @@ def recover(operation):
                 prefix = Path(preview["manifest"]).parents[2]
                 privileged.request("complete", operation)
                 if completion.get("recovered") is True:
-                    return save_status(state, value, state="failed", canUpdate=False, restart="session", percent=-1,
-                                       detail="Previous desktop files restored. Log out and back in, then check again.")
+                    restart = "none" if completion.get("restart") == "none" else "session"
+                    detail = ("Update canceled; the active desktop was unchanged. Check again." if restart == "none"
+                              else "Previous desktop files restored. Log out and back in, then check again.")
+                    return save_status(state, value, state="failed", canUpdate=False, restart=restart, percent=-1,
+                                       systemStarted=False, systemApplied=False, detail=detail)
                 return save_status(state, value, state="restart-required", restart="session", percent=100,
                                    detail="Desktop files are ready. Log out and back in, then check again.")
             receipts = read_json(directory / "receipt-backup.json") if (directory / "receipt-backup.json").exists() else {}
@@ -1374,10 +1407,18 @@ def recover(operation):
                 elif receipts.get(name) is False:
                     (state / name).unlink(missing_ok=True)
             sync_directory(state)
-            write_json(directory / "completion.json", {"recovered": True})
+            restart = "session"
+            if (value.get("systemApplied") is False and not any(entry["swapped"] for entry in prepared)
+                    and preview.get("restart", "none") == "none"
+                    and running_dwm_matches(prefix / "bin/dwm") is True):
+                restart = "none"
+                value["activationShells"] = []
+            write_json(directory / "completion.json", {"recovered": True, "restart": restart})
             privileged.request("complete", operation)
-            return save_status(state, value, state="failed", canUpdate=False, restart="session", percent=-1,
-                               detail="Previous desktop files restored. Log out and back in, then check again.")
+            detail = ("Update canceled; the active desktop was unchanged. Check again." if restart == "none"
+                      else "Previous desktop files restored. Log out and back in, then check again.")
+            return save_status(state, value, state="failed", canUpdate=False, restart=restart, percent=-1,
+                               systemStarted=False, systemApplied=False, detail=detail)
 
 
 def load_worker_environment(path):
@@ -1425,6 +1466,7 @@ def main():
     commands.add_parser("data-directories")
     commands.add_parser("status")
     commands.add_parser("progress")
+    commands.add_parser("install-dependencies")
     start = commands.add_parser("start")
     start.add_argument("revision")
     work = commands.add_parser("worker")
@@ -1465,6 +1507,9 @@ def main():
         return guard_user_install(args.state, command[1:] if command and command[0] == "--" else command)
     if args.command == "record-user":
         record_user(args.source_dir)
+        return 0
+    if args.command == "install-dependencies":
+        install_dependencies()
         return 0
     if args.command == "worker":
         if args.environment_file:

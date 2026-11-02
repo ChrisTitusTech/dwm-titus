@@ -86,6 +86,58 @@ class DesktopUpdate(unittest.TestCase):
         self.command = patch.object(update, "run", return_value="a" * 40 + "\trefs/heads/main").start()
         patch.object(update, "PrivilegedSession", RecoverySession).start()
 
+    def test_dependency_repair_uses_trusted_helper_without_changing_desktop_state(self):
+        update.write_json(self.state / "status.json", {**update.status_default(), "state": "current"})
+        before = {p: p.read_bytes() for p in (self.manifest_path, self.binary, self.state / "status.json")}
+        with patch.object(update.sys.stdin, "isatty", return_value=True), \
+                patch.object(update, "trusted_file") as trust, \
+                patch.object(update.subprocess, "run", return_value=SimpleNamespace(returncode=0)) as probe:
+            update.install_dependencies()
+        trust.assert_called_once_with(self.base / "libexec/dwm-titus/dwm-desktop-update-root", executable=True)
+        probe.assert_called_once_with(["/usr/bin/sudo", "-n", "true"], capture_output=True, timeout=10)
+        self.command.assert_called_once_with(["/usr/bin/sudo", "-n", self.base / "libexec/dwm-titus/dwm-desktop-update-root",
+                                             "repair-dependencies", update.digest(self.manifest_path)],
+                                            timeout=1800, capture=False)
+        self.assertEqual({p: p.read_bytes() for p in before}, before)
+
+    def test_dependency_repair_falls_back_to_polkit_once_and_preserves_denial(self):
+        for probe_error in (SimpleNamespace(returncode=1), OSError("sudo unavailable"),
+                            subprocess.TimeoutExpired("sudo", 10)):
+            with self.subTest(probe=type(probe_error).__name__):
+                self.command.reset_mock()
+                self.command.side_effect = update.CommandFailure("denied", 126)
+                options = {"side_effect": probe_error} if isinstance(probe_error, BaseException) else {"return_value": probe_error}
+                with patch.object(update.sys.stdin, "isatty", return_value=True), \
+                        patch.object(update, "trusted_file"), patch.object(update.subprocess, "run", **options), \
+                        self.assertRaisesRegex(update.CommandFailure, "denied"):
+                    update.install_dependencies()
+                self.command.assert_called_once_with(["/usr/bin/pkexec", self.base / "libexec/dwm-titus/dwm-desktop-update-root",
+                                                     "repair-dependencies", update.digest(self.manifest_path)],
+                                                    timeout=1800, capture=False)
+
+    def test_dependency_repair_rejects_noninteractive_and_untrusted_requests(self):
+        with patch.object(update.sys.stdin, "isatty", return_value=False), \
+                self.assertRaisesRegex(RuntimeError, "^Dependency repair requires an interactive terminal$"):
+            update.install_dependencies()
+        self.command.assert_not_called()
+        with patch.object(update.sys.stdin, "isatty", return_value=True), \
+                patch.object(update, "trusted_file", side_effect=RuntimeError("untrusted helper")), \
+                self.assertRaisesRegex(RuntimeError, "untrusted helper"):
+            update.install_dependencies()
+        self.command.assert_not_called()
+
+    def test_dependency_repair_rejects_active_and_interrupted_updates(self):
+        for state in (*sorted(update.ACTIVE), "interrupted"):
+            with self.subTest(state=state):
+                update.write_json(self.state / "status.json", {**update.status_default(), "state": state,
+                                                               "operation": "c" * 32})
+                before = (self.state / "status.json").read_bytes()
+                with patch.object(update.sys.stdin, "isatty", return_value=True), \
+                        self.assertRaisesRegex(RuntimeError, "^Finish or recover the desktop update before repairing dependencies$"):
+                    update.install_dependencies()
+                self.assertEqual((self.state / "status.json").read_bytes(), before)
+                self.command.assert_not_called()
+
     def test_current_and_content_drift_are_distinct(self):
         self.assertEqual(update.check(True)["state"], "current")
         (self.config / "quickshell/file").write_text("stale shell")
@@ -308,6 +360,69 @@ class DesktopUpdate(unittest.TestCase):
             os.umask(previous)
         self.assertEqual((stage / "usr/share/dwm-titus").stat().st_mode & 0o777, 0o755)
 
+    def test_source_reinstall_keeps_previously_managed_omitted_commands(self):
+        legacy = self.base / "bin/dwm-migrate-update-center-window-rule"
+        legacy.write_text("previously installed helper")
+        legacy.chmod(0o755)
+        record = update.fingerprint(legacy)
+        args = SimpleNamespace(source_dir=str(self.base), destdir="", prefix=str(self.base),
+                               manprefix=str(self.base / "share/man"), xsessions=str(self.base / "xsessions"),
+                               datadir=str(self.base / "share"), commands=[], helpers=[], packages=[])
+        target = self.base / "share/dwm-titus/desktop-install.json"
+        previous = {**self.manifest, "files": {str(legacy): record}}
+        update.write_json(target, previous)
+        with patch.object(update, "trusted_installation") as trusted, \
+                patch.object(update, "fingerprint", return_value={"mode": 0o644, "sha256": "a" * 64}):
+            update.record_system(args)
+        result = update.read_json(target)
+        self.assertEqual(result["files"].get(str(legacy)), record)
+        trusted.assert_called_once_with(target)
+
+    def test_source_reinstall_retains_expected_record_for_modified_omitted_file(self):
+        legacy = self.base / "bin/dwm-migrate-update-center-window-rule"
+        legacy.write_text("previously installed helper")
+        legacy.chmod(0o755)
+        record = update.fingerprint(legacy)
+        target = self.base / "share/dwm-titus/desktop-install.json"
+        update.write_json(target, {**self.manifest, "files": {str(legacy): record}})
+        legacy.write_text("locally modified helper")
+        args = SimpleNamespace(source_dir=str(self.base), destdir="", prefix=str(self.base),
+                               manprefix=str(self.base / "share/man"), xsessions=str(self.base / "xsessions"),
+                               datadir=str(self.base / "share"), commands=[], helpers=[], packages=[])
+        with patch.object(update, "trusted_installation"), \
+                patch.object(update, "fingerprint", return_value={"mode": 0o644, "sha256": "a" * 64}):
+            update.record_system(args)
+        self.assertEqual(update.read_json(target)["files"].get(str(legacy)), record)
+
+    def test_staged_manifest_does_not_import_previous_installation_ownership(self):
+        stage = self.base / "stage"
+        target = stage / "usr/share/dwm-titus/desktop-install.json"
+        legacy = stage / "usr/bin/dwm-legacy"
+        legacy.parent.mkdir(parents=True)
+        legacy.write_text("stale staged helper")
+        update.write_json(target, {**self.manifest, "files": {"/usr/bin/dwm-legacy": update.fingerprint(legacy)}})
+        args = SimpleNamespace(source_dir=str(self.base), destdir=str(stage), prefix="/usr",
+                               manprefix="/usr/share/man", xsessions="/usr/share/xsessions", datadir="/usr/share",
+                               commands=[], helpers=[], packages=[])
+        with patch.object(update, "fingerprint", return_value={"mode": 0o644, "sha256": "a" * 64}), \
+                patch.object(update, "trusted_installation") as trusted:
+            update.record_system(args)
+        self.assertNotIn("/usr/bin/dwm-legacy", update.read_json(target)["files"])
+        trusted.assert_not_called()
+
+    def test_source_reinstall_rejects_untrusted_previous_manifest_before_publication(self):
+        target = self.base / "share/dwm-titus/desktop-install.json"
+        update.write_json(target, self.manifest)
+        before = target.read_bytes()
+        args = SimpleNamespace(source_dir=str(self.base), destdir="", prefix=str(self.base),
+                               manprefix=str(self.base / "share/man"), xsessions=str(self.base / "xsessions"),
+                               datadir=str(self.base / "share"), commands=[], helpers=[], packages=[])
+        with patch.object(update, "fingerprint", return_value={"mode": 0o644, "sha256": "a" * 64}), \
+                patch.object(update, "trusted_installation", side_effect=RuntimeError("untrusted previous manifest")):
+            with self.assertRaisesRegex(RuntimeError, "^untrusted previous manifest$"):
+                update.record_system(args)
+        self.assertEqual(target.read_bytes(), before)
+
     def test_service_forwards_build_overrides_without_shell_splitting(self):
         overrides = {"CC": "clang", "CFLAGS": "-O1 -g", "CPPFLAGS": "-DTEST=1", "LDFLAGS": "-Wl,--as-needed"}
         with patch.dict(os.environ, overrides):
@@ -472,6 +587,34 @@ class DesktopUpdate(unittest.TestCase):
         self.assertEqual(value["state"], "failed")
         self.assertIn("Previous desktop files restored", value["detail"])
         self.assertFalse(value["canUpdate"])
+
+    def test_recovery_without_applied_files_does_not_require_a_replacement_shell(self):
+        operation = "f" * 32
+        directory = self.state / "operations" / operation
+        update.write_json(directory / "preview.json", {"manifest": str(self.manifest_path), "restart": "none"})
+        update.save_status(self.state, update.status_default(), operation=operation, state="interrupted",
+                           systemApplied=False, systemStarted=True)
+        with patch.object(update, "trusted_installation"), \
+                patch.object(update, "running_dwm_matches", return_value=True), \
+                patch.object(update, "quickshell_processes", return_value={("1", "unchanged-shell")}):
+            value = update.recover(operation)
+            self.assertEqual(value["restart"], "none")
+            self.assertEqual(value["activationShells"], [])
+            self.assertFalse(value["systemStarted"])
+            self.assertEqual(update.check(True)["state"], "current")
+            update.save_status(self.state, value, state="interrupted")
+            self.assertEqual(update.recover(operation)["restart"], "none")
+
+    def test_noop_recovery_preserves_an_existing_session_restart_requirement(self):
+        operation = "f" * 32
+        directory = self.state / "operations" / operation
+        update.write_json(directory / "preview.json", {"manifest": str(self.manifest_path), "restart": "session"})
+        update.save_status(self.state, update.status_default(), operation=operation, state="interrupted",
+                           systemApplied=False, systemStarted=True, restart="session")
+        with patch.object(update, "trusted_installation"), \
+                patch.object(update, "running_dwm_matches", return_value=True), \
+                patch.object(update, "quickshell_processes", return_value={("1", "unchanged-shell")}):
+            self.assertEqual(update.recover(operation)["restart"], "session")
 
     def test_changed_confirmation_does_not_launch(self):
         self.command.return_value = "b" * 40 + "\trefs/heads/main"
@@ -937,7 +1080,7 @@ sys.exit(update.worker(operation))
 
     def test_worker_success_failure_denial_and_interruption(self):
         for scenario, expected, code in (("success", "restart-required", 0), ("migration", "restart-required", 0), ("build-failure", "failed", 1),
-                                         ("denied", "failed", 1), ("begin-denied", "failed", 1), ("sandbox-failure", "failed", 1), ("cleanup-completion-denied", "interrupted", 1), ("apply-failure", "interrupted", 1),
+                                         ("denied", "failed", 1), ("begin-denied", "failed", 1), ("sandbox-failure", "failed", 1), ("cleanup-completion-denied", "interrupted", 1), ("apply-failure", "failed", 1),
                                          ("killed", "installing", 9), ("activation-success", "current", 0),
                                          ("activation-stale", "restart-required", 0),
                                          ("activation-failure", "restart-required", 0)):
@@ -970,6 +1113,27 @@ sys.exit(update.worker(operation))
                     self.assertEqual((directory / "config/quickshell/file").read_text(), "old")
                     self.assertEqual((directory / "prefix/bin/dwm").read_text(), "old binary")
 
+    def test_rejected_apply_releases_reservation_without_restart_or_recovery(self):
+        directory = self.base / "rejected-apply"
+        result = subprocess.run([sys.executable, REPO / "tests/fixtures/desktop-worker-scenario.py",
+                                 REPO, directory, "apply-failure"], capture_output=True, text=True, timeout=15)
+        self.assertEqual(result.returncode, 1, result.stderr)
+        value = update.read_json(directory / "state/status.json")
+        self.assertEqual(value["state"], "failed", value)
+        self.assertEqual(value["restart"], "none")
+        self.assertFalse(value["systemStarted"])
+        self.assertFalse(value["systemApplied"])
+        self.assertNotIn("Review recovery", value["detail"])
+        self.assertEqual((directory / "state/authorization-calls").read_text().splitlines(),
+                         ["begin", "apply", "rollback", "complete"])
+        self.assertTrue((directory / "state/reservation-released").exists())
+        self.assertEqual((directory / "prefix/bin/dwm").read_text(), "old binary")
+        self.assertEqual((directory / "config/quickshell/file").read_text(), "old")
+        entries = update.read_json(directory / "state/operations" / ("c" * 32) / "user-backup.json")
+        for entry in entries:
+            self.assertFalse(entry["swapped"])
+            self.assertFalse(Path(entry["staging"]).exists())
+
     def test_authorization_timeout_stops_without_another_hidden_prompt(self):
         for scenario, calls in (("begin-timeout", ["begin"]), ("apply-timeout", ["begin", "apply"])):
             with self.subTest(scenario=scenario):
@@ -988,6 +1152,23 @@ sys.exit(update.worker(operation))
                 self.assertEqual((directory / "prefix/bin/dwm").read_text(), "old binary")
                 log = directory / "state/operations" / ("c" * 32) / "update.log"
                 self.assertIn(value["detail"].split(" Review recovery")[0], log.read_text())
+
+    def test_broken_apply_session_retains_recovery_without_another_prompt(self):
+        for scenario in ("apply-broken", "apply-broken-denied"):
+            with self.subTest(scenario=scenario):
+                directory = self.base / scenario
+                result = subprocess.run([sys.executable, REPO / "tests/fixtures/desktop-worker-scenario.py",
+                                         REPO, directory, scenario], capture_output=True, text=True, timeout=15)
+                self.assertEqual(result.returncode, 1, result.stderr)
+                value = update.read_json(directory / "state/status.json")
+                self.assertEqual(value["state"], "interrupted", value)
+                self.assertTrue(value["systemStarted"])
+                self.assertFalse(value["systemApplied"])
+                self.assertEqual((directory / "state/authorization-calls").read_text().splitlines(), ["begin", "apply"])
+                self.assertFalse((directory / "state/reservation-released").exists())
+                self.assertFalse((directory / "state/complete-called").exists())
+                entries = update.read_json(directory / "state/operations" / ("c" * 32) / "user-backup.json")
+                self.assertTrue(all(Path(e["staging"]).is_dir() for e in entries))
 
     def test_directory_sync_failure_keeps_transaction_unfinished(self):
         directory = self.base / "durability-failure"

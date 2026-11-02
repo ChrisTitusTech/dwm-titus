@@ -229,6 +229,13 @@ apply dwm patches to install and use the desktop.
 
 ## Troubleshooting
 
+Control Center's **Install Missing Deps** and System Health's **Open dependency
+installer** open a package-only repair in a terminal. You can also run
+`dwm-desktop-update install-dependencies`. It uses the trusted installed package
+map, installs missing Fedora dependencies after administrator authorization and
+DNF transaction confirmation, and preserves desktop files, installation receipts,
+and Update Center status. Finish or recover any active desktop update first.
+
 **Settings -> System** separates read-only **Reload status** from confirmed
 metadata refresh and package installation. Review all package changes, including
 dependency additions and removals, before confirming. PackageKit owns

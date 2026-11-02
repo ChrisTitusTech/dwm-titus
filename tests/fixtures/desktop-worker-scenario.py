@@ -138,6 +138,8 @@ def boundary(args, cwd=None, timeout=60, capture=True):
             raise subprocess.TimeoutExpired(args, timeout)
         if scenario == "apply-failure":
             raise update.CommandFailure("application interrupted", 1)
+        if scenario in ("apply-broken", "apply-broken-denied"):
+            raise update.CommandFailure("authorization pipe closed", 126 if scenario.endswith("denied") else 1)
         with tarfile.open(directory / "bundle.tar") as bundle:
             candidate = json.loads(bundle.extractfile("manifest.json").read())
             for index, (name, record) in enumerate(sorted(candidate["files"].items())):
@@ -161,6 +163,7 @@ class FixtureSession:
     def __init__(self, helper, *args, **kwargs):
         self.helper = helper
         self.started = False
+        self.broken = False
 
     def start(self):
         if not self.started:
@@ -171,7 +174,12 @@ class FixtureSession:
 
     def request(self, action, *args, timeout=60):
         self.start()
-        return boundary(["/usr/bin/pkexec", self.helper, action, *args], timeout=timeout, capture=False)
+        try:
+            return boundary(["/usr/bin/pkexec", self.helper, action, *args], timeout=timeout, capture=False)
+        except update.CommandFailure:
+            if scenario in ("apply-broken", "apply-broken-denied"):
+                self.broken = True
+            raise
 
     def close(self):
         pass

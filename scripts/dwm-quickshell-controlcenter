@@ -1648,7 +1648,7 @@ dependency_check() {
 }
 
 install_missing_deps() {
-	terminal_run "cd '$repo_dir' && ./install.sh; printf '\\nPress enter to close...'; read -r _"
+	terminal_run "exec dwm-desktop-update install-dependencies"
 }
 
 self_heal() {
