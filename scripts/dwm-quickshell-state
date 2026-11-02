@@ -113,7 +113,7 @@ running_apps() {
 	fi
 	printf '%s\n' "$1" |
 		awk -F'\t' -v root_pids=",$root_pids," '
-			NF < 4 || $4 == "-" { next }
+			NF < 4 || $4 == "-" || $2 !~ /^[0-9]+$/ { next }
 			$3 != "-" && index(root_pids, "," $3 ",") { next }
 			seen[$4]++ { next }
 			{ print $1 ":" $4 }' |

@@ -209,6 +209,9 @@ case $* in
 	printf '_NET_WM_DESKTOP(CARDINAL) = 2\n'
 	printf 'WM_CLASS(STRING) = "foot", "Foot"\n'
 	;;
+*"-id 0x4 _NET_WM_DESKTOP"*)
+	printf '_NET_WM_DESKTOP: not found.\nWM_CLASS(STRING) = "quickshell", "quickshell"\n'
+	;;
 *"-id 0x3 _NET_WM_DESKTOP"*) printf '_NET_WM_DESKTOP(CARDINAL) = 4294967295\n' ;;
 *"WM_NAME"*) printf 'WM_NAME(STRING) = "VOL 50%%"\n' ;;
 *) exit 1 ;;
@@ -234,7 +237,7 @@ PATH="$work/bin:$PATH" \
 grep -Fqx 'monitor_desktops=4' "$work/fallback.out"
 grep -Fqx 'occupied=' "$work/fallback.out"
 
-DWM_TEST_CLIENT_LIST='0x1, 0x2, 0x3' \
+DWM_TEST_CLIENT_LIST='0x1, 0x2, 0x3, 0x4' \
 	PATH="$work/bin:$PATH" \
 	"$repo_dir/scripts/dwm-quickshell-state" state >"$work/occupied.out"
 grep -Fqx 'occupied=0|2' "$work/occupied.out"
