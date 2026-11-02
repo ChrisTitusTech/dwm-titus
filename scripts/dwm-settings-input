@@ -174,7 +174,7 @@ stable_device_source() {
 }
 
 scan_devices() {
-	local line id kind name properties product node source identity key persistable devices
+	local line id kind name properties product node source identity key persistable devices strict=${1:-false}
 	need_tools
 	device_ids=()
 	device_keys=()
@@ -192,11 +192,13 @@ scan_devices() {
 			properties=$(mktemp)
 			xinput list-props "$id" >"$properties" 2>/dev/null || {
 				rm -f "$properties"
+				[[ $strict != true ]] || return 1
 				continue
 			}
 			name=$(sed -n "1{s/^Device '//; s/':$//; p;}" "$properties")
 			[[ -n $name ]] || {
 				rm -f "$properties"
+				[[ $strict != true ]] || return 1
 				continue
 			}
 			[[ $name != *"XTEST"* ]] || {
@@ -251,7 +253,7 @@ device_can_persist() {
 # member that has it.
 resolve_devices() {
 	local wanted=$1
-	scan_devices
+	scan_devices true || return 1
 	collect_members "$wanted"
 	((${#member_ids[@]} > 0)) || die "device is disconnected or unavailable: $wanted"
 	members_share_port "$wanted" || die "stable device identity is ambiguous"
@@ -343,16 +345,22 @@ member_identity() {
 
 # Saves every member's value before a preview, one "id<TAB>value" per line.
 capture_members() {
-	local token=$1 key=$2 setting=$3 file identities id value identity
+	local token=$1 key=$2 setting=$3 file identities id value identity status
 	[[ $key != "$accessibility_key" ]] || return 0
 	file=$(token_file "$token" members)
-	resolve_devices "$key"
+	resolve_devices "$key" || return 1
 	identities=$(token_file "$token" identities)
 	: >"$file" || return 1
 	: >"$identities" || return 1
 	chmod 600 "$file" "$identities" || return 1
 	for id in "${member_ids[@]}"; do
-		value=$(member_value "$id" "$setting") || continue
+		if value=$(member_value "$id" "$setting"); then
+			:
+		else
+			status=$?
+			[[ $status == 1 ]] && continue
+			return 1
+		fi
 		[[ $value != *$'\t'* ]] || die "captured value contains a tab"
 		identity=$(member_identity "$id") || return 1
 		printf '%s\t%s\n' "$id" "$value" >>"$file" || return 1
@@ -446,7 +454,7 @@ reapply_members() {
 	local -a retry_values=() written=()
 	file=$(token_file "$token" members)
 	[[ $key != "$accessibility_key" && -s $file ]] || return 0
-	scan_devices
+	scan_devices true || return 1
 	collect_members "$key"
 	((${#member_ids[@]} > 0)) || return 0
 	members_share_port "$key" || return 1
@@ -499,38 +507,57 @@ undo_member_writes() {
 	return "$failed"
 }
 
-# Sets every member that has the setting to its own driver default; a failure
-# part-way puts the earlier members back. Returns 1 when no member has a
-# default, 2 when a member rejected the write, 3 when putting back failed too.
+# Read every supporting member's driver default before any write. Returns 1
+# for unavailable/invalid defaults or failed reads, 2 for rejected writes, and
+# 3 when undoing earlier writes failed too.
 apply_member_defaults() {
-	local setting=$1 default_name=$2 property id properties value old
-	local -a written=()
+	local setting=$1 default_name=$2 property id properties value old index
+	local -a ids=() olds=() defaults=() written=()
 	property=$(setting_property "$setting") || return 1
-	properties=$(mktemp)
+	properties=$(mktemp) || return 1
+	# Read the entire plan before any mutation. A failed query is not an
+	# absent capability and must not discard a saved override.
 	for id in "${member_ids[@]}"; do
-		xinput list-props "$id" >"$properties" 2>/dev/null || continue
+		xinput list-props "$id" >"$properties" 2>/dev/null || {
+			rm -f "$properties"
+			return 1
+		}
 		old=$(property_value "$properties" "$property")
 		[[ -n $old ]] || continue
 		value=$(property_value "$properties" "$default_name")
-		[[ -n $value ]] || continue
-		validate_value "$setting" "$value" || continue
-		xinput set-prop "$id" "$property" "$value" || {
+		[[ -n $value ]] || {
 			rm -f "$properties"
+			return 1
+		}
+		validate_value "$setting" "$value" || {
+			rm -f "$properties"
+			return 1
+		}
+		ids+=("$id")
+		olds+=("$old")
+		defaults+=("$value")
+	done
+	rm -f "$properties"
+	((${#ids[@]})) || return 1
+	for index in "${!ids[@]}"; do
+		id=${ids[$index]}
+		apply_member_value "$id" "$setting" "${defaults[$index]}" || {
 			undo_member_writes "$setting" "${written[@]}" || return 3
 			return 2
 		}
-		written+=("$id"$'\t'"$old")
+		written+=("$id"$'\t'"${olds[$index]}")
 	done
-	rm -f "$properties"
-	((${#written[@]}))
 }
 
 # Prints the first member's value of an XInput property, or fails.
 member_property() {
 	local property=$1 id properties value
-	properties=$(mktemp)
+	properties=$(mktemp) || return 2
 	for id in "${member_ids[@]}"; do
-		xinput list-props "$id" >"$properties" 2>/dev/null || continue
+		xinput list-props "$id" >"$properties" 2>/dev/null || {
+			rm -f "$properties"
+			return 2
+		}
 		value=$(property_value "$properties" "$property")
 		if [[ -n $value ]]; then
 			rm -f "$properties"
@@ -681,7 +708,7 @@ read_value() {
 		accessibility_value "$setting"
 		return
 	fi
-	resolve_devices "$key"
+	resolve_devices "$key" || return 1
 	id=${member_ids[0]}
 	case $setting in
 	keyboard-layout)
@@ -703,57 +730,35 @@ read_value() {
 # Returns 3 when a merged device failed part-way and the parts already written
 # could not be put back.
 apply_value() {
-	local key=$1 setting=$2 value=$3 id property properties old index
-	local -a written=() olds=()
+	local key=$1 setting=$2 value=$3 id old pair status
+	local -a plan=() written=()
 	validate_value "$setting" "$value" || die "invalid value for $setting"
 	if [[ $key == "$accessibility_key" ]]; then
 		apply_accessibility_value "$setting" "$value"
 		return
 	fi
-	# Callers run this under `if !`, where set -e is off: every step returns
-	# its own failure.
 	resolve_devices "$key" || return 1
-	case $setting in
-	keyboard-layout | modifier-options)
-		need_setxkbmap
-		# setxkbmap -device writes the shared rules names that the query reads,
-		# so every old value is read before the first write
-		for id in "${member_ids[@]}"; do
-			old=$(member_value "$id" "$setting") || old=
-			olds+=("$old")
-		done
-		for index in "${!member_ids[@]}"; do
-			id=${member_ids[$index]}
-			old=${olds[$index]}
-			apply_member_value "$id" "$setting" "$value" || {
-				undo_member_writes "$setting" "${written[@]}" || return 3
-				return 1
-			}
-			# an unknown layout cannot be put back
-			if [[ -n $old || $setting == modifier-options ]]; then
-				written+=("$id"$'\t'"$old")
-			fi
-		done
-		;;
-	*)
-		property=$(setting_property "$setting") || die "unsupported setting: $setting"
-		properties=$(mktemp)
-		for id in "${member_ids[@]}"; do
-			xinput list-props "$id" >"$properties" 2>/dev/null || continue
-			old=$(property_value "$properties" "$property")
-			[[ -n $old ]] || continue
-			xinput set-prop "$id" "$property" "$value" || {
-				rm -f "$properties"
-				# a merged device is changed on all parts or none
-				undo_member_writes "$setting" "${written[@]}" || return 3
-				return 1
-			}
-			written+=("$id"$'\t'"$old")
-		done
-		rm -f "$properties"
-		((${#written[@]})) || die "$setting is unsupported by device $key"
-		;;
-	esac
+	case $setting in keyboard-layout | modifier-options) need_setxkbmap ;; esac
+	# Capture all supporting members before writing anything. This also keeps
+	# shared keyboard rules names from changing before later snapshots.
+	for id in "${member_ids[@]}"; do
+		if old=$(member_value "$id" "$setting"); then
+			plan+=("$id"$'\t'"$old")
+		else
+			status=$?
+			[[ $status == 1 ]] && continue
+			return 1
+		fi
+	done
+	((${#plan[@]})) || die "$setting is unsupported by device $key"
+	for pair in "${plan[@]}"; do
+		id=${pair%%$'\t'*}
+		apply_member_value "$id" "$setting" "$value" || {
+			undo_member_writes "$setting" "${written[@]}" || return 3
+			return 1
+		}
+		written+=("$pair")
+	done
 }
 
 persist_value() {

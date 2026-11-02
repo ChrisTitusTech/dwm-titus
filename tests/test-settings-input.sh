@@ -98,7 +98,7 @@ list-props)
 		count=$(cat "$TEST_COUNTER" 2>/dev/null || printf 0)
 		count=$((count + 1))
 		printf '%s\n' "$count" >"$TEST_COUNTER"
-		[ "$count" -lt 2 ] || exit 1
+		[ "$count" -lt "${TEST_DISAPPEAR_FROM:-2}" ] || exit 1
 	fi
 	case $2 in
 	12) cat <<'PROPS'
@@ -1054,17 +1054,45 @@ test -f "$work/runtime/dwm-settings-input/part-ambiguous.state"
 env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" TEST_DUPLICATE_CAPABILITIES=1 "$helper" revert part-ambiguous >/dev/null
 
 # Enumeration succeeding does not make a later property-query failure safe.
-for action in revert keep; do
-	token="query-failed-$action"
-	env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" "$helper" preview "$token" 10 "$twin_key" natural-scroll 1 >/dev/null
+for failure_read in 1 2; do
+	for action in revert keep; do
+		token="query-failed-$action-$failure_read"
+		env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" "$helper" preview "$token" 10 "$twin_key" natural-scroll 1 >/dev/null
+		rm -f "$work/actions.log" "$work/list-props.count"
+		if env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" TEST_DISAPPEAR_ID=17 TEST_DISAPPEAR_FROM="$failure_read" "$helper" "$action" "$token" >/dev/null 2>"$work/query-failed.err"; then
+			printf '%s discarded recovery after a property query failed\n' "$action" >&2
+			exit 1
+		fi
+		test -f "$work/runtime/dwm-settings-input/$token.state"
+		test ! -s "$work/actions.log"
+		env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" "$helper" revert "$token" >/dev/null
+	done
+done
+
+# A later capture query failure must abort before any preview is applied.
+rm -f "$work/actions.log" "$work/list-props.count"
+if env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" TEST_DISAPPEAR_ID=18 TEST_DISAPPEAR_FROM=3 "$helper" preview capture-query-failed 10 "$twin_key" natural-scroll 1 >/dev/null 2>"$work/capture-query.err"; then
+	printf 'Preview accepted an incomplete capture\n' >&2
+	exit 1
+fi
+test ! -s "$work/actions.log"
+test ! -e "$work/runtime/dwm-settings-input/capture-query-failed.state"
+
+# Reset/replay must pre-read all members and preserve the saved override.
+printf '%s\tnatural-scroll\t1\t0\n' "$twin_key" >"$work/home/.config/dwm-titus/input-settings.conf"
+cp "$work/home/.config/dwm-titus/input-settings.conf" "$work/saved-before-query"
+for action in reset apply-saved; do
 	rm -f "$work/actions.log" "$work/list-props.count"
-	if env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" TEST_DISAPPEAR_ID=17 "$helper" "$action" "$token" >/dev/null 2>"$work/query-failed.err"; then
-		printf '%s discarded recovery after a property query failed\n' "$action" >&2
-		exit 1
+	if [[ $action == reset ]]; then
+		if env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" TEST_DISAPPEAR_ID=18 "$helper" reset "$twin_key" natural-scroll >/dev/null 2>"$work/reset-query.err"; then
+			printf 'Reset succeeded after a member query failed\n' >&2
+			exit 1
+		fi
+	else
+		env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" TEST_DISAPPEAR_ID=18 "$helper" apply-saved >/dev/null 2>"$work/replay-query.err"
 	fi
-	test -f "$work/runtime/dwm-settings-input/$token.state"
 	test ! -s "$work/actions.log"
-	env "${env_common[@]}" TEST_DEVICES="$work/devices-shared" "$helper" revert "$token" >/dev/null
+	cmp "$work/saved-before-query" "$work/home/.config/dwm-titus/input-settings.conf"
 done
 
 # A journal append failure happens before any live member is changed.
