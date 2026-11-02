@@ -9,6 +9,10 @@ Flickable {
     id: root
 
     required property var settingsModel
+    property bool systemBatteryPresent: false
+    onSystemBatteryPresentChanged: {
+        if (!systemBatteryPresent) root.saveAutomaticRole = "";
+    }
     property string profileName: ""
     property string confirmation: ""
     property var placementAnchors: ({})
@@ -67,7 +71,9 @@ Flickable {
         spacing: Theme.spacingLg
 
         Text {
+            visible: root.systemBatteryPresent
             Layout.fillWidth: true
+            objectName: "automaticDisplayHeading"
             text: "Automatic layouts - login and dock connection"
             color: Theme.textStrong
             font.family: Theme.fontFamily
@@ -76,6 +82,7 @@ Flickable {
         }
 
         Text {
+            visible: root.systemBatteryPresent
             Layout.fillWidth: true
             text: root.settingsModel.automaticDisplayState.error || ("Matching hardware: "
                 + (root.settingsModel.automaticDisplayState.detected.join(", ") || "no saved match")
@@ -88,6 +95,8 @@ Flickable {
         }
 
         RowLayout {
+            objectName: "automaticDisplayProfiles"
+            visible: root.systemBatteryPresent
             Layout.fillWidth: true
             spacing: Theme.spacingLg
             Repeater {
@@ -176,6 +185,7 @@ Flickable {
         }
 
         Text {
+            visible: root.systemBatteryPresent
             Layout.fillWidth: true
             text: root.settingsModel.automaticDisplayMessage || "Edit a saved layout below, or save the current draft. Docked matches monitor identities; Undocked enables only the built-in screen. No administrator approval is needed."
             color: Theme.textMuted
@@ -187,7 +197,7 @@ Flickable {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: automaticConfirmation.implicitHeight + 16
-            visible: root.saveAutomaticRole !== ""
+            visible: root.systemBatteryPresent && root.saveAutomaticRole !== ""
             color: Theme.controlHoverFill
             border.color: Theme.warning
             radius: Theme.largeSurfaceCardRadius

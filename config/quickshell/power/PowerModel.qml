@@ -71,6 +71,11 @@ Scope {
     readonly property bool sectionVisible: root.settingsVisible || root.controlCenterVisible
         || root.sessionMenuVisible
     readonly property var nativeBattery: UPower.displayDevice
+    readonly property bool systemBatteryPresent: isSystemBattery(nativeBattery)
+
+    function isSystemBattery(device) {
+        return device !== null && device.ready && device.isPresent && device.isLaptopBattery;
+    }
     readonly property var timeoutPresets: [
         { "label": "5m", "seconds": 300 },
         { "label": "10m", "seconds": 600 },

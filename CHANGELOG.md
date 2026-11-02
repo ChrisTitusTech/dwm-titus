@@ -90,6 +90,9 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Hide laptop docked and undocked display profile controls when no system battery
+  is present. Peripheral batteries and desktop UPS devices do not enable them.
+
 - Isolate test configuration, data, state, and cache directories from the
   invoking desktop. Installer preservation fixtures now keep both simulated
   homes' receipts and build configurations in their own state directories and
