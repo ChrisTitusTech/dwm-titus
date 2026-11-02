@@ -57,6 +57,8 @@ extract_to=
 extract_path=
 outdev=
 efi_image=
+efi_reference=
+boot_replay=
 ks_map=
 grub_map=
 bios_grub_map=
@@ -72,6 +74,18 @@ while (($# > 0)); do
 		cp "$2/gpt_part2_efi.img" "$2/eltorito_img2_uefi.img"
 		[[ ${DWM_TEST_BAD_ESP:-} != 1 ]] || printf 'different\n' >>"$2/gpt_part2_efi.img"
 		exit 0
+		;;
+	-boot_image)
+		[[ $2 == any ]]
+		case $3 in
+		replay) boot_replay=yes ;;
+		efi_path=--interval:appended_partition_2:all::)
+			[[ $boot_replay == yes && -n $efi_image ]]
+			efi_reference=$3
+			;;
+		*) exit 1 ;;
+		esac
+		shift 3
 		;;
 	-append_partition)
 		[[ $2 == 2 && $3 == 0xef ]]
@@ -122,7 +136,7 @@ OUT
 fi
 
 if [[ -n $outdev ]]; then
-	[[ -s $product_map && -s $efi_image ]]
+	[[ -s $product_map && -s $efi_image && $efi_reference == efi_path=--interval:appended_partition_2:all:: ]]
 	grep -Fq 'inst.ks=hd:LABEL=Fedora-S-dvd-x86_64-44:/dwm-fedora.ks' "$efi_image"
 	cp "$efi_image" "$DWM_TEST_ESP_MENU"
 	[[ -s $payload_map/payload-marker && -s $payload_map/nested/deeper/keep.txt ]]
@@ -256,6 +270,19 @@ export DWM_TEST_RSYNC_LOG="$work/rsync.log"
 export DWM_TEST_BRANDING="$repo/branding/anaconda"
 export DWM_TEST_PACKED_LOGO="$work/packed-logo.png"
 cp "$DWM_TEST_BRANDING/usr/share/anaconda/pixmaps/sidebar-logo.png" "$work/original-logo.png"
+
+# Missing comparison support must be reported before EFI topology validation.
+mkdir "$work/no-cmp"
+for required in xorriso rsync implantisomd5 checkisomd5 mcopy; do
+	ln -s "$work/bin/$required" "$work/no-cmp/$required"
+done
+bash_bin=$(command -v bash)
+if PATH="$work/no-cmp" "$bash_bin" "$repo/scripts/build-dwm-fedora-installer-iso.sh" \
+	--input "$input_iso" --output "$work/missing-cmp.iso" >"$work/missing-cmp.out" 2>"$work/missing-cmp.err"; then
+	echo 'builder accepted missing cmp' >&2
+	exit 1
+fi
+grep -Fqx 'build-dwm-fedora-installer-iso: missing required command: cmp' "$work/missing-cmp.err"
 
 run_builder standard "$standard_iso"
 [[ $(grep -c '^set default="1"$' "$DWM_TEST_XORRISO_LOG") == 2 ]]

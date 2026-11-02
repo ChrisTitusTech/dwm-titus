@@ -166,7 +166,7 @@ from the everyday desktop:
   `google-noto-sans-fonts`, `setxkbmap`, `xkbcomp`, `xmodmap`, `xinput`, and the
   build/runtime tools in the `ci-smoke` map.
 - **Image assembly:** `xorriso`, `mtools`, `rsync`, `squashfs-tools-ng`, `isomd5sum`,
-  `python3-pillow`, `fontconfig`, and `google-noto-sans-fonts`.
+  `diffutils`, `python3-pillow`, `fontconfig`, and `google-noto-sans-fonts`.
 - **Image factory and VM qualification:** `qemu-system-x86`, `qemu-img`,
   `edk2-ovmf`, `libguestfs`, `pykickstart`, `xz`, `zstd`, and `time`, in addition
   to image-assembly tools.

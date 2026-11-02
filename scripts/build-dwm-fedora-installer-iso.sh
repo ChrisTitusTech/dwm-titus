@@ -120,7 +120,7 @@ if [[ ! -f $input_iso ]]; then
 	exit 1
 fi
 
-for command in xorriso rsync implantisomd5 checkisomd5 mcopy; do
+for command in xorriso rsync implantisomd5 checkisomd5 mcopy cmp; do
 	if ! command -v "$command" >/dev/null 2>&1; then
 		err "missing required command: $command"
 		exit 1
@@ -306,6 +306,7 @@ fi
 xorriso -indev "$input_iso" -outdev "$tmp_output" \
 	-boot_image any replay \
 	-append_partition 2 0xef "$efi_image" \
+	-boot_image any efi_path=--interval:appended_partition_2:all:: \
 	-map "$ks_file" /dwm-fedora.ks \
 	"${grub_xorriso_args[@]}" \
 	-map "$payload_dir" /dwm-titus \

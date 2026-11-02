@@ -91,8 +91,11 @@ Build from a clean source checkout without local dependency directories or
 generated site files: the builder embeds the checkout payload. It patches both
 UEFI and BIOS GRUB menus with the selected Kickstart and variant arguments,
 including the GRUB menu inside the FAT EFI System Partition used by USB boot.
-The builder uses `mcopy` from `mtools` to update that partition and preserves
-its shared GPT and El Torito boot image. Unsupported boot layouts fail clearly.
+The builder uses `mcopy` from `mtools` to update that partition and `cmp` from
+`diffutils` to check its contents. It preserves the shared GPT/El Torito boot
+layout while replacing the EFI image with the patched copy, and explicitly
+points the UEFI El Torito entry at that partition. Unsupported boot layouts
+fail clearly.
 
 The builder uses `implantisomd5` and `checkisomd5` from `isomd5sum` after
 rewriting the ISO so Fedora's "Test this media & install" entry can
