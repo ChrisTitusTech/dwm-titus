@@ -752,6 +752,39 @@ sufficient. A released image must record its Fedora source image and checksum,
 architecture, firmware mode, variant, package-resolution result, completed
 Anaconda install, first boot, and hardware limitations.
 
+### Optional clipboard-history privacy contract
+
+Clipboard history is opt-in and text-only. A separate unprivileged
+`dwm-clipboard-observer` backend observes XFixes CLIPBOARD ownership events;
+it never observes PRIMARY and never imports an existing clipboard on startup.
+The C window-manager event loop does not perform clipboard work. The backend
+uses existing libxcb runtime libraries and XRes 1.2 server-supplied local client
+PIDs, not window titles, WM_CLASS, active-window guesses or _NET_WM_PID.
+
+Before requesting text, verify same-user process identity and bounded TARGETS
+metadata. Reject sensitive-content markers and identifiable password-manager
+executables or launch arguments, including Bitwarden and KeePass-family apps.
+Inspect bounded same-user parent ancestry to exclude clipboard helpers still
+owned by those applications. Missing XRes/XFixes, remote displays, failed
+identity reads, timeouts, malformed or oversized replies, INCR transfers and
+ownership changes fail closed. Rejected owners' text is not requested or logged.
+
+Ordinary browser and terminal copies remain eligible by explicit maintainer
+choice. Unmarked password-manager browser-extension copies and secrets copied
+from a terminal or detached generic helper can be indistinguishable from normal
+text and may enter history. The frontend must disclose this limitation before
+opt-in. Marker-based exclusion and identifiable-application filtering are
+best-effort retention protections, not a guarantee to detect every password.
+
+Only admitted UTF-8 payloads of at most 65,536 bytes are emitted to the frontend.
+Capture defaults off independently of optional disk persistence; the frontend
+must stop the observer when disabled and must not fall back to a raw clipboard
+text listener. Older, unfiltered history cannot be imported. A separate frontend
+change must document opt-in, retention, deletion and migration before enabling
+this backend. X11 does not preserve provenance after another application
+recopies text, and this is not protection against hostile same-session clients.
+See `docs/CLIPBOARD-PRIVACY.md` for policy, source evidence, protocol and tests.
+
 ## 6. Filesystem and Installation Contract
 
 Default system installation locations:

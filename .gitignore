@@ -1,5 +1,6 @@
 # binaries
 /dwm
+/dwm-clipboard-observer
 
 # User config (created from config.def.h, not tracked)
 config.h
