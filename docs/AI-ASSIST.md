@@ -33,8 +33,11 @@ they are not pinned desktop dependencies.
 Skills live in `${XDG_DATA_HOME:-$HOME/.local/share}/dwm-titus/config/agents/skills/`.
 Desktop installation links them into `~/.agents/skills`, `~/.claude/skills`,
 `~/.cursor/skills`, and `~/.hermes/skills`. Existing files, directories, and
-symlinks are preserved. Run `dwm-agent link-skills` to retry missing links.
+custom symlinks are preserved. Links already targeting the managed desktop or
+system skill trees follow package installation/removal. Run `dwm-agent link-skills` to retry missing links.
 A separately installed `/usr/share/dwm-titus/agents/skills` tree takes priority.
+An optional [noarch RPM recipe](../packaging/rpm/README.md) lets packagers ship
+skill updates separately; building it does not enable a COPR or install anything.
 If your agent uses another skills location, point it at the packaged `SKILL.md`
 and its reference files. The prompts also include the diagnosis skill path.
 

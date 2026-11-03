@@ -9,7 +9,8 @@ versions from `config.mk`.
 ### Added
 
 - Ship titstack customization and diagnosis skills, an AI assistant Settings
-  page, actionable crash notifications, and opt-in X11 hang detection. Diagnosis
+  page, an optional skills RPM, actionable crash notifications, and opt-in X11 hang
+  detection. Diagnosis
   preserves agent approvals; optional agent installation uses existing mise.
   See [AI assistance](docs/AI-ASSIST.md) for setup and recovery (#298, #378).
 

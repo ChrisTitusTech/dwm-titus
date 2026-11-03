@@ -5,7 +5,7 @@
 Read installed helper source before using mutation commands.
 
 - `dwm-agent setup NAME` selects an agent, links skills without overwriting
-  existing entries, offers login, and asks about crash and hang notifications.
+  custom entries, offers login, and asks about crash and hang notifications.
 - `dwm-agent set crash-notifications on|off` controls crash offers (on by
   default). `dwm-agent set hang-detection on|off` controls optional X11 ping
   detection (off by default). Games, VMs and busy apps can trigger false alarms.

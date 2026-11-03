@@ -193,6 +193,14 @@ link_skills() {
 		for skill in "$skills_source"/*/; do
 			name=$(basename "$skill")
 			target=$dir/$name
+			if [[ -L $target ]]; then
+				case $(readlink -- "$target") in
+				"$data_dir/config/agents/skills/$name" | "/usr/share/dwm-titus/agents/skills/$name")
+					ln -sfn "${skill%/}" "$target"
+					continue
+					;;
+				esac
+			fi
 			if [[ -e $target || -L $target ]]; then
 				printf 'Keeping existing skill %s.\n' "$target" >&2
 				continue

@@ -54,6 +54,17 @@ class AgentTests(unittest.TestCase):
         self.assertEqual(os.readlink(link), str(self.work / "missing-user-target"))
         self.assertTrue((self.home / ".claude/skills/dwm-titus/SKILL.md").is_file())
 
+    def test_managed_system_link_follows_package_removal(self):
+        skills = self.home / ".agents/skills"
+        skills.mkdir(parents=True)
+        link = skills / "dwm-titus-debug"
+        link.symlink_to("/usr/share/dwm-titus/agents/skills/dwm-titus-debug")
+        self.run_helper("dwm-agent", "link-skills")
+        expected = Path("/usr/share/dwm-titus/agents/skills")
+        if not expected.is_dir():
+            expected = self.source
+        self.assertEqual(link.resolve(), expected / "dwm-titus-debug")
+
     def test_launch_preserves_prompt_as_one_argument_and_approvals(self):
         capture = '#!/usr/bin/python3\nimport json,os,sys\nopen(os.environ["ARGS"], "w").write(json.dumps(sys.argv[1:]))\n'
         prompt = 'Inspect only; $(touch SHOULD_NOT_EXIST) "quoted"\nnext line'

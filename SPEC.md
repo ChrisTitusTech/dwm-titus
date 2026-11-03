@@ -307,7 +307,9 @@ contract for every developer deployment. Every live update must:
 ### 5.5.1 Optional AI assistance
 
 Ship the titstack-derived customization and read-only diagnosis skills with the
-managed user data. Preserve existing agent skill paths when linking them.
+managed user data, with an optional noarch RPM for independent skill updates.
+Prefer the system package when present. Retarget only links to the two managed
+skill trees; preserve custom agent skill paths.
 Offer crash diagnosis only after an explicit notification action; keep X11
 `_NET_WM_PING` hang detection opt-in. Preserve agent approval and sandbox policy,
 keep untrusted window titles out of prompts, and never kill an application-supplied
