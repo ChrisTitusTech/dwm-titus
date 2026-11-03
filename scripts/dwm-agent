@@ -18,7 +18,7 @@ skills_source=$data_dir/config/agents/skills
 # Code, Cursor CLI and Hermes mainly from their own folders.
 skills_target=$HOME/.agents/skills
 skills_targets=("$skills_target" "$HOME/.claude/skills" "$HOME/.cursor/skills" "$HOME/.hermes/skills")
-mise_shims=${MISE_DATA_DIR:-$HOME/.local/share/mise}/shims
+mise_shims=${MISE_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/mise}/shims
 
 usage() {
 	cat <<'EOF'

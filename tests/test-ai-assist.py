@@ -98,6 +98,17 @@ class AgentTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse((self.work / "config/dwm-titus/agent").exists())
 
+    def test_mise_shims_follow_xdg_data_home(self):
+        self.env.pop("MISE_DATA_DIR")
+        shims = self.work / "data/mise/shims"
+        shims.mkdir(parents=True)
+        agent = shims / "opencode"
+        agent.write_text("#!/bin/sh\nprintf 'xdg-shim\\n'\n")
+        agent.chmod(0o755)
+        self.run_helper("dwm-agent", "default", "opencode")
+        result = self.run_helper("dwm-agent", "--inline")
+        self.assertEqual(result.stdout, "xdg-shim\n")
+
     def test_recovery_before_delayed_hang_suppresses_notification(self):
         self.fake("notify-send", '#!/bin/sh\necho notified > "$ARGS"\n')
         self.run_helper("dwm-hang-event", "recovered", "0x123", "0", "app", "", "200")
