@@ -863,6 +863,11 @@ configuration and unrelated application configuration by default.
 - Third-party executable installers must run as the target user in an isolated
   staging directory. Both the reviewed installer and resulting binary must
   match repository-pinned checksums before the binary is installed.
+- The explicitly requested optional AI agent path in Section 5.5.1 is an
+  exception to the preceding download/checksum requirements: the desktop user
+  delegates installation to their existing mise and its registry verification.
+  These agent artifacts are not pinned or checksum-reviewed by dwm-titus.
+  This exception adds no system repositories and never runs as root.
 - Do not run user configuration or desktop helpers as root.
 - Quote paths and arguments that may contain whitespace.
 - Prevent command injection through distribution metadata, configuration

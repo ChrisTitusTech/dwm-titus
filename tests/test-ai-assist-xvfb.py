@@ -42,7 +42,7 @@ with tempfile.TemporaryDirectory(dir=os.environ.get("TMPDIR")) as directory:
     events.touch()
     env = {**os.environ, "HOME": str(work / "home"), "XDG_CONFIG_HOME": str(work / "config"),
            "XDG_DATA_HOME": str(work / "data"), "XDG_STATE_HOME": str(work / "state"),
-           "XDG_CACHE_HOME": str(work / "cache"), "DWM_TEST_EVENTS": str(events),
+           "XDG_CACHE_HOME": str(work / "cache"), "DWM_TEST_EVENTS": str(events), "DWM_TEST_LEGACY_PING": "1",
            "PATH": str(binary) + ":" + os.environ["PATH"]}
     read_fd, write_fd = os.pipe()
     try:
@@ -88,10 +88,15 @@ with tempfile.TemporaryDirectory(dir=os.environ.get("TMPDIR")) as directory:
         wait_for(lambda: "recovered" in events.read_text(), 5)
         client.send_signal(signal.SIGSTOP)
         wait_for(lambda: events.read_text().splitlines().count("hung") == 2)
-        toggle.unlink()
+        subprocess.run(["xprop", "-id", window, "-remove", "WM_PROTOCOLS"], env=env, check=True)
         wait_for(lambda: events.read_text().splitlines().count("recovered") == 2, 5)
+        subprocess.run(["xprop", "-id", window, "-f", "WM_PROTOCOLS", "32a", "-set",
+                        "WM_PROTOCOLS", "_NET_WM_PING"], env=env, check=True)
+        wait_for(lambda: events.read_text().splitlines().count("hung") == 3)
+        toggle.unlink()
+        wait_for(lambda: events.read_text().splitlines().count("recovered") == 3, 5)
         assert wm.poll() is None
-        print("AI assist Xvfb: opt-in, hang, focus/close during pending ping, recovery, disable PASS")
+        print("AI assist Xvfb: opt-in, hang, focus/close during pending ping, legacy replies, protocol removal/re-addition, disable PASS")
     finally:
         for process in reversed(processes):
             if process.poll() is None:

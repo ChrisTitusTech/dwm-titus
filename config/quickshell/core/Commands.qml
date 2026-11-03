@@ -101,7 +101,9 @@ Singleton {
     }
 
     function agentTerminalCommand(action, args) {
-        return helperCommand("dwm-terminal", "-e", agentCommand(action, args), true);
+        const hold = '\"$@\"; status=$?; printf "\\nAI assistant exited with status %s. Press Enter to close..." "$status"; read -r reply; exit "$status"';
+        const command = ["sh", "-c", hold, "dwm-agent-terminal"].concat(agentCommand(action, args));
+        return helperCommand("dwm-terminal", "-e", command, true);
     }
 
     function defaultsHelperCommand(action, args) {

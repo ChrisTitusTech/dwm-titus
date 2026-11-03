@@ -125,6 +125,7 @@ struct Client {
 	int iswindowedfullscreen; /* Monitor-sized geometry without EWMH fullscreen. */
 	int beingmoved;
 	int fakefullscreen;
+	int pingsupported; /* cached WM_PROTOCOLS capability */
 	int pingpending; /* a _NET_WM_PING is waiting for its reply */
 	unsigned long pingserial;
 	int hung;        /* the reply is overdue; reported to dwm-hang-event */
@@ -342,6 +343,7 @@ static long long hangwait(void);
 static void hangevent(Client *c, const char *state);
 static void hangpong(Window w, unsigned long serial);
 static int pingclient(Client *c);
+static void updatepingprotocol(Client *c);
 static pid_t runautoscript(const char *script);
 static void runautostart(void);
 static void runautostop(void);
@@ -2080,6 +2082,7 @@ manage(Window w, XWindowAttributes *wa)
 	updatewindowtype(c);
 	updatesizehints(c);
 	updatewmhints(c);
+	updatepingprotocol(c);
 	c->x = c->mon->mx + (c->mon->mw - WIDTH(c)) / 2;
 	c->y = c->mon->my + (c->mon->mh - HEIGHT(c)) / 2;
 	XSelectInput(dpy, w, EnterWindowMask|FocusChangeMask|PropertyChangeMask|StructureNotifyMask);
@@ -2546,6 +2549,8 @@ propertynotify(XEvent *e)
 	} else if (ev->window == root && ev->atom == kbrequestatom) {
 		if (ev->state == PropertyNewValue)
 			keyboardrequest();
+	} else if (ev->atom == wmatom[WMProtocols] && (c = wintoclient(ev->window))) {
+		updatepingprotocol(c);
 	} else if (ev->state == PropertyDelete) {
 		return; /* ignore */
 	} else if ((c = wintoclient(ev->window))) {
@@ -2983,20 +2988,47 @@ hangdetectionenabled(void)
 	return access(path, F_OK) == 0;
 }
 
+/* Query only when a window's protocol property or identity changes. */
+static void
+updatepingprotocol(Client *c)
+{
+	int n;
+	Atom *protocols;
+
+	c->pingsupported = 0;
+	if (XGetWMProtocols(dpy, c->win, &protocols, &n)) {
+		while (n--)
+			if (protocols[n] == netatom[NetWMPing]) c->pingsupported = 1;
+		XFree(protocols);
+	}
+	if (!c->pingsupported) {
+		if (c->hung) hangevent(c, "recovered");
+		c->hung = c->pingpending = 0;
+	}
+}
+
 static int
 pingclient(Client *c)
 {
-	int n, supported = 0;
-	Atom *protocols;
+	static unsigned long lastserial;
+	unsigned long serial;
+	Monitor *m;
+	Client *other;
+	int used;
 	XEvent ev;
 
-	if (!XGetWMProtocols(dpy, c->win, &protocols, &n))
+	if (!c->pingsupported)
 		return 0;
-	while (!supported && n--)
-		supported = protocols[n] == netatom[NetWMPing];
-	XFree(protocols);
-	if (!supported)
-		return 0;
+	if (!lastserial) lastserial = (unsigned long)hangnow() & 0xffffffffUL;
+	/* Legacy clients may omit the window field. Never reuse a serial that
+	 * is still outstanding, even when the 32-bit counter wraps. */
+	do {
+		serial = lastserial = (lastserial + 1) & 0xffffffffUL;
+		used = !serial;
+		for (m = mons; m && !used; m = m->next)
+			for (other = m->clients; other; other = other->next)
+				if (other->pingpending && other->pingserial == serial) used = 1;
+	} while (used);
 
 	memset(&ev, 0, sizeof(ev));
 	ev.type = ClientMessage;
@@ -3004,7 +3036,7 @@ pingclient(Client *c)
 	ev.xclient.message_type = wmatom[WMProtocols];
 	ev.xclient.format = 32;
 	ev.xclient.data.l[0] = netatom[NetWMPing];
-	c->pingserial = (unsigned long)hangnow() & 0xffffffffUL;
+	c->pingserial = serial;
 	ev.xclient.data.l[1] = (long)c->pingserial;
 	ev.xclient.data.l[2] = c->win;
 	XSendEvent(dpy, c->win, False, NoEventMask, &ev);
@@ -3074,8 +3106,18 @@ hangpong(Window w, unsigned long serial)
 {
 	Client *c = wintoclient(w);
 
-	if (!c || !c->pingpending || serial != c->pingserial)
-		return;
+	Monitor *m;
+	Client *other, *match = NULL;
+
+	if (!c || !c->pingpending || serial != c->pingserial) {
+		for (m = mons; m; m = m->next)
+			for (other = m->clients; other; other = other->next)
+				if (other->pingpending && other->pingserial == serial) {
+					if (match) return; /* Refuse ambiguous legacy replies. */
+					match = other;
+				}
+		if (!(c = match)) return;
+	}
 	c->pingpending = 0;
 	if (c->hung) {
 		c->hung = 0;
@@ -4683,6 +4725,7 @@ swallow(Client *p, Client *c)
 	Window w = p->win;
 	p->win = c->win;
 	c->win = w;
+	updatepingprotocol(p);
 	int ewmhabove = p->ewmhabove;
 	p->ewmhabove = c->ewmhabove;
 	c->ewmhabove = ewmhabove;
@@ -5259,6 +5302,7 @@ unswallow(Client *c)
 {
 	c->hung = c->pingpending = 0;
 	c->win = c->swallowing->win;
+	updatepingprotocol(c);
 	c->ewmhabove = c->swallowing->ewmhabove;
 	c->iswindowedfullscreen = c->swallowing->iswindowedfullscreen;
 	c->rulefullscreenapplied = c->swallowing->rulefullscreenapplied;

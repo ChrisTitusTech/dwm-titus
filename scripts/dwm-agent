@@ -134,7 +134,11 @@ agent_signed_in() {
 		if [[ $count =~ ^[0-9]+$ ]] && ((count > 0)); then echo yes; else echo no; fi
 		;;
 	gemini)
-		if [[ -s $HOME/.gemini/oauth_creds.json || -n ${GEMINI_API_KEY:-} || -n ${GOOGLE_API_KEY:-} || -n ${GOOGLE_GENAI_USE_VERTEXAI:-} ]]; then
+		if [[ ${GOOGLE_GENAI_USE_VERTEXAI:-} == true ]]; then
+			# A selector is not a credential. ADC cannot be verified without
+			# contacting Google, so keep Sign in available for that case.
+			if [[ -n ${GOOGLE_API_KEY:-} ]]; then echo yes; else echo unknown; fi
+		elif [[ -s $HOME/.gemini/oauth_creds.json || -n ${GEMINI_API_KEY:-} ]]; then
 			echo yes
 		else
 			echo no
@@ -211,8 +215,23 @@ link_skills() {
 }
 
 skills_linked() {
-	[[ -L $skills_target/dwm-titus-debug && -d $skills_target/dwm-titus-debug ]] &&
-		[[ $(readlink -f "$skills_target/dwm-titus-debug") == "$(readlink -f "$skills_source/dwm-titus-debug")" ]]
+	local dir name target destination
+	[[ -d $skills_source ]] || return 1
+	for dir in "${skills_targets[@]}"; do
+		for name in dwm-titus dwm-titus-debug; do
+			target=$dir/$name
+			[[ -e $target || -L $target ]] || return 1
+			if [[ -L $target ]]; then
+				destination=$(readlink -- "$target")
+				case $destination in
+				"$data_dir/config/agents/skills/$name" | "/usr/share/dwm-titus/agents/skills/$name")
+					[[ -f $target/SKILL.md && $destination == "$skills_source/$name" ]] || return 1
+					;;
+				esac
+			fi
+			# Custom entries belong to the user, including dangling links.
+		done
+	done
 }
 
 confirm() {
@@ -227,7 +246,7 @@ confirm() {
 }
 
 setup() {
-	local agent=${1:-} choice i state
+	local agent=${1:-} choice i state crash_default=yes hang_default=no
 	printf 'Diagnose with AI: setup\n\n'
 	if [[ -z $agent ]]; then
 		printf 'Which agent should dwm-titus open when you ask for a diagnosis?\n'
@@ -260,7 +279,8 @@ setup() {
 
 	printf '\nCrash notifications tell you when one of your programs crashes and\n'
 	printf 'offer to diagnose it.\n'
-	if confirm "Keep crash notifications on?" yes; then
+	[[ -e $crash_off_toggle ]] && crash_default=no
+	if confirm "Keep crash notifications on?" "$crash_default"; then
 		rm -f "$crash_off_toggle"
 	else
 		: >"$crash_off_toggle"
@@ -276,7 +296,8 @@ It can be wrong: games, virtual machines and apps that are busy on purpose
 (big exports, compiles) can show up as not responding when they are fine.
 You can turn it off again in Settings or with: rm ~/.config/dwm-titus/hang-detection
 EOF
-	if confirm "Turn on hang detection?" no; then
+	[[ -e $hang_toggle ]] && hang_default=yes
+	if confirm "Turn on hang detection?" "$hang_default"; then
 		: >"$hang_toggle"
 	else
 		rm -f "$hang_toggle"
@@ -365,7 +386,7 @@ launch() {
 	agent_present "$agent" || die "$(agent_name "$agent") is not installed; run: dwm-agent install $agent"
 	# Relink when the skills moved, for example after the skills package was
 	# installed or removed.
-	skills_linked || link_skills >/dev/null 2>&1 || true
+	skills_linked || (link_skills) >/dev/null 2>&1 || true
 
 	case $agent in
 	codex)

@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import signal
 import subprocess
 import tempfile
 import time
@@ -157,6 +158,162 @@ class AgentTests(unittest.TestCase):
         self.run_helper("dwm-crash-watch", "--journal")
         self.assertEqual((self.work / "args").read_text().splitlines(), ["notified"])
 
+    def test_ping_cache_and_legacy_serial_wrap(self):
+        source = (REPO / "dwm.c").read_text()
+        functions = source[source.index("static void\nupdatepingprotocol(Client"):
+                           source.index("\nstatic long long hanglastround")]
+        functions += source[source.index("static void\nhangpong(Window"):
+                            source.index("\n/* Run dwm-hang-event")]
+        harness = r'''
+#include <X11/Xlib.h>
+#include <assert.h>
+#include <stdlib.h>
+#include <string.h>
+typedef struct Client { Window win; int pingsupported, pingpending, hung;
+    unsigned long pingserial; struct Client *next; } Client;
+typedef struct Monitor { Client *clients; struct Monitor *next; } Monitor;
+static Client a = {.win=10}, b = {.win=20}, old = {.win=30, .pingpending=1, .pingserial=1};
+static Monitor monitor = {.clients=&a}, *mons=&monitor;
+static Display *dpy;
+static Atom netatom[] = {42}, wmatom[] = {43};
+enum {NetWMPing=0, WMProtocols=0};
+static int queries, capability=1, recovered;
+static long long hangnow(void) { return 0xfffffffeULL; }
+static void hangevent(Client *c, const char *state) { (void)c; (void)state; recovered++; }
+static Client *wintoclient(Window w) { return w==10 ? &a : w==20 ? &b : NULL; }
+Status XGetWMProtocols(Display *d, Window w, Atom **p, int *n) {
+    (void)d; (void)w; queries++; *n=capability; *p=malloc(sizeof(Atom)); **p=42; return 1;
+}
+int XFree(void *p) { free(p); return 0; }
+Status XSendEvent(Display *d, Window w, Bool p, long m, XEvent *e) {
+    (void)d; (void)w; (void)p; (void)m; (void)e; return 1;
+}
+'''
+        main = r'''
+int main(void) {
+    a.next=&b; b.next=&old;
+    updatepingprotocol(&a); updatepingprotocol(&b);
+    assert(queries==2 && a.pingsupported && b.pingsupported);
+    assert(pingclient(&a)); a.pingpending=1; a.hung=1;
+    assert(pingclient(&b)); b.pingpending=1;
+    assert(queries==2); /* periodic sends must never query the X server */
+    assert(a.pingserial==0xffffffffUL && b.pingserial==2);
+    hangpong(0,a.pingserial); assert(!a.pingpending && !a.hung && recovered==1);
+    assert(b.pingpending && old.pingpending);
+    hangpong(0,999); assert(b.pingpending);
+    b.hung=1; capability=0; updatepingprotocol(&b);
+    assert(!b.pingsupported && !b.pingpending && !b.hung && recovered==2);
+    assert(!pingclient(&b));
+    return 0;
+}
+'''
+        binary = self.work / "ping-contract"
+        subprocess.run([os.environ.get("CC", "cc"), "-std=c99", "-Wall", "-Wextra",
+                        "-x", "c", "-", "-o", str(binary)], input=harness+functions+main,
+                       text=True, check=True, timeout=30)
+        subprocess.run([str(binary)], check=True, timeout=5)
+
+    def test_setup_preserves_alert_preferences(self):
+        self.fake("codex", "#!/bin/sh\nexit 0\n")
+        self.run_helper("dwm-agent", "set", "crash-notifications", "off")
+        self.run_helper("dwm-agent", "set", "hang-detection", "on")
+        subprocess.run([str(REPO / "scripts/dwm-agent"), "setup", "codex"],
+                       env=self.env, input="\n\n", text=True, capture_output=True,
+                       check=True, timeout=10)
+        status = self.run_helper("dwm-agent", "status").stdout
+        self.assertIn("crash-notifications\toff", status)
+        self.assertIn("hang-detection\ton", status)
+
+    def test_launch_repairs_partial_skills_and_survives_missing_source(self):
+        self.fake("codex", '#!/bin/sh\necho launched\n')
+        self.run_helper("dwm-agent", "default", "codex")
+        self.run_helper("dwm-agent", "link-skills")
+        missing = self.home / ".hermes/skills/dwm-titus"
+        missing.unlink()
+        self.assertIn("skills\tmissing", self.run_helper("dwm-agent", "status").stdout)
+        self.assertIn("launched", self.run_helper("dwm-agent", "--inline").stdout)
+        self.assertTrue(missing.is_symlink())
+        shutil.rmtree(self.source)
+        self.assertIn("launched", self.run_helper("dwm-agent", "--inline").stdout)
+
+    def test_gemini_vertex_selector_is_not_a_credential(self):
+        self.fake("gemini", '#!/bin/sh\necho 1.0.0\n')
+        for key in ("GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_GENAI_USE_VERTEXAI"):
+            self.env.pop(key, None)
+        cases = [({}, "no"), ({"GOOGLE_GENAI_USE_VERTEXAI": "false"}, "no"),
+                 ({"GOOGLE_GENAI_USE_VERTEXAI": "true"}, "unknown"),
+                 ({"GOOGLE_API_KEY": "fixture"}, "no"),
+                 ({"GOOGLE_GENAI_USE_VERTEXAI": "true", "GOOGLE_API_KEY": "fixture"}, "yes"),
+                 ({"GEMINI_API_KEY": "fixture"}, "yes")]
+        for variables, expected in cases:
+            with self.subTest(variables=variables):
+                env = {**self.env, **variables}
+                result = subprocess.run([str(REPO / "scripts/dwm-agent"), "list"],
+                                        env=env, text=True, capture_output=True, check=True, timeout=10)
+                row = next(line.split("\t") for line in result.stdout.splitlines()
+                           if line.startswith("agent\tgemini\t"))
+                self.assertEqual(row[5], expected)
+
+    def test_installer_preserves_configured_global_runtime(self):
+        self.fake("id", "#!/bin/sh\necho 1000\n")
+        self.fake("mise", '''#!/bin/sh
+case "$1" in
+ls) echo '[{"version":"20","installed":false}]' ;;
+use) echo "$*" >> "$ARGS" ;;
+esac
+''')
+        self.fake("gemini", "#!/bin/sh\nexit 0\n")
+        self.fake("hermes", "#!/bin/sh\nexit 0\n")
+        for agent in ("gemini", "hermes"):
+            self.run_helper("dwm-install-ai-agent", agent)
+        calls = (self.work / "args").read_text()
+        self.assertNotIn("node@lts", calls)
+        self.assertNotIn("use -g uv", calls)
+        self.assertIn("npm:@google/gemini-cli", calls)
+        self.assertIn("pipx:hermes-agent", calls)
+
+    def test_new_hang_supersedes_old_and_rejects_stale_actions(self):
+        self.fake("dwm-agent", "#!/bin/sh\necho codex\n")
+        self.fake("gdbus", "#!/bin/sh\nexit 0\n")
+        self.fake("xdotool", '#!/bin/sh\necho stale-kill > "$ARGS"\n')
+        self.fake("notify-send", '''#!/usr/bin/python3
+import os, signal, time
+signal.signal(signal.SIGTERM, lambda *_: (print("kill", flush=True), exit(0)))
+signal.signal(signal.SIGUSR1, lambda *_: (print("wait", flush=True), exit(0)))
+print(os.getpid(), flush=True)
+while True: time.sleep(0.05)
+''')
+        processes = []
+        def start(sequence):
+            process = subprocess.Popen([str(REPO / "scripts/dwm-hang-event"), "hung",
+                                        "0x123", "0", "app", "", str(sequence)], env=self.env)
+            processes.append(process)
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                records = list((self.work / "runtime").rglob("0x123"))
+                if records:
+                    fields = records[0].read_text().split()
+                    if len(fields) == 4 and fields[0] != "0" and fields[2] == str(sequence):
+                        return records[0], int(fields[1])
+                time.sleep(0.02)
+            self.fail("No current hang record")
+        try:
+            start(100)
+            record, waiter = start(300)
+            processes[0].wait(timeout=5)
+            self.run_helper("dwm-hang-event", "recovered", "0x123", "0", "app", "", "200")
+            self.assertEqual(record.read_text().split()[2], "300")
+            self.assertFalse((self.work / "args").exists(), "Superseded action executed")
+            os.kill(waiter, signal.SIGUSR1)
+            processes[1].wait(timeout=5)
+            self.run_helper("dwm-hang-event", "hung", "0x123", "0", "app", "", "100")
+            self.assertFalse(record.exists(), "Old hang resurrected after answering")
+        finally:
+            self.run_helper("dwm-hang-event", "gone", "0x123", "0", "app", "", "400")
+            for process in processes:
+                if process.poll() is None: process.terminate()
+                process.wait(timeout=5)
+
     def test_autostart_reuses_existing_crash_watcher(self):
         self.fake("xprop", "#!/bin/sh\nexec sleep 30\n")
         self.fake("journalctl", '#!/bin/sh\necho started >> "$ARGS"\nexec sleep 30\n')
@@ -181,7 +338,7 @@ class AgentTests(unittest.TestCase):
             process.wait(timeout=5)
 
     def test_crash_watch_exits_with_display(self):
-        self.fake("xprop", "#!/bin/sh\nsleep 0.2\n")
+        self.fake("xprop", '#!/usr/bin/python3\nimport os,time\nfrom pathlib import Path\np=Path(os.environ["ARGS"])\nend=time.monotonic()+5\nwhile time.monotonic()<end:\n if p.exists() and p.read_text().strip().isdigit(): break\n time.sleep(0.01)\n')
         self.fake("journalctl", '#!/bin/sh\necho $$ > "$ARGS"\nexec sleep 30\n')
         self.fake("notify-send", "#!/bin/sh\nexit 0\n")
         started = time.monotonic()

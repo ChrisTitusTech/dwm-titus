@@ -11,8 +11,30 @@ import tempfile
 import time
 
 if "--inside" not in sys.argv:
-    raise SystemExit(subprocess.run(["dbus-run-session", "--", sys.executable,
-                                    __file__, "--inside"], check=False).returncode)
+    session = subprocess.Popen(["dbus-run-session", "--", sys.executable,
+                                __file__, "--inside"], start_new_session=True)
+    try:
+        raise SystemExit(session.wait(timeout=300))
+    except (subprocess.TimeoutExpired, KeyboardInterrupt):
+        os.killpg(session.pid, signal.SIGCONT)
+        os.killpg(session.pid, signal.SIGTERM)
+        try:
+            session.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            pass
+        finally:
+            try:
+                os.killpg(session.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            session.wait()
+        raise SystemExit("notification actions test timed out")
+
+# Let the inner test clean up its workspace and children on the outer deadline.
+def terminate_test(*_):
+    raise SystemExit("notification actions test terminated")
+
+signal.signal(signal.SIGTERM, terminate_test)
 
 repo = Path(__file__).resolve().parents[1]
 with tempfile.TemporaryDirectory(dir=os.environ.get("TMPDIR")) as directory:
@@ -23,6 +45,7 @@ with tempfile.TemporaryDirectory(dir=os.environ.get("TMPDIR")) as directory:
 import Quickshell
 import Quickshell.Io
 import "notifications" as Notifications
+import qs.core
 ShellRoot {
     Notifications.NotificationModel { id: model }
     PanelWindow { id: panel; anchors { top: true; left: true; right: true } implicitHeight: 30 }
@@ -36,6 +59,10 @@ ShellRoot {
         }
         function invoke(key: string, action: string): bool { return model.invokeAction(key, action); }
         function clear(): void { model.clearHistory(); }
+        function dnd(enabled: bool): void { model.setDoNotDisturb(enabled); }
+        function terminal(argument: string): string {
+            return JSON.stringify(Commands.agentTerminalCommand("login", [argument]));
+        }
     }
 }
 ''')
@@ -80,6 +107,69 @@ ShellRoot {
             raise AssertionError("Notification condition timed out")
 
         wait_for(lambda: state()["policy"] in ("available", "defaults"))
+        terminal_bin = work / "terminal-bin"
+        terminal_bin.mkdir()
+        terminal = terminal_bin / "dwm-terminal"
+        terminal.write_text('#!/bin/sh\nshift\nexec "$@"\n')
+        terminal.chmod(0o755)
+        agent = terminal_bin / "dwm-agent"
+        agent.write_text('#!/bin/sh\nprintf "helper error: %s\\n" "$2"\nexit 7\n')
+        agent.chmod(0o755)
+        argument = "fixture; touch SHOULD_NOT_EXIST"
+        terminal_process = subprocess.Popen(json.loads(ipc("terminal", argument)),
+            env={**env, "PATH": str(terminal_bin) + ":" + env["PATH"]},
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+        processes.append(terminal_process)
+        assert select.select([terminal_process.stdout], [], [], 5)[0]
+        assert terminal_process.stdout.readline().strip() == "helper error: " + argument
+        assert terminal_process.poll() is None, "Error terminal closed before acknowledgement"
+        output = terminal_process.communicate("\n", timeout=5)[0]
+        assert terminal_process.returncode == 7 and "Press Enter" in output
+        assert not (repo / "SHOULD_NOT_EXIST").exists()
+        print("Agent error terminal: visible error, argv integrity, exit status PASS")
+        # Persist an actionable entry, restart the server, then reuse its
+        # numerical ID. Saved entries must never acquire the new live actions.
+        old_client = subprocess.Popen(["notify-send", "--urgency=critical",
+                                       "--action=kill=Force quit", "Before restart"], env=env)
+        processes.append(old_client)
+        wait_for(lambda: len(state()["keys"]) == 1)
+        old_key = state()["keys"][0]
+        history_path = Path(env["XDG_CACHE_HOME"]) / "dwm-titus/notification-history.json"
+        wait_for(lambda: history_path.exists() and old_key in history_path.read_text())
+        shell.terminate()
+        shell.wait(timeout=5)
+        shell = subprocess.Popen(["quickshell", "--no-duplicate", "--path", str(qml / "shell.qml")],
+                                 env=env, stdout=log, stderr=log)
+        processes.append(shell)
+        wait_for(lambda: state()["policy"] in ("available", "defaults"))
+        wait_for(lambda: any(n["key"] == old_key for n in state()["history"]))
+        current = subprocess.Popen(["notify-send", "--urgency=critical", "--action=kill=Force quit",
+                                    "After restart"], env=env, stdout=subprocess.PIPE, text=True)
+        processes.append(current)
+        wait_for(lambda: len(state()["keys"]) == 1)
+        current_key = state()["keys"][0]
+        assert current_key.rsplit("-", 2)[-2:] == old_key.rsplit("-", 2)[-2:], "Fixture must reuse both counters"
+        assert current_key != old_key
+        assert ipc("invoke", old_key, "kill") == "false"
+        assert current.poll() is None
+        ipc("dnd", "true")
+        wait_for(lambda: state()["policy"] == "available")
+        for index in range(50):
+            subprocess.run(["notify-send", "Suppressed " + str(index)], env=env, check=True, timeout=5)
+        wait_for(lambda: not any(n["key"] == current_key for n in state()["history"]))
+        assert current_key in state()["visible"] and current.poll() is None
+        for index in range(4):
+            client = subprocess.Popen(["notify-send", "--urgency=critical", "--action=wait=Wait",
+                                       "Overflow " + str(index)], env=env)
+            processes.append(client)
+            wait_for(lambda: state()["history"][0]["summary"] == "Overflow " + str(index))
+        current.wait(timeout=5)
+        assert current_key not in state()["keys"], "Evicted offer has no UI but is still open"
+        ipc("clear")
+        ipc("dnd", "false")
+        wait_for(lambda: not state()["keys"] and state()["policy"] == "available")
+        print("Notification restart isolation and DND/history overflow: PASS")
+
         clients = []
         for index in range(5):
             client = subprocess.Popen(["notify-send", "--urgency=critical", "--action=diagnose=Diagnose",
@@ -126,7 +216,7 @@ ShellRoot {
             shutil.copy(source, config)
         (config / "hang-detection").touch()
         subprocess.run([os.environ.get("CC", "cc"), str(repo / "tests/fixtures/ping-client.c"),
-                        "-lX11", "-o", str(binary / "ping-client")], check=True)
+                        "-lX11", "-o", str(binary / "ping-client")], check=True, timeout=30)
         wm = subprocess.Popen([str(binary / "dwm")], env=env, stdout=log, stderr=log)
         processes.append(wm)
         app = subprocess.Popen([str(binary / "ping-client")], env=env,

@@ -17,7 +17,7 @@ mkdir -p "$work"/{SOURCES,SPECS,BUILD,RPMS,SRPMS} "$work/$name-$version"
 cp -a "$repo/config/agents/skills" "$work/$name-$version/"
 cp "$repo/config/agents/skills/dwm-titus/LICENSE" "$work/$name-$version/"
 cp "$repo/packaging/rpm/README.md" "$work/$name-$version/"
-epoch=${SOURCE_DATE_EPOCH:-$(git -C "$repo" log -1 --format=%ct)}
+epoch=${SOURCE_DATE_EPOCH:-$(git -C "$repo" log -1 --format=%ct 2>/dev/null || printf 0)}
 tar --sort=name --mtime="@$epoch" --owner=0 --group=0 --numeric-owner \
 	-C "$work" -czf "$work/SOURCES/$name-$version.tar.gz" "$name-$version"
 chmod 644 "$work/SOURCES/$name-$version.tar.gz"

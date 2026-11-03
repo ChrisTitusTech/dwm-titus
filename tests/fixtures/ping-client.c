@@ -1,5 +1,6 @@
 #include <X11/Xlib.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 int main(void)
 {
@@ -23,6 +24,7 @@ int main(void)
         if (event.type == ClientMessage && event.xclient.message_type == protocols
                 && (Atom)event.xclient.data.l[0] == ping) {
             event.xclient.window = root;
+            if (getenv("DWM_TEST_LEGACY_PING")) event.xclient.data.l[2] = 0;
             XSendEvent(display, root, False, SubstructureRedirectMask | SubstructureNotifyMask, &event);
             XFlush(display);
         }

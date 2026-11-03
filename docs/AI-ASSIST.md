@@ -91,6 +91,12 @@ ping detector. Remove only the skill symlinks you chose to install to stop an
 agent discovering these skills; retain unrelated skill directories. Existing
 custom skills are never replaced by desktop setup.
 
+Optional agent downloads use your existing mise and its registry verification;
+they are not pinned or checksum-reviewed by dwm-titus. Existing global Node and
+uv selections are preserved. Repeating setup preserves the current alert
+preferences when you accept its defaults. Setup and sign-in terminals retain
+helper errors until you press Enter.
+
 Agent CLI releases and authentication behavior can change independently of the
 desktop. A missing or timed-out status probe is not proof that credentials are
 invalid. Use the agent's own sign-in command to verify uncertain state. Validation

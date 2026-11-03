@@ -23,7 +23,7 @@ grep -Fq 'root.settingsModel.selectedSectionId !== "agent"' "$settings_window"
 
 # Helpers go through the managed command resolver.
 grep -Fq 'helperCommand("dwm-agent", action, args, true)' "$commands"
-grep -Fq 'helperCommand("dwm-terminal", "-e", agentCommand(action, args), true)' "$commands"
+grep -Fq 'helperCommand("dwm-terminal", "-e", command, true)' "$commands"
 grep -Fq 'Commands.checkedCommand(Commands.agentCommand("list", []))' "$agent_model"
 grep -Fq 'Commands.checkedCommand(Commands.agentCommand("status", []))' "$agent_model"
 grep -Fq 'Commands.checkedCommand(Commands.agentCommand(action, args))' "$agent_model"

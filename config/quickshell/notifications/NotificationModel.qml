@@ -15,6 +15,7 @@ Scope {
     property var actionable: ({})
     property bool historyVisible: false
     property int sequence: 0
+    readonly property string sessionKey: Date.now().toString(36) + "-" + Math.random().toString(36).slice(2)
     property bool doNotDisturb: false
     property int popupTimeoutMs: 6000
     property string policyState: "loading"
@@ -167,7 +168,7 @@ Scope {
         }));
         const critical = notification.urgency === NotificationUrgency.Critical;
         const item = {
-            "key": notification.id + "-" + root.sequence,
+            "key": root.sessionKey + "-" + notification.id + "-" + root.sequence,
             "notification": notification,
             "appName": notification.appName || "Notification",
             "summary": notification.summary || "",
@@ -328,6 +329,7 @@ Scope {
         // Leaves the popup list but stays open, so its actions remain
         // available from the history.
         if (expired && root.keepsOpen(item)) {
+            if (!root.history.some(entry => entry.key === item.key)) item.notification.dismiss();
             return;
         }
 

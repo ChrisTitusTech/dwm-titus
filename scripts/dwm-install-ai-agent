@@ -81,10 +81,24 @@ os_id=''
 [[ -r /etc/os-release ]] && os_id=$(sed -n 's/^ID=//p' /etc/os-release | tr -d "\"'")
 [[ $os_id == fedora ]] || die "supported on Fedora only (found '${os_id:-unknown}')"
 
+# Inspect configured global versions, even when not installed yet. A local
+# project version must not cause us to replace an existing global pin.
+keep_runtime() {
+	local configured
+	case $1 in node@lts | uv) ;; *) return 1 ;; esac
+	configured=$(mise ls --global --json "${1%%@*}") || die "cannot inspect existing mise runtime configuration"
+	jq -e 'type == "array"' <<<"$configured" >/dev/null || die "invalid mise runtime configuration"
+	jq -e 'length > 0' <<<"$configured" >/dev/null
+}
+
 if $dry_run; then
 	command -v mise >/dev/null 2>&1 || printf 'requires mise to be installed first\n'
 	while IFS= read -r tool; do
-		printf 'would run: mise use -g %s\n' "$tool"
+		if command -v mise >/dev/null 2>&1 && keep_runtime "$tool"; then
+			printf 'keeping existing global mise %s\n' "${tool%%@*}"
+		else
+			printf 'would run: mise use -g %s\n' "$tool"
+		fi
 	done < <(agent_tools "$agent")
 	exit 0
 fi
@@ -92,6 +106,10 @@ fi
 command -v mise >/dev/null 2>&1 || die "mise is required; install it separately, then retry (https://mise.jdx.dev/getting-started.html)"
 
 while IFS= read -r tool; do
+	if keep_runtime "$tool"; then
+		printf '==> keeping existing global mise %s\n' "${tool%%@*}"
+		continue
+	fi
 	printf '==> mise use -g %s\n' "$tool"
 	case $tool in
 	pipx:hermes-agent*) UV_PYTHON=3.13 mise use -g "$tool" ;;

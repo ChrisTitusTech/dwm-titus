@@ -64,22 +64,27 @@ close_id() {
 		--method org.freedesktop.Notifications.CloseNotification "$1" >/dev/null 2>&1 || true
 }
 
-close_notification() {
-	local id='' waiter=''
-	local previous=0
-	[[ -f $closed_marker ]] && read -r previous <"$closed_marker" || true
-	[[ $previous =~ ^[0-9]+$ ]] || previous=0
-	((previous > self_start)) && return 0
-	printf '%s\n' "$self_start" >"$closed_marker"
+withdraw_record() {
+	local id='' waiter='' record_sequence=0 waiter_start=0
 	[[ -f $record ]] || return 0
-	local record_sequence=0 waiter_start=0
 	read -r id waiter record_sequence waiter_start <"$record" || true
-	[[ $record_sequence =~ ^[0-9]+$ ]] && ((record_sequence > self_start)) && return 0
 	rm -f "$record"
 	if [[ $waiter =~ ^[0-9]+$ && -n $waiter_start ]] && [[ $(start_time_of "$waiter") == "$waiter_start" ]]; then
 		kill "$waiter" 2>/dev/null || true
 		close_id "$id"
 	fi
+}
+
+close_notification() {
+	local previous=0 record_sequence=0
+	[[ -f $closed_marker ]] && read -r previous <"$closed_marker" || true
+	[[ $previous =~ ^[0-9]+$ ]] || previous=0
+	((previous > self_start)) && return 0
+	printf '%s\n' "$self_start" >"$closed_marker"
+	[[ -f $record ]] || return 0
+	read -r _ _ record_sequence _ <"$record" || true
+	[[ $record_sequence =~ ^[0-9]+$ ]] && ((record_sequence > self_start)) && return 0
+	withdraw_record
 }
 
 case $state in
@@ -92,9 +97,14 @@ hung) ;;
 esac
 
 ignored && exit 0
-# One notification per hang, even if dwm reports it again.
-[[ -f $record ]] && exit 0
 recovered_since_hung && exit 0
+# Supersede an older offer, but never let delayed handlers replace a newer one.
+if [[ -f $record ]]; then
+	current_sequence=0
+	read -r _ _ current_sequence _ <"$record" || true
+	[[ $current_sequence =~ ^[0-9]+$ ]] && ((current_sequence >= self_start)) && exit 0
+	withdraw_record
+fi
 
 name=${class:-${title:-Window}}
 name=${name//[$'\t\r\n']/ }
@@ -138,20 +148,19 @@ wait "$waiter" 2>/dev/null || true
 flock 9
 action=$(sed -n 2p "$out")
 current_sequence=0
-if [[ -f $record ]]; then
-	read -r _ _ current_sequence _ <"$record" || true
-	[[ $current_sequence == "$self_start" ]] && rm -f "$record"
-fi
+[[ -f $record ]] && read -r _ _ current_sequence _ <"$record" || true
 rm -f "$out"
+[[ $current_sequence == "$self_start" ]] || exit 0
 recovered_since_hung && exit 0
+# Keep a tombstone after answering, so a delayed older hung event cannot
+# resurrect an offer. The lock also excludes newer state while acting.
+close_notification
 
 case $action in
 diagnose)
 	setsid -f dwm-agent-diagnose hang "$window" "$pid" "$class" </dev/null >/dev/null 2>&1 9>&-
 	;;
 kill)
-	# A recovered or closed window must not be killed by a late click.
-	recovered_since_hung && exit 0
 	# XKillClient through xdotool closes the client's X connection; it works
 	# for sandboxed apps where the PID would point at the wrong process.
 	xdotool windowkill "$window" 2>/dev/null || exit 0
