@@ -339,6 +339,7 @@ FloatingWindow {
                                 windowVisible: root.visible
                                 sourceComponent: DisplaySettingsPane {
                                     settingsModel: root.settingsModel
+                                    systemBatteryPresent: root.powerModel.systemBatteryPresent
                                 }
                             }
 

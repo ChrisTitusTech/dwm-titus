@@ -1,10 +1,26 @@
 import QtQuick
 import Quickshell
 import "settings" as Settings
+import "power" as Power
 
 Scope {
     id: root
     Settings.SettingsModel { id: model }
+    Power.PowerModel { id: power }
+    Settings.DisplaySettingsPane {
+        id: pane
+        width: 1000; height: 800
+        settingsModel: model
+        systemBatteryPresent: power.systemBatteryPresent
+    }
+    function findItem(item, name) {
+        if (item.objectName === name) return item;
+        for (const child of item.children || []) {
+            const found = findItem(child, name);
+            if (found) return found;
+        }
+        return null;
+    }
     function require(condition, message) {
         if (!condition) throw new Error(message);
     }
@@ -25,6 +41,19 @@ Scope {
                 { role: "undocked", name: "mobile", saved: true, outputs: mobile, error: "" },
                 { role: "docked", name: "docked", saved: true, outputs: docked, error: "" }
             ], detected: ["docked"], current: [], default: "mobile", error: "" };
+            const heading = findItem(pane, "automaticDisplayHeading");
+            const profiles = findItem(pane, "automaticDisplayProfiles");
+            require(heading && profiles, "Automatic display controls exist");
+            require(!profiles.visible && !heading.visible, "Desktop hides laptop profiles");
+            power.parseSnapshot("power-protocol\t1\t0\nprovider\tpower\tavailable\tuser-session\tTest\npower-system-battery\tyes\n");
+            require(profiles.visible && heading.visible, "Physical laptop battery enables profiles");
+            pane.saveAutomaticRole = "docked";
+            power.parseSnapshot("power-protocol\t1\t0\nprovider\tpower\tavailable\tuser-session\tUPower absent\n");
+            require(!profiles.visible && pane.saveAutomaticRole === "", "Service loss closes pending save despite native cache");
+            power.parseSnapshot("power-protocol\t1\t0\nprovider\tpower\tavailable\tuser-session\tTest\npower-system-battery\tyes\n");
+            require(profiles.visible, "Battery service recovery restores profiles");
+            power.parseSnapshot("power-protocol\t1\t0\nprovider\tpower\tavailable\tuser-session\tTest\npower-system-battery\tno\n");
+            require(!profiles.visible, "Physical battery removal hides profiles");
             const baseline = model.displayBaseline;
             model.editAutomaticDisplay("undocked");
             require(model.displayEditingRole === "undocked", "Selected editor role");

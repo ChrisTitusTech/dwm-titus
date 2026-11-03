@@ -643,6 +643,23 @@ power_battery_state() {
 	esac
 }
 
+# Enumerate physical devices: the display device may be a UPS on a laptop.
+power_has_system_battery() {
+	power_devices=$(run_bounded 3 busctl --system --json=short call \
+		org.freedesktop.UPower /org/freedesktop/UPower org.freedesktop.UPower EnumerateDevices 2>/dev/null |
+		jq -er '.data[0] | select(type == "array" and length <= 64) |
+			select(all(.[]; type == "string" and test("^/org/freedesktop/UPower/devices/[A-Za-z0-9_]+$"))) | .[]') || return 1
+	for power_device in $power_devices; do
+		if run_bounded 3 busctl --system --json=short call \
+			org.freedesktop.UPower "$power_device" org.freedesktop.DBus.Properties GetAll \
+			s org.freedesktop.UPower.Device 2>/dev/null |
+			jq -e '.data[0] | .Type.data == 2 and .PowerSupply.data == true and .IsPresent.data == true' >/dev/null; then
+			return 0
+		fi
+	done
+	return 1
+}
+
 power_snapshot_upower() {
 	if ! command -v busctl >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
 		printf 'power-external\tunknown\tUPower D-Bus tools are unavailable\n'
@@ -668,6 +685,13 @@ power_snapshot_upower() {
 	false) printf 'power-external\ton\tExternal power is available\n' ;;
 	*) printf 'power-external\tunknown\tUPower returned invalid external-power state\n' ;;
 	esac
+
+	# One total deadline covers the complete inventory, not just each device.
+	if run_bounded 3 "$0" power-system-battery 2>/dev/null; then
+		printf 'power-system-battery\tyes\n'
+	else
+		printf 'power-system-battery\tno\n'
+	fi
 
 	if ! power_present=$(power_bus_property org.freedesktop.UPower "$upower_display_path" \
 		"$upower_device_interface" IsPresent); then
@@ -1813,6 +1837,12 @@ theme-set)
 	theme_set "$2"
 	;;
 keybinds) keybinds ;;
+# Internal bounded inventory subprocess; exit status alone carries presence.
+power-system-battery)
+	[ $# -eq 1 ] || exit 2
+	bounded_foreground=1
+	power_has_system_battery
+	;;
 power-status) power_status ;;
 power-snapshot) power_snapshot ;;
 power-lock-snapshot)

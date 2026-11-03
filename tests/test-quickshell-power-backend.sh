@@ -218,6 +218,21 @@ set-property)
 	exit 0
 	;;
 call)
+	if [ "$1" = org.freedesktop.UPower ]; then
+		[ "${DWM_POWER_TEST_UPOWER_FAIL:-0}" != 1 ] || exit 1
+		if [ "$4" = EnumerateDevices ]; then
+			printf '%s\n' '{"type":"ao","data":[["/org/freedesktop/UPower/devices/ups", "/org/freedesktop/UPower/devices/battery"]]}'
+		else
+			[ "${DWM_POWER_TEST_INVENTORY_HANG:-0}" != 1 ] || sleep 30
+			if [ "$2" = /org/freedesktop/UPower/devices/ups ]; then
+				printf '%s\n' '{"data":[{"Type":{"data":3},"PowerSupply":{"data":true},"IsPresent":{"data":true}}]}'
+			else
+				printf '{"data":[{"Type":{"data":2},"PowerSupply":{"data":%s},"IsPresent":{"data":%s}}]}\n' \
+					"${DWM_POWER_TEST_PHYSICAL_SUPPLY:-true}" "${DWM_POWER_TEST_PHYSICAL_PRESENT:-false}"
+			fi
+		fi
+		exit 0
+	fi
 	[ "${DWM_POWER_TEST_LOGIND_FAIL:-0}" != 1 ] || exit 1
 	printf '{"type":"s","data":["%s"]}\n' "${DWM_POWER_TEST_CAN_SUSPEND:-yes}"
 	;;
@@ -411,6 +426,27 @@ printf '%s\n' "$snapshot" | grep -Fqx 'power-lid	available	closed	delegated	Lid 
 printf '%s\n' "$snapshot" | grep -Fqx 'power-profile	balanced	active'
 printf '%s\n' "$snapshot" | grep -Fqx 'power-suspend	available	delegated	Suspend requires authorization'
 printf '%s\n' "$snapshot" | grep -Fqx 'power-lid-policy	available	suspend	default	ignore	read-only	Persistent lid policy is owned by systemd-logind'
+
+# Physical battery inventory remains independent of an aggregate UPS.
+physical_snapshot=$(DWM_POWER_TEST_PHYSICAL_PRESENT=true run_helper power-snapshot)
+printf '%s\n' "$physical_snapshot" | grep -Fqx 'power-system-battery	yes'
+peripheral_snapshot=$(DWM_POWER_TEST_PHYSICAL_PRESENT=true DWM_POWER_TEST_PHYSICAL_SUPPLY=false run_helper power-snapshot)
+printf '%s\n' "$peripheral_snapshot" | grep -Fqx 'power-system-battery	no'
+removed_snapshot=$(DWM_POWER_TEST_PHYSICAL_PRESENT=false run_helper power-snapshot)
+printf '%s\n' "$removed_snapshot" | grep -Fqx 'power-system-battery	no'
+unavailable_snapshot=$(DWM_POWER_TEST_UPOWER_FAIL=1 run_helper power-snapshot)
+if printf '%s\n' "$unavailable_snapshot" | grep -q '^power-system-battery'; then
+	printf 'Unavailable UPower must not claim a physical system battery.\n' >&2
+	exit 1
+fi
+
+# The entire multi-device scan has one deadline, not one budget per device.
+inventory_started=$(date +%s)
+slow_snapshot=$(DWM_POWER_TEST_INVENTORY_HANG=1 run_helper power-snapshot 2>"$work/inventory-timeout.err")
+[ ! -s "$work/inventory-timeout.err" ]
+inventory_elapsed=$(($(date +%s) - inventory_started))
+[ "$inventory_elapsed" -le 8 ]
+printf '%s\n' "$slow_snapshot" | grep -Fqx 'power-system-battery	no'
 
 export DWM_POWER_TEST_ENERGY_RATE=1E-7
 exponent_rate_snapshot=$(run_helper power-snapshot)

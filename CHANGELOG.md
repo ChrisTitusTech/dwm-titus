@@ -111,6 +111,9 @@ versions from `config.mk`.
   value; before, they failed with "stable device identity is ambiguous".
   Same-identity devices on different ports are listed once with an explanation
   and still left alone.
+- Hide laptop docked and undocked display profile controls when no system battery
+  is present. Peripheral batteries and desktop UPS devices do not enable them.
+
 - Preserve keyboard focus in application menus and combo popups so Steam menus
   do not immediately dismiss. Notification and fullscreen overlay focus behavior
   remains unchanged.

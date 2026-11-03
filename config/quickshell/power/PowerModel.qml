@@ -71,6 +71,7 @@ Scope {
     readonly property bool sectionVisible: root.settingsVisible || root.controlCenterVisible
         || root.sessionMenuVisible
     readonly property var nativeBattery: UPower.displayDevice
+    property bool systemBatteryPresent: false
     readonly property var timeoutPresets: [
         { "label": "5m", "seconds": 300 },
         { "label": "10m", "seconds": 600 },
@@ -146,6 +147,7 @@ Scope {
     }
 
     function clearPolicyState(detail) {
+        root.systemBatteryPresent = false;
         root.clearDpmsState(detail);
         root.clearLockState(detail);
         root.profileState = "unavailable";
@@ -293,6 +295,7 @@ Scope {
         let dpms = null;
         let lock = null;
         let battery = null;
+        let systemBatteryPresent = false;
         let externalPower = null;
         let profileSupport = null;
         const profileRows = [];
@@ -327,6 +330,9 @@ Scope {
             } else if (fields[0] === "power-external" && fields.length >= 3
                     && (fields[1] === "on" || fields[1] === "off" || fields[1] === "unknown")) {
                 externalPower = { "state": fields[1], "detail": fields.slice(2).join("\t") };
+            } else if (fields[0] === "power-system-battery" && fields.length === 2
+                    && root.validBoolean(fields[1])) {
+                systemBatteryPresent = fields[1] === "yes";
             } else if (fields[0] === "power-battery" && fields.length >= 8
                     && root.validState(fields[1])
                     && (fields[2] === "unknown" || fields[2] === "charging"
@@ -376,6 +382,7 @@ Scope {
             return;
         }
 
+        root.systemBatteryPresent = systemBatteryPresent;
         root.providerState = providerState;
         root.providerDetail = providerDetail;
         if (dpms !== null) {

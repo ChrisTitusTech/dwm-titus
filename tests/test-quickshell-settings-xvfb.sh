@@ -1646,6 +1646,22 @@ while [ "$i" -lt 100 ]; do
 done
 [ "$(settings_defaults_watch_count)" -eq 0 ]
 [ "$(settings_autostart_watch_count)" -eq 0 ]
+# Displays uses the same power subscription for physical battery changes.
+i=0
+while [ "$i" -lt 100 ]; do
+	[ "$(settings_power_gsettings_watch_count)" -eq 1 ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$(settings_power_gsettings_watch_count)" -eq 1 ]
+
+DISPLAY=$display xdotool windowactivate --sync "$window"
+DISPLAY=$display xdotool type --delay 20 network
+test_stage='validating network and Bluetooth settings'
+section=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings currentSection)
+[ "$section" = network ]
+
 i=0
 while [ "$i" -lt 100 ]; do
 	if ! pgrep -af '[d]wm-quickshell-controlcenter([.]real)? (power-snapshot|power-watch)$' |
@@ -1657,17 +1673,10 @@ while [ "$i" -lt 100 ]; do
 done
 if pgrep -af '[d]wm-quickshell-controlcenter([.]real)? (power-snapshot|power-watch)$' |
 	grep -F "$data_home/dwm-titus/scripts/dwm-quickshell-controlcenter" >/dev/null; then
-	printf 'Settings-owned power work remained active after leaving Power\n' >&2
+	printf 'Settings-owned power work remained active after leaving Power and Displays\n' >&2
 	exit 1
 fi
 [ "$(settings_power_gsettings_watch_count)" -eq 0 ]
-
-DISPLAY=$display xdotool windowactivate --sync "$window"
-DISPLAY=$display xdotool type --delay 20 network
-test_stage='validating network and Bluetooth settings'
-section=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings currentSection)
-[ "$section" = network ]
 
 i=0
 while [ "$i" -lt 100 ]; do

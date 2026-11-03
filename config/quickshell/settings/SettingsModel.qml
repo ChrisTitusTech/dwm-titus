@@ -152,7 +152,7 @@ Scope {
             else if (!wantAudio && root.controlsModel.settingsVisible) root.controlsModel.closeSettings();
         }
         if (root.powerModel) {
-            const wantPower = id === "power" && root.visible;
+            const wantPower = (id === "power" || id === "displays") && root.visible;
             if (wantPower && !root.powerModel.settingsVisible) root.powerModel.openSettings();
             else if (!wantPower && root.powerModel.settingsVisible) root.powerModel.closeSettings();
         }
