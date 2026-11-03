@@ -90,6 +90,9 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Show and select symlinked Flatpak desktop entries in Settings defaults while
+  retaining desktop-file size limits and avoiding linked-directory traversal.
+
 - Isolate test configuration, data, state, and cache directories from the
   invoking desktop. Installer preservation fixtures now keep both simulated
   homes' receipts and build configurations in their own state directories and

@@ -177,17 +177,18 @@ desktop_file_for_id() {
 		if [[ ! -d $applications ]] || ! path_has_no_symlink_components "$applications"; then
 			continue
 		fi
-		if [[ -f $applications/$desktop_id && ! -L $applications/$desktop_id ]]; then
+		if [[ -f $applications/$desktop_id ]]; then
 			printf '%s\n' "$applications/$desktop_id"
 			return 0
 		fi
+		# Inspect symlink leaves, but do not recurse through linked directories.
 		while IFS= read -r -d '' file; do
 			id=$(desktop_id_for_file "$applications" "$file")
-			if [[ $id == "$desktop_id" ]]; then
+			if [[ $id == "$desktop_id" && -f $file ]]; then
 				printf '%s\n' "$file"
 				return 0
 			fi
-		done < <(find "$applications" -mindepth 2 -type f -name '*.desktop' -print0 2>/dev/null)
+		done < <(find "$applications" -mindepth 2 \( -type f -o -type l \) -name '*.desktop' -print0 2>/dev/null)
 	done < <(data_dirs)
 	return 1
 }
@@ -203,8 +204,8 @@ parse_desktop_file() {
 	desktop_parsed_exec=
 	desktop_parsed_categories=
 	desktop_parsed_mime_types=
-	[[ -f $file && ! -L $file ]] || return 1
-	size=$(stat -c %s -- "$file" 2>/dev/null) || return 1
+	[[ -f $file ]] || return 1
+	size=$(stat -L -c %s -- "$file" 2>/dev/null) || return 1
 	[[ $size =~ ^[0-9]+$ ]] || return 1
 	((size <= max_desktop_size)) || return 1
 	parsed=$(LC_ALL=C awk '
@@ -1159,9 +1160,11 @@ emit_candidates() {
 		if [[ ! -d $applications ]] || ! path_has_no_symlink_components "$applications"; then
 			continue
 		fi
+		# Inspect symlink leaves, but do not recurse through linked directories.
 		while IFS= read -r -d '' file; do
 			id=$(desktop_id_for_file "$applications" "$file")
 			valid_desktop_id "$id" || continue
+			[[ -f $file ]] || continue
 			[[ -z ${seen[$id]+x} ]] || continue
 			seen[$id]=1
 			desktop_usable "$file" || continue
@@ -1192,7 +1195,7 @@ emit_candidates() {
 				printf 'mime-candidate\t%s\t%s\t%s\tavailable\tInstalled desktop entry\n' \
 					"$mime" "$id" "$(clean_field "$name")"
 			done
-		done < <(find "$applications" -type f -name '*.desktop' -print0 2>/dev/null)
+		done < <(find "$applications" \( -type f -o -type l \) -name '*.desktop' -print0 2>/dev/null)
 	done < <(data_dirs)
 }
 
@@ -1302,6 +1305,64 @@ next_watch_component() {
 	printf '%s\n' "${remainder%%/*}"
 }
 
+# Register exact nodes and their physical ancestors, never recursive target trees.
+# Ancestor watches also notice deployments renamed/replaced above a target.
+register_desktop_watch_path() {
+	local path=$1 parent child
+	while [[ $path != / ]]; do
+		parent=${path%/*}
+		[[ -n $parent ]] || parent=/
+		child=$path
+		if [[ -d $parent && -r $parent && -x $parent ]]; then
+			desktop_watch_targets[$child]=1
+			if [[ -z ${desktop_watch_dirs[$parent]+x} ]]; then
+				if ((${#desktop_watch_dirs[@]} >= 4096)); then
+					printf 'dwm-default-apps: too many desktop target directories to watch\n' >&2
+					return 1
+				fi
+				desktop_watch_dirs[$parent]=1
+			fi
+		fi
+		path=$parent
+	done
+}
+
+collect_desktop_target_watches() {
+	local file=$1 current=/ candidate component target hops=0 steps=0
+	local -a pending=() target_parts=()
+	[[ $file != *$'\n'* && $file != *$'\r'* && $file != *$'\t'* ]] || return 0
+	IFS=/ read -r -a pending <<<"$file"
+	while ((${#pending[@]} > 0)); do
+		((steps += 1))
+		((steps <= 512)) || return 0
+		component=${pending[0]}
+		pending=("${pending[@]:1}")
+		case $component in
+		'' | .) continue ;;
+		..)
+			current=${current%/*}
+			[[ -n $current ]] || current=/
+			continue
+			;;
+		esac
+		candidate=${current%/}/$component
+		if [[ -L $candidate ]]; then
+			register_desktop_watch_path "$candidate" || return 1
+			desktop_watch_links[$candidate]=1
+			((hops += 1))
+			((hops <= 40)) || return 0
+			target=$(readlink -- "$candidate") || return 0
+			[[ $target != *$'\n'* && $target != *$'\r'* && $target != *$'\t'* ]] || return 0
+			[[ $target != /* ]] || current=/
+			IFS=/ read -r -a target_parts <<<"$target"
+			pending=("${target_parts[@]}" "${pending[@]}")
+		else
+			current=$candidate
+		fi
+	done
+	register_desktop_watch_path "$current"
+}
+
 monitor_defaults_watch_children() {
 	local fifo=$1 child
 	shift
@@ -1358,13 +1419,13 @@ defaults_watch_cleanup() {
 
 watch_defaults() {
 	local dir applications application_parent application_next application_target application_event_path
-	local application_event_name application_event_parent data_dir_count
+	local application_event_name application_event_parent data_dir_count file target_watch_bytes
 	local config_watch_parent config_watch_mode config_watch_target new_parent
 	local config_watch_next fifo source event_type event_name watch_fd restart
 	local owner_pid=$PPID owner_starttime watcher_pid=$$ watcher_starttime
-	local -a application_dirs=() application_generation_dirs=() common_args=()
+	local -a application_dirs=() application_generation_dirs=() common_args=() desktop_target_dirs=()
 	local -A seen=() application_roots=() application_generation_parents=()
-	local -A application_generation_targets=()
+	local -A application_generation_targets=() desktop_watch_dirs=() desktop_watch_targets=() desktop_watch_links=()
 	need_cmd inotifywait
 	owner_starttime=$(process_starttime "$owner_pid") || {
 		printf 'dwm-default-apps: cannot identify the defaults watch owner\n' >&2
@@ -1386,6 +1447,10 @@ watch_defaults() {
 		application_roots=()
 		application_generation_parents=()
 		application_generation_targets=()
+		desktop_watch_dirs=()
+		desktop_watch_targets=()
+		desktop_watch_links=()
+		desktop_target_dirs=()
 		data_dir_count=0
 		config_watch_mode=none
 		config_watch_parent=
@@ -1420,6 +1485,9 @@ watch_defaults() {
 			if [[ -d $applications ]] && path_has_no_symlink_components "$applications"; then
 				application_roots[$applications]=1
 				application_dirs+=("$applications")
+				while IFS= read -r -d '' file; do
+					collect_desktop_target_watches "$file" || return 1
+				done < <(find "$applications" -type l -name '*.desktop' -print0 2>/dev/null)
 				continue
 			fi
 			application_parent=$(deepest_existing_watch_parent "$applications" 2>/dev/null || true)
@@ -1439,13 +1507,22 @@ watch_defaults() {
 			printf 'dwm-default-apps: no defaults directories are available to watch\n' >&2
 			return 1
 		}
+		target_watch_bytes=0
+		for dir in "${!desktop_watch_dirs[@]}"; do
+			((target_watch_bytes += ${#dir} + 1))
+			if ((target_watch_bytes > 131072)); then
+				printf 'dwm-default-apps: desktop target watch paths exceed argument limit\n' >&2
+				return 1
+			fi
+			desktop_target_dirs+=("$dir")
+		done
 		fifo=$defaults_watch_work/events
 		rm -f -- "$fifo"
 		mkfifo -- "$fifo"
 		exec {watch_fd}<>"$fifo"
 		common_args=(
 			-m -q -P
-			-e close_write -e create -e delete -e moved_to -e moved_from
+			-e close_write -e create -e delete -e moved_to -e moved_from -e attrib
 			-e delete_self -e move_self
 		)
 		if [[ -n $config_watch_parent ]]; then
@@ -1474,11 +1551,37 @@ watch_defaults() {
 				-- "${application_generation_dirs[@]}" >"$fifo" &
 			defaults_watch_children+=("$!")
 		fi
+		if ((${#desktop_target_dirs[@]} > 0)); then
+			inotifywait "${common_args[@]}" --format $'desktop-target\t%e\t%w%f' \
+				-- "${desktop_target_dirs[@]}" >"$fifo" &
+			defaults_watch_children+=("$!")
+		fi
 		monitor_defaults_watch_children "$fifo" "${defaults_watch_children[@]}" &
 		defaults_watch_monitor=$!
 		restart=0
 		while IFS=$'\t' read -r -u "$watch_fd" source event_type event_name; do
 			case $source in
+			desktop-target)
+				application_event_path=${event_name%/}
+				case ,$event_type, in
+				*,DELETE_SELF,* | *,MOVE_SELF,*)
+					[[ -n ${desktop_watch_dirs[$application_event_path]+x} ]] || continue
+					restart=1
+					;;
+				*) [[ -n ${desktop_watch_targets[$application_event_path]+x} ]] || continue ;;
+				esac
+				printf '%s:%s\n' "$event_type" "${application_event_path##*/}"
+				case ,$event_type, in
+				*,CLOSE_WRITE,*) continue ;;
+				*,ISDIR,*) restart=1 ;;
+				*)
+					if [[ -n ${desktop_watch_links[$application_event_path]+x} || -L $application_event_path ]]; then
+						restart=1
+					fi
+					;;
+				esac
+				[[ $restart -eq 0 ]] || break
+				;;
 			applications)
 				application_event_path=${event_name%/}
 				application_event_name=${application_event_path##*/}
@@ -1490,9 +1593,22 @@ watch_defaults() {
 					break
 					;;
 				esac
+				# A populated directory move emits no events for existing leaves.
+				case ,$event_type, in
+				*,ISDIR,*)
+					printf '%s:%s\n' "$event_type" "$application_event_name"
+					restart=1
+					break
+					;;
+				esac
 				case $application_event_name in
 				*.desktop)
 					printf '%s:%s\n' "$event_type" "$application_event_name"
+					# Rearm only topology changes; content edits keep parent watches.
+					if [[ -n ${desktop_watch_links[$application_event_path]+x} || -L $application_event_path ]]; then
+						restart=1
+						break
+					fi
 					;;
 				mimeapps.list | *-mimeapps.list)
 					application_event_parent=${application_event_path%/*}
@@ -1575,6 +1691,16 @@ watch_defaults() {
 				;;
 			control)
 				restart=0
+				# A target directory may disappear or become unsafe before its
+				# observer starts; rebuild from surviving ancestors as for config.
+				for dir in "${desktop_target_dirs[@]}"; do
+					if [[ ! -d $dir || ! -r $dir || ! -x $dir ]] ||
+						! path_has_no_symlink_components "$dir"; then
+						printf '%s:%s\n' 'REARM' "${dir##*/}"
+						restart=1
+						break
+					fi
+				done
 				if [[ $config_watch_mode == config ]]; then
 					if [[ ! -d $config_watch_target || -L $config_watch_target ]] ||
 						! path_has_no_symlink_components "$config_watch_target"; then

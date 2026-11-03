@@ -12,6 +12,9 @@ work=$(mktemp -d)
 watch_pid=
 watch_owner_pid=
 cleanup() {
+	local status=$?
+	[[ ! -d $work/inaccessible ]] || chmod 700 "$work/inaccessible"
+	if ((status != 0)) && [[ -s $work/watch.err ]]; then cat "$work/watch.err" >&2; fi
 	[[ -z $watch_owner_pid ]] || kill -KILL "$watch_owner_pid" 2>/dev/null || true
 	[[ -z $watch_owner_pid ]] || wait "$watch_owner_pid" 2>/dev/null || true
 	[[ -z $watch_pid ]] || kill "$watch_pid" 2>/dev/null || true
@@ -67,6 +70,16 @@ SCRIPT
 cat >"$work/fail-bin/inotifywait" <<'SCRIPT'
 #!/bin/sh
 set -eu
+if [ -n "${DWM_TEST_TARGET_WATCH_RACE:-}" ]; then
+	for argument do
+		if [ "$argument" = "$DWM_TEST_TARGET_WATCH_RACE" ] &&
+			[ ! -e "${DWM_TEST_TARGET_WATCH_MARKER:?}" ]; then
+			mv -- "$DWM_TEST_TARGET_WATCH_RACE" "$DWM_TEST_TARGET_WATCH_RACE.removed"
+			printf '%s\n' "$$" >"$DWM_TEST_TARGET_WATCH_MARKER"
+			exit 1
+		fi
+	done
+fi
 if [ -n "${DWM_TEST_WATCH_SETUP_TARGET:-}" ]; then
 	for argument do
 		if [ "$argument" = "$DWM_TEST_WATCH_SETUP_TARGET" ] &&
@@ -247,6 +260,33 @@ cp "$work/data/applications/firefox.desktop" "$work/outside-applications/escaped
 ln -s "$work/outside-applications" "$work/data/applications/linked"
 ln -s "$work/data/applications/firefox.desktop" \
 	"$work/data/applications/linked-leaf.desktop"
+ln -s missing.desktop "$work/data/applications/broken.desktop"
+ln -s loop.desktop "$work/data/applications/loop.desktop"
+ln -s oversized.desktop "$work/data/applications/linked-large.desktop"
+ln -s ../firefox.desktop "$work/data/applications/vendor/linked.desktop"
+ln -s .. "$work/data/applications/vendor/cycle"
+mkdir -p "$work/flatpak/exports/share/applications" "$work/flatpak/app/org.example.Pdf/current/active/export/share/applications"
+cat >"$work/flatpak/app/org.example.Pdf/current/active/export/share/applications/org.example.Pdf.desktop" <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=Flatpak PDF
+Exec=firefox %F
+MimeType=application/pdf;
+DESKTOP
+ln -s ../../../app/org.example.Pdf/current/active/export/share/applications/org.example.Pdf.desktop \
+	"$work/flatpak/exports/share/applications/org.example.Pdf.desktop"
+# Broken/cyclic higher-priority exports must not hide lower-priority files.
+mkdir -p "$work/flatpak/exports/share/applications/vendor"
+for id in fallback-dead fallback-cycle; do
+	cp "$work/data/applications/firefox.desktop" "$work/flatpak/exports/share/applications/$id.desktop"
+done
+ln -s absent.desktop "$work/data/applications/fallback-dead.desktop"
+ln -s fallback-cycle.desktop "$work/data/applications/fallback-cycle.desktop"
+ln -s absent.desktop "$work/data/applications/vendor/shadow.desktop"
+cp "$work/data/applications/firefox.desktop" "$work/flatpak/exports/share/applications/vendor/shadow.desktop"
+# Hidden is an intentional precedence tombstone, including through a link.
+ln -s hidden.desktop "$work/data/applications/shadow-hidden.desktop"
+cp "$work/data/applications/firefox.desktop" "$work/flatpak/exports/share/applications/shadow-hidden.desktop"
 mkdir -p "$work/symlink-data"
 ln -s "$work/outside-applications" "$work/symlink-data/applications"
 
@@ -373,7 +413,7 @@ env_common=(
 	PATH="$work/bin:/usr/bin:/bin"
 	XDG_CONFIG_HOME="$work/home/.config"
 	XDG_DATA_HOME="$work/data"
-	XDG_DATA_DIRS="$work/empty"
+	XDG_DATA_DIRS="$work/flatpak/exports/share:$work/empty"
 	XDG_STATE_HOME="$work/home/.local/state"
 )
 
@@ -403,12 +443,26 @@ watch_descendant_pids() {
 	done
 }
 
+watch_child_has_installed_watch() {
+	local pid=$1 path=$2 inode info
+	inode=$(stat -Lc %i -- "$path" 2>/dev/null) || return 1
+	printf -v inode '%x' "$inode"
+	for info in "/proc/$pid/fdinfo/"*; do
+		[[ -r $info ]] || continue
+		if grep -Eq "^inotify .*ino:0*$inode( |$)" "$info" 2>/dev/null; then
+			return 0
+		fi
+	done
+	return 1
+}
+
 watch_child_for_path() {
 	local helper_pid=$1 path=$2 pid
 	while IFS= read -r pid; do
 		[[ -n $pid ]] || continue
 		if [[ $(cat "/proc/$pid/comm" 2>/dev/null || true) == inotifywait ]] &&
-			tr '\0' '\n' <"/proc/$pid/cmdline" 2>/dev/null | grep -Fqx -- "$path"; then
+			tr '\0' '\n' <"/proc/$pid/cmdline" 2>/dev/null | grep -Fqx -- "$path" &&
+			watch_child_has_installed_watch "$pid" "$path"; then
 			printf '%s\n' "$pid"
 			return 0
 		fi
@@ -467,14 +521,33 @@ if grep -Fq $'candidate\tbrowser\tnodisplay-browser.desktop\t' <<<"$snapshot"; t
 	exit 1
 fi
 for rejected_id in hidden.desktop not-an-app.desktop chromium.desktop tryexec-stale.desktop duplicate.desktop \
-	oversized.desktop control.desktop linked-escaped.desktop linked-leaf.desktop st.desktop \
-	hidden-image.desktop stale-image.desktop; do
+	oversized.desktop control.desktop linked-escaped.desktop broken.desktop loop.desktop linked-large.desktop st.desktop \
+	hidden-image.desktop stale-image.desktop shadow-hidden.desktop; do
 	if grep -Fq "$rejected_id" <<<"$snapshot"; then
 		printf 'Rejected desktop entry was emitted as a candidate: %s\n' "$rejected_id" >&2
 		exit 1
 	fi
 done
 grep -Fqx $'candidate\tbrowser\tvendor-nested.desktop\tNested Browser\tavailable\t\tInstalled desktop entry' <<<"$snapshot"
+
+# Symlinked Flatpak exports and nested desktop IDs support selection and readback.
+grep -Fqx $'candidate\tbrowser\tlinked-leaf.desktop\tFirefox\tavailable\t\tInstalled desktop entry' <<<"$snapshot"
+grep -Fqx $'candidate\tbrowser\tvendor-linked.desktop\tFirefox\tavailable\t\tInstalled desktop entry' <<<"$snapshot"
+grep -Fqx $'mime-candidate\tapplication/pdf\torg.example.Pdf.desktop\tFlatpak PDF\tavailable\tInstalled desktop entry' <<<"$snapshot"
+for id in fallback-dead.desktop fallback-cycle.desktop vendor-shadow.desktop; do
+	grep -Fqx "$(printf 'candidate\tbrowser\t%s\tFirefox\tavailable\t\tInstalled desktop entry' "$id")" <<<"$snapshot"
+done
+for desktop_id in org.example.Pdf.desktop vendor-linked.desktop linked-leaf.desktop \
+	fallback-dead.desktop fallback-cycle.desktop vendor-shadow.desktop; do
+	mime=application/pdf
+	[[ $desktop_id == org.example.Pdf.desktop ]] || mime=text/html
+	before_link=$(sha256sum "$work/home/.config/mimeapps.list")
+	run_helper set-mime "$mime" "$desktop_id" >/dev/null
+	snapshot=$(run_helper snapshot)
+	grep -Fq "$(printf 'mime\t%s\tavailable\t%s\t' "$mime" "$desktop_id")" <<<"$snapshot"
+	run_helper reset-mime "$mime" >/dev/null
+	[[ $(sha256sum "$work/home/.config/mimeapps.list") == "$before_link" ]]
+done
 
 # NoDisplay image handlers can be selected and restored without changing other defaults.
 image_defaults_before=$(sha256sum "$work/home/.config/mimeapps.list")
@@ -653,7 +726,9 @@ expect_status 1 run_helper set-role browser duplicate.desktop
 expect_status 1 run_helper set-role browser oversized.desktop
 expect_status 1 run_helper set-role browser control.desktop
 expect_status 1 run_helper set-role browser linked-escaped.desktop
-expect_status 1 run_helper set-role browser linked-leaf.desktop
+expect_status 1 run_helper set-role browser broken.desktop
+expect_status 1 run_helper set-role browser loop.desktop
+expect_status 1 run_helper set-role browser linked-large.desktop
 [[ ! -s $work/log ]]
 
 mv "$work/home/.config/mimeapps.list" "$work/mimeapps.target"
@@ -786,6 +861,17 @@ run_helper open 'https://example.test'
 grep -Fqx 'https://example.test' "$work/opened"
 
 if command -v inotifywait >/dev/null 2>&1; then
+	mkdir "$work/inaccessible"
+	chmod 000 "$work/inaccessible"
+	ln -s "$work/inaccessible/missing.desktop" "$work/data/applications/inaccessible.desktop"
+	deployment=$work/deployment
+	for version in v1 v2; do
+		mkdir -p "$deployment/$version/export"
+		ln -s export "$deployment/$version/active"
+		cp "$work/data/applications/firefox.desktop" "$deployment/$version/export/watched.desktop"
+	done
+	ln -s v1 "$deployment/current"
+	ln -s "$deployment/current/active/watched.desktop" "$work/data/applications/org.example.Watched.desktop"
 	watch_generation_root=$work/watch-data
 	mkdir -p "$watch_generation_root"
 	watch_data_dirs=$work/empty:$watch_generation_root/shared/one:$watch_generation_root/shared/two
@@ -817,6 +903,97 @@ if command -v inotifywait >/dev/null 2>&1; then
 		exit 1
 	fi
 	[[ $(tr '\0' '\n' <"/proc/$generation_child/cmdline" | grep -Fxc -- "$watch_generation_root") == 1 ]]
+
+	# Target watches are nonrecursive, cover the symlink chain, and rearm when
+	# Flatpak-style current deployments or target inodes are replaced.
+	target_child=
+	for _ in {1..100}; do
+		target_child=$(watch_child_for_path "$watch_pid" "$deployment/v1/export" 2>/dev/null || true)
+		[[ -z $target_child ]] || break
+		sleep 0.02
+	done
+	[[ -n $target_child ]]
+	if [[ ! -r $work/inaccessible ]] && watch_child_has_argument "$target_child" "$work/inaccessible"; then
+		printf 'Unreadable target directory was passed to inotifywait\n' >&2
+		exit 1
+	fi
+	if watch_child_has_argument "$target_child" -r; then
+		printf 'Desktop target watch must not be recursive\n' >&2
+		exit 1
+	fi
+	: >"$work/watch.out"
+	printf '# in-place edit\n' >>"$deployment/v1/export/watched.desktop"
+	for _ in {1..100}; do
+		grep -Fq watched.desktop "$work/watch.out" && break
+		sleep 0.02
+	done
+	grep -Fq watched.desktop "$work/watch.out"
+	[[ $(watch_child_for_path "$watch_pid" "$deployment/v1/export") == "$target_child" ]]
+	: >"$work/watch.out"
+	cp "$work/data/applications/firefox.desktop" "$deployment/v1/export/replacement"
+	mv "$deployment/v1/export/replacement" "$deployment/v1/export/watched.desktop"
+	for _ in {1..100}; do
+		grep -Fq watched.desktop "$work/watch.out" && break
+		sleep 0.02
+	done
+	grep -Fq watched.desktop "$work/watch.out"
+	ln -s v2 "$deployment/current.next"
+	mv -Tf "$deployment/current.next" "$deployment/current"
+	for _ in {1..100}; do
+		new_child=$(watch_child_for_path "$watch_pid" "$deployment/v2/export" 2>/dev/null || true)
+		[[ -z $new_child ]] || break
+		sleep 0.02
+	done
+	[[ -n $new_child ]]
+	: >"$work/watch.out"
+	printf '# new deployment edit\n' >>"$deployment/v2/export/watched.desktop"
+	for _ in {1..100}; do
+		grep -Fq watched.desktop "$work/watch.out" && break
+		sleep 0.02
+	done
+	grep -Fq watched.desktop "$work/watch.out"
+	[[ $(watch_child_for_path "$watch_pid" "$deployment/v2/export") == "$new_child" ]]
+	: >"$work/watch.out"
+	printf 'unrelated\n' >"$deployment/v2/export/unrelated.txt"
+	sleep 0.1
+	[[ ! -s $work/watch.out ]]
+
+	# Replacing an ancestor directory must move the watch to the new inode.
+	mv "$deployment/v2/export" "$deployment/v2/export.previous"
+	mkdir "$deployment/v2/export"
+	cp "$work/data/applications/firefox.desktop" "$deployment/v2/export/watched.desktop"
+	for _ in {1..100}; do
+		rearmed_child=$(watch_child_for_path "$watch_pid" "$deployment/v2/export" 2>/dev/null || true)
+		[[ -n $rearmed_child && $rearmed_child != "$new_child" ]] && break
+		sleep 0.02
+	done
+	[[ -n $rearmed_child && $rearmed_child != "$new_child" ]]
+	: >"$work/watch.out"
+	printf '# replaced directory edit\n' >>"$deployment/v2/export/watched.desktop"
+	for _ in {1..100}; do
+		grep -Fq watched.desktop "$work/watch.out" && break
+		sleep 0.02
+	done
+	grep -Fq watched.desktop "$work/watch.out"
+
+	# Importing a populated nested directory emits only a directory move event.
+	mkdir -p "$work/import/vendor" "$work/import-targets"
+	cp "$work/data/applications/firefox.desktop" "$work/import-targets/imported.desktop"
+	ln -s "$work/import-targets/imported.desktop" "$work/import/vendor/imported.desktop"
+	mv "$work/import/vendor" "$work/data/applications/imported-vendor"
+	for _ in {1..100}; do
+		import_child=$(watch_child_for_path "$watch_pid" "$work/import-targets" 2>/dev/null || true)
+		[[ -z $import_child ]] || break
+		sleep 0.02
+	done
+	[[ -n $import_child ]]
+	: >"$work/watch.out"
+	printf '# imported target edit\n' >>"$work/import-targets/imported.desktop"
+	for _ in {1..100}; do
+		grep -Fq imported.desktop "$work/watch.out" && break
+		sleep 0.02
+	done
+	grep -Fq imported.desktop "$work/watch.out"
 
 	printf '[Default Applications]\n' >"$work/data/applications/mimeapps.list"
 	printf '[Default Applications]\n' >"$work/data/applications/fedora-mimeapps.list"
@@ -1107,6 +1284,54 @@ if command -v inotifywait >/dev/null 2>&1; then
 	wait "$watch_pid" 2>/dev/null || true
 	watch_pid=
 
+	# Lose an external target directory after collection, before target observer
+	# startup. No target observer exists yet to report the rename itself.
+	raced_target=$work/watch-target-race
+	mkdir -p "$raced_target/export"
+	cp "$work/data/applications/replacement.desktop" "$raced_target/export/race.desktop"
+	ln -s "$raced_target/export/race.desktop" "$work/data/applications/race.desktop"
+	target_race_marker=$work/watch-target-race.marker
+	env "${env_common[@]}" PATH="$work/fail-bin:$work/bin:/usr/bin:/bin" \
+		DWM_TEST_REAL_MV="$REAL_MV" DWM_TEST_REAL_INOTIFYWAIT="$REAL_INOTIFYWAIT" \
+		DWM_TEST_TARGET_WATCH_RACE="$raced_target/export" \
+		DWM_TEST_TARGET_WATCH_MARKER="$target_race_marker" \
+		"$BASH_BIN" "$HELPER" watch >"$work/watch-target-race.out" \
+		2>"$work/watch-target-race.err" &
+	watch_pid=$!
+	for _ in {1..100}; do
+		[[ -s $target_race_marker ]] && break
+		sleep 0.02
+	done
+	[[ -s $target_race_marker ]]
+	failed_target_child=$(<"$target_race_marker")
+	for _ in {1..100}; do
+		recovered_target_child=$(watch_child_for_path "$watch_pid" "$raced_target" 2>/dev/null || true)
+		[[ -n $recovered_target_child && $recovered_target_child != "$failed_target_child" ]] && break
+		sleep 0.02
+	done
+	[[ -n $recovered_target_child && $recovered_target_child != "$failed_target_child" ]]
+	process_identity_is_live "$(process_identity "$watch_pid")"
+	# Recovery must refresh the missing target before any later filesystem change.
+	grep -Fqx 'REARM:export' "$work/watch-target-race.out"
+	mkdir "$raced_target/export"
+	for _ in {1..100}; do
+		recovered_leaf_child=$(watch_child_for_path "$watch_pid" "$raced_target/export" 2>/dev/null || true)
+		[[ -n $recovered_leaf_child && $recovered_leaf_child != "$recovered_target_child" ]] && break
+		sleep 0.02
+	done
+	[[ -n $recovered_leaf_child && $recovered_leaf_child != "$recovered_target_child" ]]
+	cp "$work/data/applications/replacement.desktop" "$raced_target/export/race.desktop"
+	: >"$work/watch-target-race.out"
+	printf '# recovered target edit\n' >>"$raced_target/export/race.desktop"
+	for _ in {1..100}; do
+		grep -Fq race.desktop "$work/watch-target-race.out" && break
+		sleep 0.02
+	done
+	grep -Fq race.desktop "$work/watch-target-race.out"
+	kill "$watch_pid"
+	wait "$watch_pid" 2>/dev/null || true
+	watch_pid=
+
 	owner_pid_file=$work/watch-owner.pid
 	# shellcheck disable=SC2016 # Positional parameters are expanded by the child shell.
 	env "${env_common[@]}" "$BASH_BIN" -c '
@@ -1123,6 +1348,7 @@ if command -v inotifywait >/dev/null 2>&1; then
 	[[ -s $owner_pid_file ]]
 	watch_pid=$(<"$owner_pid_file")
 	watch_identity=$(process_identity "$watch_pid")
+	# Config roots, physical applications, generation, target, monitor and owner.
 	descendant_identities=()
 	for _ in {1..100}; do
 		descendant_identities=()
@@ -1131,10 +1357,10 @@ if command -v inotifywait >/dev/null 2>&1; then
 			descendant_identity=$(process_identity "$descendant_pid" 2>/dev/null || true)
 			[[ -z $descendant_identity ]] || descendant_identities+=("$descendant_identity")
 		done < <(pgrep -P "$watch_pid" 2>/dev/null || true)
-		((${#descendant_identities[@]} == 6)) && break
+		((${#descendant_identities[@]} == 7)) && break
 		sleep 0.02
 	done
-	((${#descendant_identities[@]} == 6))
+	((${#descendant_identities[@]} == 7))
 	kill -KILL "$watch_owner_pid"
 	wait "$watch_owner_pid" 2>/dev/null || true
 	watch_owner_pid=
