@@ -1,0 +1,4 @@
+interface:
+  display_name: "dwm-titus"
+  short_description: "Customize the dwm-titus desktop"
+  default_prompt: "Use $dwm-titus to change my dwm-titus keybindings, theme, window rules, or panel."
