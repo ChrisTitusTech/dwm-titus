@@ -304,3 +304,20 @@ scripts/run-tests
 
 Project requirements and active work are tracked in [SPEC.md](SPEC.md),
 [ROADMAP.md](ROADMAP.md), and [TASKS.md](TASKS.md).
+
+### Automatic time synchronization
+
+New Fedora installs and both image variants enable `systemd-timesyncd.service`
+for automatic network time synchronization. Fedora provides the service in the
+`systemd-udev` package tracked by the shared dependency map. The existing-system
+installer and offline compressed-image bootstrap keep an enabled or active
+chronyd, chronyd-restricted, ntpd, ntpsec, or openntpd provider and preserve an
+explicit timesyncd mask. They never stop an existing provider or edit its servers.
+
+Existing installations can apply the default by rerunning `./install.sh` with
+their usual profile. No migration is needed when an existing provider already
+synchronizes the clock. A preserved mask requires an administrator's decision
+before `sudo systemctl unmask systemd-timesyncd.service` and rerunning installation.
+Check with `timedatectl status` and `systemctl is-enabled systemd-timesyncd.service`;
+on timesyncd systems, `timedatectl show-timesync` reports server and sample details.
+Network access to an NTP server is required; enablement alone does not prove sync.

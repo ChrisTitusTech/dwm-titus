@@ -44,7 +44,8 @@ dwm_packages() {
 		printf '%s\n' xorg-x11-server-Xorg xorg-x11-xinit xrandr xset xsetroot xinput setxkbmap xkbset
 		;;
 	fedora:runtime-required)
-		printf '%s\n' dbus-x11 curl git procps-ng psmisc unzip util-linux xclip xdotool xprop xdg-utils
+		# Fedora packages systemd-timesyncd.service in systemd-udev.
+		printf '%s\n' systemd-udev dbus-x11 curl git procps-ng psmisc unzip util-linux xclip xdotool xprop xdg-utils
 		dwm_packages "$family" keyring
 		;;
 	fedora:keyring)

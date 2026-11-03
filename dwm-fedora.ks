@@ -29,7 +29,7 @@ repo --name="mwt-packages" --baseurl="https://mirror.mwt.me/shiftkey-desktop/rpm
 %include /tmp/dwm-titus-gaming-repo
 
 bootloader --location=mbr
-services --enabled=NetworkManager
+services --enabled=NetworkManager,systemd-timesyncd
 
 %pre --interpreter=/bin/sh
 gaming_repo=/tmp/dwm-titus-gaming-repo
@@ -56,6 +56,9 @@ esac
 %end
 
 %packages
+# Dedicated images use timesyncd; existing-system installs preserve providers.
+-chrony
+systemd-udev
 @core
 @base-x
 sudo

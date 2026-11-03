@@ -4,6 +4,8 @@ set -euo pipefail
 [[ ${1:-} == --installer-target && -f /etc/dwm-titus-image ]]
 [[ $(id -u) == 0 ]]
 source_dir=/usr/share/dwm-titus-image
+# Configure once in the target chroot before copying the source to new users.
+bash "$source_dir/scripts/configure-timesync.sh"
 mapfile -t users < <(awk -F: '$3 >= 1000 && $3 < 60000 && $6 ~ "^/home/" && $7 !~ /(nologin|false)$/ {print $1}' /etc/passwd)
 ((${#users[@]} > 0)) || {
 	echo 'Create a regular user in Anaconda.' >&2

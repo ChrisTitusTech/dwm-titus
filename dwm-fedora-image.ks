@@ -17,6 +17,9 @@ services --enabled=NetworkManager,lightdm
 set -euo pipefail
 [[ -f /mnt/sysimage/etc/dwm-titus-image ]]
 install -o 0 -g 0 -m 0755 /run/install/repo/dwm-titus/scripts/image/finish-install.sh /mnt/sysimage/usr/share/dwm-titus-image/scripts/image/finish-install.sh
+# The shared helper also upgrades legacy payloads without network access;
+# Fedora's base systemd-udev package already contains timesyncd.
+install -o 0 -g 0 -m 0755 /run/install/repo/dwm-titus/scripts/configure-timesync.sh /mnt/sysimage/usr/share/dwm-titus-image/scripts/configure-timesync.sh
 # Refresh seeders only in images that already ship their required tools/config.
 # Legacy compressed captures retain their original account defaults.
 shared_seeder=/mnt/sysimage/usr/share/dwm-titus-image/scripts/seed-default-apps.sh

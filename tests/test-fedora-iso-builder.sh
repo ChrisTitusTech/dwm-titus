@@ -496,6 +496,7 @@ for modern in (False, True):
     test_body = test_body.replace('-o 0 -g 0', f'-o {os.getuid()} -g {os.getgid()}')
     subprocess.run(['bash', '-ec', 'set -euo pipefail\n' + test_body], check=True)
     assert (scripts / 'image/finish-install.sh').read_bytes() == (repo / 'scripts/image/finish-install.sh').read_bytes()
+    assert (scripts / 'configure-timesync.sh').read_bytes() == (repo / 'scripts/configure-timesync.sh').read_bytes()
     if modern:
         assert shared.read_bytes() == (repo / 'scripts/seed-default-apps.sh').read_bytes()
         assert (scripts / 'image/seed-apps.sh').read_bytes() == (repo / 'scripts/image/seed-apps.sh').read_bytes()
