@@ -157,6 +157,29 @@ class AgentTests(unittest.TestCase):
         self.run_helper("dwm-crash-watch", "--journal")
         self.assertEqual((self.work / "args").read_text().splitlines(), ["notified"])
 
+    def test_autostart_reuses_existing_crash_watcher(self):
+        self.fake("xprop", "#!/bin/sh\nexec sleep 30\n")
+        self.fake("journalctl", '#!/bin/sh\necho started >> "$ARGS"\nexec sleep 30\n')
+        self.fake("notify-send", "#!/bin/sh\nexit 0\n")
+        (self.bin / "dwm-crash-watch").symlink_to(REPO / "scripts/dwm-crash-watch")
+        process = subprocess.Popen([str(self.bin / "dwm-crash-watch")], env=self.env)
+        try:
+            deadline = time.monotonic() + 5
+            while not (self.work / "args").exists() and time.monotonic() < deadline:
+                time.sleep(0.05)
+            self.assertTrue((self.work / "args").exists())
+            source = (REPO / "scripts/autostart.sh").read_text()
+            functions = source.split("\nquickshell_tray_ready()", 1)[0]
+            startup = source.split("# Offer an AI diagnosis", 1)[1].split("# Polkit", 1)[0]
+            startup = startup.split("crash_watch=", 1)[1]
+            for _ in range(2):
+                subprocess.run(["sh", "-c", functions + "\ncrash_watch=" + startup],
+                               env=self.env, check=True, timeout=20)
+            self.assertEqual((self.work / "args").read_text().splitlines(), ["started"])
+        finally:
+            process.terminate()
+            process.wait(timeout=5)
+
     def test_crash_watch_exits_with_display(self):
         self.fake("xprop", "#!/bin/sh\nsleep 0.2\n")
         self.fake("journalctl", '#!/bin/sh\necho $$ > "$ARGS"\nexec sleep 30\n')

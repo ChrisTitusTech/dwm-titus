@@ -573,7 +573,7 @@ if ! command -v "$crash_watch" >/dev/null 2>&1; then
 		;;
 	esac
 fi
-start_detached_once dwm-crash-watch "$crash_watch"
+start_detached_display_command_once "$crash_watch"
 
 # Polkit authentication agent (try common agents)
 for agent in \
