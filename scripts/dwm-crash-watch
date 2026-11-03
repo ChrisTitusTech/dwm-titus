@@ -21,7 +21,7 @@ declare -A last_notified
 
 # notify-send waits for the click, so each announcement runs on its own.
 announce() {
-	local name=$1 pid=$2 exe=$3 signal=$4 action label
+	local name=$1 pid=$2 exe=$3 signal=$4 timestamp=$5 boot=$6 action label
 
 	if [[ -n $(dwm-agent default 2>/dev/null) ]]; then
 		label="Diagnose with AI"
@@ -34,19 +34,20 @@ announce() {
 			"Process crashed: $name" "Signal $signal. Click to diagnose with AI." 2>/dev/null) || exit 0
 		[[ $action == diagnose ]] || exit 0
 		# Crash details are separate argv words, never shell text.
-		setsid -f dwm-agent-diagnose crash "$pid" "$name" "$exe" "$signal" </dev/null >/dev/null 2>&1
+		setsid -f dwm-agent-diagnose crash "$pid" "$name" "$exe" "$signal" "$timestamp" "$boot" </dev/null >/dev/null 2>&1
 	) &
 }
 
 # -n 0 so a restart does not announce crashes that were already handled.
 journalctl -f -n 0 -o json "MESSAGE_ID=$COREDUMP_MESSAGE_ID" "COREDUMP_UID=$UID" 2>/dev/null |
 	while IFS= read -r entry; do
-		IFS=$'\t' read -r uid comm pid exe signal < <(
+		IFS=$'\t' read -r uid comm pid exe signal timestamp boot < <(
 			jq -r '[(.COREDUMP_UID // ._UID // "-"),
 				(.COREDUMP_COMM // "-"),
 				(.COREDUMP_PID // "-"),
 				(.COREDUMP_EXE // "-"),
-				(.COREDUMP_SIGNAL_NAME // "-")] | @tsv' <<<"$entry" 2>/dev/null
+				(.COREDUMP_SIGNAL_NAME // "-"),
+				(.__REALTIME_TIMESTAMP // "-"), (._BOOT_ID // "-")] | @tsv' <<<"$entry" 2>/dev/null
 		)
 
 		[[ ${pid:-} =~ ^[0-9]+$ ]] || continue
@@ -67,5 +68,5 @@ journalctl -f -n 0 -o json "MESSAGE_ID=$COREDUMP_MESSAGE_ID" "COREDUMP_UID=$UID"
 		now=$EPOCHSECONDS
 		(((now - ${last_notified[$name]:-0}) < dedupe_seconds)) && continue
 		last_notified[$name]=$now
-		announce "$name" "$pid" "$exe" "$signal"
+		announce "$name" "$pid" "$exe" "$signal" "$timestamp" "$boot"
 	done

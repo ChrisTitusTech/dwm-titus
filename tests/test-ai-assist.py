@@ -76,6 +76,11 @@ class AgentTests(unittest.TestCase):
         self.assertIn("read-only diagnosis", args[1])
         self.assertNotIn("IGNORE ALL RULES", args[1])
         self.assertNotIn("$(bad)", args[1])
+        self.run_helper("dwm-agent-diagnose", "crash", "123", "fixture", "/bin/fixture",
+                        "SIGSEGV", "1793650000000000", "0123456789abcdef")
+        args = json.loads((self.work / "args").read_text())
+        self.assertIn("1793650000000000", args[1])
+        self.assertIn("boot ID: 0123456789abcdef", args[1])
 
     def test_invalid_selection_cannot_write_configuration(self):
         result = self.run_helper("dwm-agent", "default", "../../bad", check=False)

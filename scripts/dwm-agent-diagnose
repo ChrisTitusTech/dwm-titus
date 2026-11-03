@@ -11,7 +11,7 @@ system_skill=/usr/share/dwm-titus/agents/skills/dwm-titus-debug/SKILL.md
 
 usage() {
 	cat <<'EOF'
-Usage: dwm-agent-diagnose crash <pid> [comm] [exe] [signal]
+Usage: dwm-agent-diagnose crash <pid> [comm] [exe] [signal] [journal-usec] [boot-id]
        dwm-agent-diagnose hang <window> [pid] [class] [title]
        dwm-agent-diagnose window
 EOF
@@ -73,12 +73,13 @@ EOF
 }
 
 crash_prompt() {
-	local pid=$1 comm exe signal when
+	local pid=$1 comm exe signal timestamp boot
 	[[ $pid =~ ^[0-9]+$ ]] || die "not a PID: $pid (see: coredumpctl list)"
 	comm=$(ident "${2:-}")
 	exe=$(path "${3:-}")
 	signal=$(ident "${4:-}")
-	when=$(coredumpctl list "$pid" --no-pager --no-legend 2>/dev/null | tail -n 1 | cut -d' ' -f1-4) || true
+	timestamp=$(number "${5:-}")
+	boot=$(ident "${6:-}")
 	cat <<EOF
 A process crashed on this dwm-titus desktop and I want to know why.
 
@@ -87,7 +88,11 @@ What systemd-coredump recorded:
   PID:     $pid
   binary:  ${exe:-unknown}
   signal:  ${signal:-unknown}
-  core recorded: ${when:-unknown}
+  journal realtime timestamp (microseconds): ${timestamp:-unknown}
+  boot ID: ${boot:-unknown}
+
+Use the timestamp and boot ID to match the core record; a PID alone can be
+reused. If no exact record is available, report that limitation.
 EOF
 	footer
 }

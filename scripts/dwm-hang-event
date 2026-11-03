@@ -78,8 +78,8 @@ close_notification() {
 	rm -f "$record"
 	if [[ $waiter =~ ^[0-9]+$ && -n $waiter_start ]] && [[ $(start_time_of "$waiter") == "$waiter_start" ]]; then
 		kill "$waiter" 2>/dev/null || true
+		close_id "$id"
 	fi
-	close_id "$id"
 }
 
 case $state in
