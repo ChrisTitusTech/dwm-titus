@@ -12,6 +12,7 @@ Options:
   --version VERSION       Confirm the committed config.mk VERSION to release.
                           Accepts 0.5.0 or v0.5.0.
   --iso PATH              Upload an installer ISO alongside the source archive.
+  --iso-variant VARIANT   Name the ISO as standard (default) or nvidia.
   --notes FILE            Use FILE as release notes.
   --dry-run               Print the planned commands and version bump only.
   --skip-checks           Skip make release-check.
@@ -86,6 +87,7 @@ config_mk="$repo_root/config.mk"
 default_iso_path="$repo_root/dwm-titus.iso"
 release_version=
 iso_path=
+iso_variant=standard
 notes_file=
 dry_run=false
 skip_checks=false
@@ -115,6 +117,18 @@ while (($# > 0)); do
 		;;
 	--iso=*)
 		iso_path=${1#*=}
+		shift
+		;;
+	--iso-variant)
+		if (($# < 2)); then
+			err "--iso-variant requires a value."
+			exit 1
+		fi
+		iso_variant=$2
+		shift 2
+		;;
+	--iso-variant=*)
+		iso_variant=${1#*=}
 		shift
 		;;
 	--notes)
@@ -152,6 +166,14 @@ while (($# > 0)); do
 		;;
 	esac
 done
+
+case $iso_variant in
+standard | nvidia) ;;
+*)
+	err "--iso-variant must be standard or nvidia."
+	exit 1
+	;;
+esac
 
 if [[ ! -f $config_mk ]]; then
 	err "missing config.mk at $config_mk"
@@ -244,18 +266,60 @@ else
 	run make release
 fi
 
+release_iso=
 assets=("$release_archive")
 if [[ -n $iso_path ]]; then
-	assets+=("$iso_path")
+	iso_suffix=
+	[[ $iso_variant == standard ]] || iso_suffix=-nvidia
+	release_iso="$repo_root/release/dwm-titus-$release_version$iso_suffix.iso"
+	# Keep the supplied image intact and upload a consistently versioned name.
+	if [[ ! $iso_path -ef $release_iso ]]; then
+		run mkdir -p "$repo_root/release"
+		run cp --reflink=auto -- "$iso_path" "$release_iso"
+	fi
+	assets+=("$release_iso")
 fi
 
+# Retained remote variants also need hashes when publishing from a fresh checkout.
+# Download their bytes rather than trusting a prior manifest or a stale local ISO.
+remote_assets_dir=
+trap '[[ -z $remote_assets_dir ]] || rm -rf -- "$remote_assets_dir"' EXIT
+remote_asset_names=()
+if [[ $dry_run != true ]] && remote_release_exists; then
+	release_exists=true
+	remote_names=$(gh release view "$tag" --json assets --jq '.assets[].name')
+	while IFS= read -r name; do
+		case $name in
+		"dwm-titus-$release_version.iso" | "dwm-titus-$release_version-nvidia.iso") ;;
+		*) continue ;;
+		esac
+		[[ $name != "${release_iso##*/}" ]] || continue
+		if [[ -z $remote_assets_dir ]]; then
+			remote_assets_dir=$(mktemp -d "$repo_root/release/.remote-assets.XXXXXX")
+		fi
+		gh release download "$tag" --pattern "$name" --dir "$remote_assets_dir"
+		remote_asset_names+=("$name")
+	done <<<"$remote_names"
+fi
+
+# Use download filenames, not local absolute paths, in the checksum manifest.
+asset_names=()
+for asset in "${assets[@]}"; do
+	asset_names+=("${asset##*/}")
+done
+
 if [[ $dry_run == true ]]; then
-	printf '+ sha256sum'
-	printf ' %q' "${assets[@]}"
+	printf '+ cd %q && sha256sum' "$repo_root/release"
+	printf ' %q' "${asset_names[@]}"
 	printf ' > %q\n' "$checksums"
 else
 	mkdir -p "$(dirname "$checksums")"
-	sha256sum "${assets[@]}" >"$checksums"
+	{
+		(cd "$repo_root/release" && sha256sum "${asset_names[@]}")
+		if ((${#remote_asset_names[@]} > 0)); then
+			(cd "$remote_assets_dir" && sha256sum "${remote_asset_names[@]}")
+		fi
+	} >"$checksums"
 fi
 assets+=("$checksums")
 
@@ -275,9 +339,6 @@ else
 			-f "sha=$head_sha" >/dev/null
 	fi
 
-	if remote_release_exists; then
-		release_exists=true
-	fi
 fi
 
 if [[ $release_exists == true ]]; then

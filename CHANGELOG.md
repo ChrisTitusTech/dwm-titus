@@ -136,6 +136,9 @@ versions from `config.mk`.
   copy, keeps every other line, and saves the original as
   `kitty.conf.dwm-titus.bak` with the same permissions.
 
+- Upload release ISOs with the dwm-titus version in their filenames, including
+  an explicit NVIDIA variant, and generate checksums using download filenames.
+
 - Require GNOME Keyring and its separate PAM module in every install profile,
   detect missing keyring packages in dependency checks and System Health, and
   repair them during source and desktop updates. This prevents repeated unlock
