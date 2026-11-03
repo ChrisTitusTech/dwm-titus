@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import select
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -103,6 +104,58 @@ ShellRoot {
         for client in clients:
             client.wait(timeout=5)
         print("Notification actions Xvfb: buttons, default, overflow history, persistence, cleanup PASS")
+
+        # Connect real dwm ping detection to the actual helper and notification
+        # server. Only the provider is fake; no account or network is touched.
+        binary = work / "bin"
+        binary.mkdir()
+        for source in (repo / "dwm", repo / "scripts/dwm-hang-event",
+                       repo / "scripts/dwm-agent-diagnose"):
+            shutil.copy(source, binary / source.name)
+        fake_agent = binary / "dwm-agent"
+        fake_agent.write_text('#!/usr/bin/python3\nimport json,os,sys\n'
+                              'if sys.argv[1:] == ["default"]: print("codex")\n'
+                              'else: open(os.environ["PROMPT_CAPTURE"], "w").write(json.dumps(sys.argv[1:]))\n')
+        fake_agent.chmod(0o755)
+        env["PATH"] = str(binary) + ":" + env["PATH"]
+        capture = work / "prompt.json"
+        env["PROMPT_CAPTURE"] = str(capture)
+        config = Path(env["XDG_CONFIG_HOME"]) / "dwm-titus"
+        config.mkdir(parents=True, exist_ok=True)
+        for source in (repo / "config").glob("*.toml"):
+            shutil.copy(source, config)
+        (config / "hang-detection").touch()
+        subprocess.run([os.environ.get("CC", "cc"), str(repo / "tests/fixtures/ping-client.c"),
+                        "-lX11", "-o", str(binary / "ping-client")], check=True)
+        wm = subprocess.Popen([str(binary / "dwm")], env=env, stdout=log, stderr=log)
+        processes.append(wm)
+        app = subprocess.Popen([str(binary / "ping-client")], env=env,
+                               stdout=subprocess.PIPE, text=True, stderr=log)
+        processes.append(app)
+        assert select.select([app.stdout], [], [], 10)[0]
+        assert app.stdout.readline().startswith("0x")
+        time.sleep(1)
+        app.send_signal(signal.SIGSTOP)
+        wait_for(lambda: bool(state()["keys"]), 25)
+        key = state()["keys"][0]
+        ipc("invoke", key, "diagnose")
+        wait_for(capture.exists)
+        prompt_args = json.loads(capture.read_text())
+        assert prompt_args[0] == "--prompt" and "read-only diagnosis" in prompt_args[1]
+        assert "AI assistance ping fixture" not in prompt_args[1]
+        app.send_signal(signal.SIGCONT)
+        time.sleep(1)
+        app.send_signal(signal.SIGSTOP)
+        wait_for(lambda: bool(state()["keys"]), 25)
+        app.send_signal(signal.SIGCONT)
+        wait_for(lambda: not state()["keys"])
+        app.send_signal(signal.SIGSTOP)
+        wait_for(lambda: bool(state()["keys"]), 25)
+        ipc("invoke", state()["keys"][0], "kill")
+        time.sleep(0.5)
+        app.send_signal(signal.SIGCONT)
+        assert app.wait(timeout=5) != 0
+        print("AI diagnosis end-to-end: real hang offer, sanitized prompt, recovery, X11 force quit PASS")
     except BaseException:
         log.flush()
         print((work / "shell.log").read_text(), file=sys.stderr)
@@ -110,6 +163,7 @@ ShellRoot {
     finally:
         for process in reversed(processes):
             if process.poll() is None:
+                process.send_signal(signal.SIGCONT)
                 process.terminate()
                 try:
                     process.wait(timeout=5)

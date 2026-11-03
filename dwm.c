@@ -3094,11 +3094,12 @@ hangevent(Client *c, const char *state)
 	long long now = hangnow();
 	char *separator;
 	char *argv[8];
+	pid_t eventpid = c->swallowing ? c->swallowing->pid : c->pid;
 	XClassHint ch = { NULL, NULL };
 	ssize_t len;
 
 	snprintf(winid, sizeof(winid), "0x%lx", (unsigned long)c->win);
-	snprintf(pidstr, sizeof(pidstr), "%d", c->pid > 0 ? (int)c->pid : 0);
+	snprintf(pidstr, sizeof(pidstr), "%d", eventpid > 0 ? (int)eventpid : 0);
 	XGetClassHint(dpy, c->win, &ch);
 
 	argv[0] = "dwm-hang-event";
@@ -4672,6 +4673,11 @@ swallow(Client *p, Client *c)
 	setclientstate(c, WithdrawnState);
 	XUnmapWindow(dpy, p->win);
 
+	/* Ping state belongs to the X window, not the reused Client record. */
+	if (p->hung)
+		hangevent(p, "gone");
+	p->hung = p->pingpending = 0;
+	c->hung = c->pingpending = 0;
 	p->swallowing = c;
 	c->mon = p->mon;
 
@@ -5252,6 +5258,7 @@ untrackoverridewindow(Window win)
 void
 unswallow(Client *c)
 {
+	c->hung = c->pingpending = 0;
 	c->win = c->swallowing->win;
 	c->ewmhabove = c->swallowing->ewmhabove;
 	c->iswindowedfullscreen = c->swallowing->iswindowedfullscreen;

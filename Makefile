@@ -541,7 +541,7 @@ check-quickshell-defaults-model:
 check-ai-assist:
 	$(call run_managed_test,python3 tests/test-ai-assist.py)
 
-check-notification-actions-xvfb:
+check-notification-actions-xvfb: all
 	$(call run_managed_test,python3 tests/test-notification-actions-xvfb.py)
 
 check-ai-assist-xvfb: all
