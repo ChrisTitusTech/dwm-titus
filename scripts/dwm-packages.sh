@@ -23,7 +23,7 @@ dwm_packages() {
 			jq inotify-tools gawk google-noto-sans-fonts setxkbmap xkbcomp xmodmap xinput
 		;;
 	fedora:image-build)
-		printf '%s\n' xorriso rsync squashfs-tools-ng isomd5sum python3-pillow fontconfig google-noto-sans-fonts
+		printf '%s\n' xorriso mtools rsync squashfs-tools-ng isomd5sum diffutils python3-pillow fontconfig google-noto-sans-fonts
 		;;
 	fedora:image-factory)
 		dwm_packages "$family" image-build
