@@ -63,7 +63,7 @@ if find "$test_root" -mindepth 1 -print -quit | grep -q .; then
 fi
 
 # Inherited desktop XDG paths must not be visible as default test storage.
-for kind in config data state cache; do
+for kind in config data state cache runtime; do
 	mkdir -p "$work/host-$kind"
 	printf '%s\n' "host-$kind sentinel" >"$work/host-$kind/sentinel"
 done
@@ -71,18 +71,59 @@ xdg_out=$work/xdg.out
 # shellcheck disable=SC2016
 XDG_CONFIG_HOME=$work/host-config XDG_DATA_HOME=$work/host-data \
 	XDG_STATE_HOME=$work/host-state XDG_CACHE_HOME=$work/host-cache \
+	XDG_RUNTIME_DIR=$work/host-runtime \
 	DWM_TEST_TMP_ROOT=$work/xdg-root "$repo/scripts/run-tests" bash -eu -c '
-    for directory in "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_STATE_HOME" "$XDG_CACHE_HOME"; do
+    for directory in "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_STATE_HOME" "$XDG_CACHE_HOME" "$XDG_RUNTIME_DIR"; do
         case "$directory" in "$DWM_TEST_WORKSPACE"/xdg/*) ;; *) exit 3 ;; esac
         test -d "$directory"
         printf "test storage\n" >"$directory/child-write"
     done
+    test "$(stat -c %a "$XDG_RUNTIME_DIR")" = 700
+    test "$(stat -c %u "$XDG_RUNTIME_DIR")" = "$(id -u)"
 ' >"$xdg_out"
 assert_workspace_removed "$xdg_out" "$work/xdg-root" XDG
-for kind in config data state cache; do
+for kind in config data state cache runtime; do
 	[[ $(cat "$work/host-$kind/sentinel") == "host-$kind sentinel" ]]
 	[[ $(find "$work/host-$kind" -mindepth 1 | wc -l) == 1 ]]
 done
+
+# Exercise the environment inherited by an activated service, not only the
+# test client. A private bus with the host runtime still shares portal mounts.
+cat >"$work/activation-probe.sh" <<'EOF'
+#!/bin/sh
+set -eu
+printf '%s\n' "$XDG_RUNTIME_DIR" >"$XDG_RUNTIME_DIR/activation-runtime"
+EOF
+cat >"$work/activation-test.py" <<'EOF'
+import os
+from pathlib import Path
+import shlex
+import subprocess
+import sys
+
+runtime = Path(os.environ["XDG_RUNTIME_DIR"])
+assert runtime == Path(os.environ["DWM_TEST_WORKSPACE"]) / "xdg/runtime"
+services = Path(os.environ["XDG_DATA_HOME"]) / "dbus-1/services"
+services.mkdir(parents=True)
+(services / "org.dwm.TestRuntime.service").write_text(
+    "[D-BUS Service]\nName=org.dwm.TestRuntime\nExec=/bin/sh "
+    + shlex.quote(sys.argv[1]) + "\n")
+# The probe exits without claiming the name; activation must fail, but only
+# after D-Bus has launched it and it has recorded the daemon's environment.
+result = subprocess.run([
+    "dbus-run-session", "--", "dbus-send", "--session", "--print-reply",
+    "--reply-timeout=5000", "--dest=org.freedesktop.DBus",
+    "/org/freedesktop/DBus", "org.freedesktop.DBus.StartServiceByName",
+    "string:org.dwm.TestRuntime", "uint32:0"], capture_output=True, timeout=10)
+assert result.returncode != 0
+assert (runtime / "activation-runtime").read_text().strip() == str(runtime)
+assert not (Path(sys.argv[2]) / "activation-runtime").exists()
+EOF
+activation_out=$work/activation.out
+XDG_RUNTIME_DIR=$work/host-runtime DWM_TEST_TMP_ROOT=$work/activation-root \
+	"$repo/scripts/run-tests" python3 "$work/activation-test.py" \
+	"$work/activation-probe.sh" "$work/host-runtime" >"$activation_out"
+assert_workspace_removed "$activation_out" "$work/activation-root" Activation
 
 descendant_out=$work/descendant.out
 # Expansion is intentionally deferred to the child shell.

@@ -100,6 +100,10 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Isolate the managed test runtime directory before starting private D-Bus
+  sessions, preventing test document portals from replacing the live desktop's
+  portal mount and leaving its service failed.
+
 - Show and select symlinked Flatpak desktop entries in Settings defaults while
   retaining desktop-file size limits and avoiding linked-directory traversal.
 
