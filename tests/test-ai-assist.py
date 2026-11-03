@@ -158,12 +158,79 @@ class AgentTests(unittest.TestCase):
         self.run_helper("dwm-crash-watch", "--journal")
         self.assertEqual((self.work / "args").read_text().splitlines(), ["notified"])
 
+    def test_force_quit_checks_generation_and_window_identity_under_grab(self):
+        source = (REPO / "dwm.c").read_text()
+        function = source[source.index("static void\nhangkillrequest(void)"):
+                          source.index("\n/* Run dwm-hang-event")]
+        harness = r'''
+#include <X11/Xlib.h>
+#include <X11/Xatom.h>
+#include <assert.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+typedef struct { Window win; int hung; unsigned long long hanggeneration; } Client;
+static Client client = {10, 1, 0x180000001ULL};
+static Window root=1;
+static Display *dpy;
+static Atom hangrequestatom=2, hanggenerationatom=3;
+static int grabbed, kills, identity=1;
+static char request_value[96];
+static Client *wintoclient(Window w) { return w==client.win ? &client : NULL; }
+static int xerror(Display *d, XErrorEvent *e) { (void)d; (void)e; return 0; }
+static int xerrordummy(Display *d, XErrorEvent *e) { (void)d; (void)e; return 0; }
+int XGrabServer(Display *d) { (void)d; grabbed=1; return 0; }
+int XUngrabServer(Display *d) { (void)d; grabbed=0; return 0; }
+XErrorHandler XSetErrorHandler(XErrorHandler h) { return h; }
+int XSync(Display *d, Bool discard) { (void)d; (void)discard; return 0; }
+int XFlush(Display *d) { (void)d; return 0; }
+int XFree(void *p) { free(p); return 0; }
+int XSetCloseDownMode(Display *d, int mode) { (void)d; (void)mode; return 0; }
+int XDeleteProperty(Display *d, Window w, Atom a) { (void)d; (void)w; (void)a; return 0; }
+int XKillClient(Display *d, XID w) { (void)d; assert(grabbed && w==client.win); kills++; return 0; }
+int XGetWindowProperty(Display *d, Window w, Atom a, long offset, long length,
+    Bool del, Atom req, Atom *type, int *format, unsigned long *count,
+    unsigned long *after, unsigned char **data) {
+    (void)d; (void)a; (void)offset; (void)length; (void)del; (void)req;
+    assert(grabbed); *after=0; *data=NULL;
+    if (w==root) {
+        *type=XA_STRING; *format=8; *count=strlen(request_value);
+        *data=malloc(*count+1); memcpy(*data,request_value,*count+1);
+    } else if (identity) {
+        *type=XA_CARDINAL; *format=32; *count=2;
+        unsigned long *values=malloc(2*sizeof(unsigned long));
+        /* Simulate LP64 Xlib sign extension of a high-bit CARDINAL. */
+        values[0]=(unsigned long)(long)(int)0x80000001U;
+        values[1]=identity==1 ? 1 : 2;
+        *data=(unsigned char *)values;
+    } else { *type=None; *format=0; *count=0; }
+    return Success;
+}
+'''
+        main = r'''
+int main(void) {
+    snprintf(request_value,sizeof(request_value),"0xa %llu",client.hanggeneration+1);
+    hangkillrequest(); assert(!kills && !grabbed);
+    snprintf(request_value,sizeof(request_value),"0xa %llu",client.hanggeneration);
+    identity=0; hangkillrequest(); assert(!kills && !grabbed);
+    identity=2; hangkillrequest(); assert(!kills && !grabbed);
+    identity=1; client.hung=0; hangkillrequest(); assert(!kills && !grabbed);
+    client.hung=1; hangkillrequest(); assert(kills==1 && !grabbed);
+    return 0;
+}
+'''
+        binary = self.work / "kill-contract"
+        subprocess.run([os.environ.get("CC", "cc"), "-std=c99", "-Wall", "-Wextra",
+                        "-x", "c", "-", "-o", str(binary)], input=harness+function+main,
+                       text=True, check=True, timeout=30)
+        subprocess.run([str(binary)], check=True, timeout=5)
+
     def test_ping_cache_and_legacy_serial_wrap(self):
         source = (REPO / "dwm.c").read_text()
         functions = source[source.index("static void\nupdatepingprotocol(Client"):
                            source.index("\nstatic long long hanglastround")]
         functions += source[source.index("static void\nhangpong(Window"):
-                            source.index("\n/* Run dwm-hang-event")]
+                            source.index("\n/* A user action")]
         harness = r'''
 #include <X11/Xlib.h>
 #include <assert.h>
@@ -201,6 +268,7 @@ int main(void) {
     hangpong(0,a.pingserial); assert(!a.pingpending && !a.hung && recovered==1);
     assert(b.pingpending && old.pingpending);
     hangpong(0,999); assert(b.pingpending);
+    a.pingpending=1; a.pingserial=77; hangpong(a.win,78); assert(a.pingpending);
     b.hung=1; capability=0; updatepingprotocol(&b);
     assert(!b.pingsupported && !b.pingpending && !b.hung && recovered==2);
     assert(!pingclient(&b));
@@ -275,7 +343,7 @@ esac
     def test_new_hang_supersedes_old_and_rejects_stale_actions(self):
         self.fake("dwm-agent", "#!/bin/sh\necho codex\n")
         self.fake("gdbus", "#!/bin/sh\nexit 0\n")
-        self.fake("xdotool", '#!/bin/sh\necho stale-kill > "$ARGS"\n')
+        self.fake("xprop", '#!/bin/sh\necho stale-kill > "$ARGS"\n')
         self.fake("notify-send", '''#!/usr/bin/python3
 import os, signal, time
 signal.signal(signal.SIGTERM, lambda *_: (print("kill", flush=True), exit(0)))

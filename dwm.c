@@ -128,6 +128,7 @@ struct Client {
 	int pingsupported; /* cached WM_PROTOCOLS capability */
 	int pingpending; /* a _NET_WM_PING is waiting for its reply */
 	unsigned long pingserial;
+	unsigned long long hanggeneration;
 	int hung;        /* the reply is overdue; reported to dwm-hang-event */
 	long long pingsent;
 	pid_t pid;
@@ -344,6 +345,7 @@ static void hangevent(Client *c, const char *state);
 static void hangpong(Window w, unsigned long serial);
 static int pingclient(Client *c);
 static void updatepingprotocol(Client *c);
+static void hangkillrequest(void);
 static pid_t runautoscript(const char *script);
 static void runautostart(void);
 static void runautostop(void);
@@ -454,6 +456,7 @@ static int selectedmonitorcache;
 static int selectedmonitorcachevalid;
 static Atom dwmfullscreenmonitorsatom, dwmtagupdateatom;
 /* XKB keyboard group state published on the root window (see SPEC.md 5.1) */
+static Atom hangrequestatom, hanggenerationatom;
 static Atom kbgroupatom, kbnamesatom, kbsymbolsatom, kbrequestatom, kbutf8atom;
 static int xkbeventbase = -1;  /* -1: no usable XKB extension */
 static long kbpublished[2] = { -1, -1 }; /* group, group count */
@@ -2082,10 +2085,10 @@ manage(Window w, XWindowAttributes *wa)
 	updatewindowtype(c);
 	updatesizehints(c);
 	updatewmhints(c);
-	updatepingprotocol(c);
 	c->x = c->mon->mx + (c->mon->mw - WIDTH(c)) / 2;
 	c->y = c->mon->my + (c->mon->mh - HEIGHT(c)) / 2;
 	XSelectInput(dpy, w, EnterWindowMask|FocusChangeMask|PropertyChangeMask|StructureNotifyMask);
+	updatepingprotocol(c);
 	grabbuttons(c, 0);
 	if (!c->isfloating)
 		c->isfloating = c->oldstate = trans != None || c->isfixed;
@@ -2546,6 +2549,8 @@ propertynotify(XEvent *e)
 	}
 	if ((ev->window == root) && (ev->atom == XA_WM_NAME)) {
 		updatestatus();
+	} else if (ev->window == root && ev->atom == hangrequestatom) {
+		if (ev->state == PropertyNewValue) hangkillrequest();
 	} else if (ev->window == root && ev->atom == kbrequestatom) {
 		if (ev->state == PropertyNewValue)
 			keyboardrequest();
@@ -3125,6 +3130,51 @@ hangpong(Window w, unsigned long serial)
 	}
 }
 
+/* A user action returns through dwm, which owns the current hang generation.
+ * Verify the window's server-side identity under the same grab as XKillClient:
+ * a recycled XID cannot acquire the old window's generation property. */
+static void
+hangkillrequest(void)
+{
+	Atom type;
+	int format;
+	unsigned long count, after, window;
+	unsigned long long generation;
+	unsigned char *data = NULL;
+	char request[96], extra;
+	Client *c;
+
+	XGrabServer(dpy);
+	XSetErrorHandler(xerrordummy);
+	if (XGetWindowProperty(dpy, root, hangrequestatom, 0, sizeof(request) / 4,
+	    True, AnyPropertyType, &type, &format, &count, &after, &data) != Success)
+		goto done;
+	if (after) XDeleteProperty(dpy, root, hangrequestatom);
+	if (!data || type != XA_STRING || format != 8 || after || count >= sizeof(request)
+	    || memchr(data, '\0', count)) goto done;
+	memcpy(request, data, count);
+	request[count] = '\0';
+	XFree(data);
+	data = NULL;
+	if (sscanf(request, "0x%lx %llu %c", &window, &generation, &extra) != 2
+	    || !generation || !(c = wintoclient((Window)window)) || !c->hung
+	    || c->hanggeneration != generation) goto done;
+	if (XGetWindowProperty(dpy, c->win, hanggenerationatom, 0, 2, False,
+	    XA_CARDINAL, &type, &format, &count, &after, &data) == Success
+	    && data && type == XA_CARDINAL && format == 32 && count == 2 && !after
+	    && (((unsigned long *)data)[0] & 0xffffffffUL) == (generation & 0xffffffffUL)
+	    && (((unsigned long *)data)[1] & 0xffffffffUL) == (generation >> 32)) {
+		XSetCloseDownMode(dpy, DestroyAll);
+		XKillClient(dpy, c->win);
+	}
+done:
+	if (data) XFree(data);
+	XSync(dpy, False);
+	XSetErrorHandler(xerror);
+	XUngrabServer(dpy);
+	XFlush(dpy);
+}
+
 /* Run dwm-hang-event <hung|recovered|gone> <window> <pid> <class> <title>, next to
  * the dwm binary when possible. Arguments go straight to exec, never through
  * a shell, because the title and class come from the client. */
@@ -3151,6 +3201,13 @@ hangevent(Client *c, const char *state)
 	argv[4] = ch.res_class ? ch.res_class : "";
 	argv[5] = c->name;
 	lastsequence = now > lastsequence ? now : lastsequence + 1;
+	c->hanggeneration = strcmp(state, "hung") == 0 ? (unsigned long long)lastsequence : 0;
+	if (c->hanggeneration) {
+		unsigned long identity[2] = { c->hanggeneration & 0xffffffffUL, c->hanggeneration >> 32 };
+		XChangeProperty(dpy, c->win, hanggenerationatom, XA_CARDINAL, 32,
+		                PropModeReplace, (unsigned char *)identity, 2);
+		XFlush(dpy);
+	}
 	snprintf(sequence, sizeof(sequence), "%lld", lastsequence);
 	argv[6] = sequence;
 	argv[7] = NULL;
@@ -4544,6 +4601,9 @@ setup(void)
 	reconcilemonitortags();
 	/* init atoms */
 	utf8string = XInternAtom(dpy, "UTF8_STRING", False);
+	hangrequestatom = XInternAtom(dpy, "_DWM_TITUS_HANG_KILL", False);
+	hanggenerationatom = XInternAtom(dpy, "_DWM_TITUS_HANG_GENERATION", False);
+	XDeleteProperty(dpy, root, hangrequestatom);
 	wmatom[WMProtocols] = XInternAtom(dpy, "WM_PROTOCOLS", False);
 	wmatom[WMDelete] = XInternAtom(dpy, "WM_DELETE_WINDOW", False);
 	wmatom[WMState] = XInternAtom(dpy, "WM_STATE", False);

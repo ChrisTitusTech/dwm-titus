@@ -1,6 +1,7 @@
 """Real notification D-Bus actions on a private bus and X server."""
 import json
 import os
+import re
 from pathlib import Path
 import select
 import shutil
@@ -50,11 +51,29 @@ ShellRoot {
     Notifications.NotificationModel { id: model }
     PanelWindow { id: panel; anchors { top: true; left: true; right: true } implicitHeight: 30 }
     Notifications.NotificationPopupWindow { notificationModel: model; panelWindow: panel }
+    QtObject { id: fixtureAction; property string identifier: "fixture"; property string text: "Before" }
+    QtObject {
+        id: fixture
+        property int id: 999999
+        property bool tracked: false
+        property string appName: "Signal fixture"
+        property string summary: "Label signal"
+        property string body: ""
+        property int urgency: 2
+        property var actions: [fixtureAction]
+        signal closed()
+        function expire() { closed(); }
+        function dismiss() { closed(); }
+    }
     IpcHandler {
         target: "test"
+        function addFixture(): void { model.add(fixture); }
+        function relabelFixture(): void { fixtureAction.text = "After"; }
         function state(): string {
             return JSON.stringify({policy: model.policyState,
                 visible: model.notifications.map(n => n.key),
+                items: model.notifications.map(n => ({key:n.key, summary:n.summary,
+                    actions:n.actions, hasDefaultAction:n.hasDefaultAction, timeoutMs:n.timeoutMs})),
                 keys: Object.keys(model.actionable), history: model.history});
         }
         function invoke(key: string, action: string): bool { return model.invokeAction(key, action); }
@@ -104,7 +123,7 @@ ShellRoot {
                 except (subprocess.CalledProcessError, json.JSONDecodeError):
                     pass
                 time.sleep(0.1)
-            raise AssertionError("Notification condition timed out")
+            raise AssertionError("Notification condition timed out: " + json.dumps(state()))
 
         wait_for(lambda: state()["policy"] in ("available", "defaults"))
         terminal_bin = work / "terminal-bin"
@@ -195,6 +214,47 @@ ShellRoot {
             client.wait(timeout=5)
         print("Notification actions Xvfb: buttons, default, overflow history, persistence, cleanup PASS")
 
+        def notify_replace(identifier, summary, actions, urgency):
+            result = subprocess.run(["gdbus", "call", "--session", "--dest", "org.freedesktop.Notifications",
+                "--object-path", "/org/freedesktop/Notifications", "--method", "org.freedesktop.Notifications.Notify",
+                "replacement fixture", str(identifier), "", summary, "body", json.dumps(actions),
+                "{'urgency': <byte " + str(urgency) + ">}", "0"], env=env, text=True,
+                capture_output=True, check=True, timeout=5)
+            return int(re.search(r"uint32 (\d+)", result.stdout).group(1))
+
+        identifier = notify_replace(0, "No actions", [], 2)
+        wait_for(lambda: state()["items"] and state()["items"][0]["summary"] == "No actions")
+        replacement_key = state()["items"][0]["key"]
+        assert notify_replace(identifier, "Added actions", ["go", "Old label", "default", "Open"], 2) == identifier
+        wait_for(lambda: replacement_key in state()["keys"] and state()["items"][0]["hasDefaultAction"])
+        assert state()["items"][0]["timeoutMs"] == 0
+        version = subprocess.run(["quickshell", "--version"], capture_output=True, text=True, check=True).stdout
+        # This exact Fedora build has an inverted comparison in setText(): it
+        # discards changed labels before QML receives them. Keep other native
+        # replacement assertions active, and test our textChanged handler below.
+        broken_labels = "dacfa9de829ac7cb173825f593236bf2c21f637e" in version
+        replacement_action = "new-go" if broken_labels else "go"
+        notify_replace(identifier, "Changed label", [replacement_action, "New label"], 2)
+        wait_for(lambda: state()["items"][0]["actions"] == [{"identifier":replacement_action, "text":"New label"}])
+        assert not state()["items"][0]["hasDefaultAction"]
+        if broken_labels:
+            print("SKIP native same-identifier relabel: installed Quickshell dacfa9d setText defect")
+        else:
+            notify_replace(identifier, "Changed label", ["go", "Label only"], 2)
+            wait_for(lambda: state()["items"][0]["actions"] == [{"identifier":"go", "text":"Label only"}])
+        notify_replace(identifier, "Removed actions", [], 1)
+        wait_for(lambda: replacement_key not in state()["keys"] and state()["items"][0]["timeoutMs"] == 6000)
+        assert ipc("invoke", replacement_key, replacement_action) == "false"
+        assert len([n for n in state()["history"] if n["key"] == replacement_key]) == 1
+        ipc("clear")
+        print("Notification replacements: additions, changed identifiers, removal, urgency and history PASS")
+        ipc("addFixture")
+        wait_for(lambda: any(n["summary"] == "Label signal" for n in state()["items"]))
+        ipc("relabelFixture")
+        wait_for(lambda: state()["items"][0]["actions"] == [{"identifier":"fixture", "text":"After"}])
+        ipc("clear")
+        print("Notification label-only textChanged signal: model refresh PASS")
+
         # Connect real dwm ping detection to the actual helper and notification
         # server. Only the provider is fake; no account or network is touched.
         binary = work / "bin"
@@ -223,7 +283,8 @@ ShellRoot {
                                stdout=subprocess.PIPE, text=True, stderr=log)
         processes.append(app)
         assert select.select([app.stdout], [], [], 10)[0]
-        assert app.stdout.readline().startswith("0x")
+        app_window = app.stdout.readline().strip()
+        assert app_window.startswith("0x")
         time.sleep(1)
         app.send_signal(signal.SIGSTOP)
         wait_for(lambda: bool(state()["keys"]), 25)
@@ -241,6 +302,23 @@ ShellRoot {
         wait_for(lambda: not state()["keys"])
         app.send_signal(signal.SIGSTOP)
         wait_for(lambda: bool(state()["keys"]), 25)
+        # Even a matching dwm record must not kill a window whose server-side
+        # identity is missing/replaced (as when an XID is recycled).
+        generation_output = subprocess.check_output(["xprop", "-id", app_window,
+            "_DWM_TITUS_HANG_GENERATION"], env=env, text=True, timeout=5)
+        low, high = [int(v.strip()) for v in generation_output.split("=", 1)[1].split(",")]
+        generation = low + (high << 32)
+        def request_kill(value):
+            subprocess.run(["xprop", "-root", "-f", "_DWM_TITUS_HANG_KILL", "8s", "-set",
+                            "_DWM_TITUS_HANG_KILL", app_window + " " + str(value)], env=env, check=True, timeout=5)
+            wait_for(lambda: "not found" in subprocess.check_output(["xprop", "-root",
+                "_DWM_TITUS_HANG_KILL"], env=env, text=True, timeout=5))
+            subprocess.run(["xwininfo", "-id", app_window], env=env, check=True, capture_output=True, timeout=5)
+        request_kill(generation + 1)
+        subprocess.run(["xprop", "-id", app_window, "-remove", "_DWM_TITUS_HANG_GENERATION"], env=env, check=True, timeout=5)
+        request_kill(generation)
+        subprocess.run(["xprop", "-id", app_window, "-f", "_DWM_TITUS_HANG_GENERATION", "32c",
+                        "-set", "_DWM_TITUS_HANG_GENERATION", str(low) + ", " + str(high)], env=env, check=True, timeout=5)
         ipc("invoke", state()["keys"][0], "kill")
         time.sleep(0.5)
         app.send_signal(signal.SIGCONT)

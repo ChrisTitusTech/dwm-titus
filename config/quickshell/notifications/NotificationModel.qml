@@ -154,21 +154,14 @@ Scope {
         return "normal";
     }
 
-    function add(notification) {
-        if (!notification) {
-            return;
-        }
-
-        notification.tracked = true;
-        root.sequence += 1;
-
+    function snapshot(notification, key) {
         const actions = (notification.actions || []).map(action => ({
             "identifier": action.identifier,
             "text": action.text
         }));
         const critical = notification.urgency === NotificationUrgency.Critical;
-        const item = {
-            "key": root.sessionKey + "-" + notification.id + "-" + root.sequence,
+        return {
+            "key": key,
             "notification": notification,
             "appName": notification.appName || "Notification",
             "summary": notification.summary || "",
@@ -183,11 +176,54 @@ Scope {
                 : critical ? root.criticalTimeoutMs : root.popupTimeoutMs
         };
 
+    }
+
+    function add(notification) {
+        if (!notification) return;
+        notification.tracked = true;
+        root.sequence += 1;
+        const key = root.sessionKey + "-" + notification.id + "-" + root.sequence;
+        const item = root.snapshot(notification, key);
+        let closed = false;
+        let watchedActions = [];
+        function refresh() {
+            if (closed) return;
+            // Action objects can be reused when only their label changes.
+            const currentActions = notification.actions || [];
+            for (const action of watchedActions) {
+                if (action && action.textChanged && currentActions.indexOf(action) < 0)
+                    action.textChanged.disconnect(scheduleRefresh);
+            }
+            for (const action of currentActions) {
+                if (watchedActions.indexOf(action) < 0) action.textChanged.connect(scheduleRefresh);
+            }
+            watchedActions = currentActions.slice();
+            const updated = root.snapshot(notification, key);
+            const visible = root.notifications.some(n => n.key === key);
+            root.notifications = root.notifications.map(n => n.key === key ? updated : n);
+            if (updated.actions.length > 0) root.rememberActionable(key, notification);
+            else root.forgetActionable(key);
+            root.addHistory(updated);
+            if ((root.popupSuppressed && updated.urgencyName !== "critical")
+                    || (!visible && !root.keepsOpen(updated))) notification.expire();
+        };
+        // Quickshell may emit label signals while it is still replacing the
+        // list. Refresh once after the whole update, not from partial state.
+        function scheduleRefresh() { Qt.callLater(refresh); }
+        notification.actionsChanged.connect(scheduleRefresh);
+        notification.urgencyChanged.connect(scheduleRefresh);
+        notification.appNameChanged.connect(scheduleRefresh);
+        notification.summaryChanged.connect(scheduleRefresh);
+        notification.bodyChanged.connect(scheduleRefresh);
+        watchedActions = (notification.actions || []).slice();
+        for (const action of watchedActions) action.textChanged.connect(scheduleRefresh);
+
         notification.closed.connect(() => {
+            closed = true;
             root.remove(item.key);
             root.forgetActionable(item.key);
         });
-        if (actions.length > 0) root.rememberActionable(item.key, notification);
+        if (item.actions.length > 0) root.rememberActionable(item.key, notification);
         root.addHistory(item);
 
         if (root.popupSuppressed && item.urgencyName !== "critical") {
@@ -238,6 +274,11 @@ Scope {
         if (!notification) return false;
         const action = (notification.actions || []).find(candidate => candidate.identifier === identifier);
         if (!action) return false;
+        // A click queued before the coalesced refresh must not run a newly
+        // relabeled action under an old popup label.
+        const popup = root.notifications.find(item => item.key === key);
+        const shown = popup ? popup.actions.find(candidate => candidate.identifier === identifier) : null;
+        if (popup && (!shown || shown.text !== action.text)) return false;
         root.remove(key);
         // Quickshell reports ActionInvoked and closes a non-resident
         // notification, which forgets it through the closed handler.
@@ -269,7 +310,7 @@ Scope {
             "timestamp": Date.now()
         };
 
-        const kept = [entry].concat(root.history);
+        const kept = [entry].concat(root.history.filter(previous => previous.key !== item.key));
         root.history = kept.slice(0, root.maxHistory);
         // An actionable notification pushed out of the history and not on
         // screen can no longer be answered, so close it instead of keeping it.

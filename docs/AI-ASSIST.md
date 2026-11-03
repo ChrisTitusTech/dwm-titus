@@ -64,8 +64,9 @@ Games, VMs and busy applications can produce false alarms. Add exact window
 classes, one per line, to `~/.config/dwm-titus/hang-ignore` to suppress their
 offers. Recovery, closing the window, or disabling detection withdraws the
 notification. **Wait** dismisses the offer; **Force quit** closes the client's
-X connection and can lose unsaved work. It does not send a kill signal to an
-application-supplied PID. A stopped process may need separate manual cleanup.
+X connection and can lose unsaved work. The request returns through dwm, which
+checks the current hang generation and window identity before closing it. It does
+not send a kill signal to an application-supplied PID. A stopped process may need separate manual cleanup.
 
 Diagnosis starts with a read-only prompt and preserves the agent's configured
 approval and sandbox policy. It does not enable automatic approvals, disable
@@ -76,7 +77,11 @@ identifiers are sanitized and passed as arguments, never evaluated as shell code
 The panel now exposes notification action buttons and default body-click actions.
 Critical notifications with actions stay available until answered or dismissed,
 including in history while the notification remains open. Saved history after a
-shell restart has no executable actions.
+shell restart has no executable actions. Replacing a notification refreshes its
+buttons, urgency, timeout, and history entry. Quickshell 0.2.1 revision `dacfa9d`
+has an upstream defect that discards changed labels for reused action identifiers;
+on that build, applications must replace the action identifier to change its
+label. The desktop follows label-change signals when Quickshell provides them.
 
 ## Disable or recover
 

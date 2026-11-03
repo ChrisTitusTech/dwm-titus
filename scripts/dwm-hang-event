@@ -161,8 +161,8 @@ diagnose)
 	setsid -f dwm-agent-diagnose hang "$window" "$pid" "$class" </dev/null >/dev/null 2>&1 9>&-
 	;;
 kill)
-	# XKillClient through xdotool closes the client's X connection; it works
-	# for sandboxed apps where the PID would point at the wrong process.
-	xdotool windowkill "$window" 2>/dev/null || exit 0
+	# dwm verifies both the current generation and the X window identity
+	# before closing its connection. Never kill a potentially recycled XID here.
+	xprop -root -f _DWM_TITUS_HANG_KILL 8s -set _DWM_TITUS_HANG_KILL "$window $self_start" 2>/dev/null || exit 0
 	;;
 esac
