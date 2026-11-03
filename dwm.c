@@ -1004,7 +1004,7 @@ clientmessage(XEvent *e)
 	 * pinged client in data.l[2]. */
 	if (cme->window == root && cme->message_type == wmatom[WMProtocols]
 	&& cme->format == 32 && (Atom)cme->data.l[0] == netatom[NetWMPing]) {
-		hangpong((Window)cme->data.l[2], (unsigned long)cme->data.l[1]);
+		hangpong((Window)cme->data.l[2], (unsigned long)cme->data.l[1] & 0xffffffffUL);
 		return;
 	}
 	if (cme->message_type == netatom[NetCurrentDesktop]) {

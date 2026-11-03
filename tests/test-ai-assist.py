@@ -129,11 +129,23 @@ class AgentTests(unittest.TestCase):
         self.fake("journalctl", '#!/bin/sh\ncat "$JOURNAL"\n')
         self.fake("dwm-agent", "#!/bin/sh\necho codex\n")
         self.fake("notify-send", '#!/bin/sh\necho notified >> "$ARGS"\necho ignore\n')
-        self.run_helper("dwm-crash-watch")
+        self.run_helper("dwm-crash-watch", "--journal")
         self.assertEqual((self.work / "args").read_text().splitlines(), ["notified"])
         self.run_helper("dwm-agent", "set", "crash-notifications", "off")
-        self.run_helper("dwm-crash-watch")
+        self.run_helper("dwm-crash-watch", "--journal")
         self.assertEqual((self.work / "args").read_text().splitlines(), ["notified"])
+
+    def test_crash_watch_exits_with_display(self):
+        self.fake("xprop", "#!/bin/sh\nsleep 0.2\n")
+        self.fake("journalctl", '#!/bin/sh\necho $$ > "$ARGS"\nexec sleep 30\n')
+        self.fake("notify-send", "#!/bin/sh\nexit 0\n")
+        started = time.monotonic()
+        self.run_helper("dwm-crash-watch")
+        self.assertLess(time.monotonic() - started, 5)
+        pid = int((self.work / "args").read_text())
+        # A terminated grandchild may briefly remain a zombie until reaped.
+        stat = Path(f"/proc/{pid}/stat")
+        self.assertTrue(not stat.exists() or stat.read_text().split(") ", 1)[1].startswith("Z "))
 
 
 if __name__ == "__main__":

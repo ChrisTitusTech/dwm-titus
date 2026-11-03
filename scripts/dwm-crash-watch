@@ -3,6 +3,27 @@
 # journals every core dump under a fixed MESSAGE_ID with COREDUMP_* fields.
 set -uo pipefail
 
+# startx does not terminate a logind X11 scope on logout. Tie the detached
+# journal worker (and its pending notification children) to the X connection,
+# so an old watcher cannot keep owning notifications on a dead display.
+if [[ ${1:-} != --journal && -n ${DISPLAY:-} ]] && command -v xprop >/dev/null 2>&1; then
+	setsid "$0" --journal &
+	worker=$!
+	xprop -root -spy _NET_SUPPORTING_WM_CHECK >/dev/null 2>&1 &
+	anchor=$!
+	# shellcheck disable=SC2329
+	cleanup_watch() {
+		trap - EXIT HUP INT TERM
+		kill -- "-$worker" 2>/dev/null || true
+		kill "$worker" "$anchor" 2>/dev/null || true
+		wait "$worker" "$anchor" 2>/dev/null || true
+	}
+	trap cleanup_watch EXIT
+	trap 'exit 0' HUP INT TERM
+	wait -n "$worker" "$anchor" 2>/dev/null || true
+	exit 0
+fi
+
 # See systemd.journal-fields(7).
 readonly COREDUMP_MESSAGE_ID=fc2e22bc6ee647b6b90729ab34a250b1
 
