@@ -9,7 +9,9 @@ int main(void)
     Window window = XCreateSimpleWindow(display, root, 10, 10, 200, 100, 0, 0, 0);
     Atom protocols = XInternAtom(display, "WM_PROTOCOLS", False);
     Atom ping = XInternAtom(display, "_NET_WM_PING", False);
-    XSetWMProtocols(display, window, &ping, 1);
+    Atom supported[] = { ping, XInternAtom(display, "WM_TAKE_FOCUS", False),
+                         XInternAtom(display, "WM_DELETE_WINDOW", False) };
+    XSetWMProtocols(display, window, supported, 3);
     XStoreName(display, window, "AI assistance ping fixture");
     XMapWindow(display, window);
     XFlush(display);

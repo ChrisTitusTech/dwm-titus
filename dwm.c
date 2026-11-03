@@ -3543,8 +3543,7 @@ sendevent(Client *c, Atom proto)
 		ev.xclient.message_type = wmatom[WMProtocols];
 		ev.xclient.format = 32;
 		ev.xclient.data.l[0] = proto;
-		c->pingserial = (unsigned long)hangnow() & 0xffffffffUL;
-	ev.xclient.data.l[1] = (long)c->pingserial;
+		ev.xclient.data.l[1] = CurrentTime;
 		XSendEvent(dpy, c->win, False, NoEventMask, &ev);
 	}
 	return exists;

@@ -65,7 +65,8 @@ with tempfile.TemporaryDirectory(dir=os.environ.get("TMPDIR")) as directory:
                                   stdout=subprocess.PIPE, text=True)
         processes.append(client)
         assert select.select([client.stdout], [], [], 10)[0]
-        assert client.stdout.readline().startswith("0x")
+        window = client.stdout.readline().strip()
+        assert window.startswith("0x")
         time.sleep(1)
         client.send_signal(signal.SIGSTOP)
         time.sleep(1)
@@ -73,6 +74,16 @@ with tempfile.TemporaryDirectory(dir=os.environ.get("TMPDIR")) as directory:
         toggle = config / "hang-detection"
         toggle.touch()
         wait_for(lambda: "hung" in events.read_text())
+        # Focus and close protocols must not corrupt the outstanding ping.
+        other = subprocess.Popen([str(binary / "ping-client")], env=env,
+                                 stdout=subprocess.PIPE, text=True)
+        processes.append(other)
+        assert select.select([other.stdout], [], [], 10)[0]
+        other_window = other.stdout.readline().strip()
+        wait_for(lambda: int(other_window, 16) == int(subprocess.check_output(
+            ["xdotool", "getactivewindow"], env=env, text=True).strip()))
+        subprocess.run(["xdotool", "windowactivate", "--sync", window], env=env, check=True)
+        subprocess.run(["xdotool", "key", "super+q"], env=env, check=True)
         client.send_signal(signal.SIGCONT)
         wait_for(lambda: "recovered" in events.read_text(), 5)
         client.send_signal(signal.SIGSTOP)
@@ -80,7 +91,7 @@ with tempfile.TemporaryDirectory(dir=os.environ.get("TMPDIR")) as directory:
         toggle.unlink()
         wait_for(lambda: events.read_text().splitlines().count("recovered") == 2, 5)
         assert wm.poll() is None
-        print("AI assist Xvfb: opt-in, hang, recovery, disable PASS")
+        print("AI assist Xvfb: opt-in, hang, focus/close during pending ping, recovery, disable PASS")
     finally:
         for process in reversed(processes):
             if process.poll() is None:
