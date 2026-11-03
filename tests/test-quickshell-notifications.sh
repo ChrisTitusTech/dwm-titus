@@ -9,9 +9,17 @@ repo=$(
 model=$repo/config/quickshell/notifications/NotificationModel.qml
 pane=$repo/config/quickshell/settings/AppearanceSettingsPane.qml
 
-grep -Fq 'notification.closed.connect(() => root.remove(item.key));' "$model"
+grep -Fq 'notification.closed.connect(() => {' "$model"
+grep -Fq 'root.forgetActionable(item.key);' "$model"
 grep -Fq 'const overflow = candidates.slice(root.maxVisible);' "$model"
-grep -Fq 'root.closeItem(overflowItem, false);' "$model"
+grep -Fq 'root.closeItem(overflowItem, root.keepsOpen(overflowItem));' "$model"
+grep -Fq 'actionsSupported: true' "$model"
+grep -Fq 'action.invoke();' "$model"
+grep -Fq 'if (expired && root.keepsOpen(item)) {' "$model"
+grep -Fq 'return item.urgencyName === "critical" && (item.actions || []).length > 0;' "$model"
+grep -Fq 'onActionInvoked: identifier => root.notificationModel.invokeAction(' "$repo/config/quickshell/notifications/NotificationPopupWindow.qml"
+grep -Fq 'onInvoked: identifier => root.notificationModel.invokeAction(' "$repo/config/quickshell/notifications/NotificationHistoryWindow.qml"
+grep -Fq 'running: root.item.timeoutMs > 0' "$repo/config/quickshell/notifications/NotificationCard.qml"
 grep -Fq 'root.notifications = [];' "$model"
 grep -Fq 'root.remove(item.key);' "$model"
 grep -Fq 'root.closeItem(root.notifications.find(n => n.key === key), false);' "$model"

@@ -61,7 +61,7 @@ cleanup() {
 		*) kill "$watcher_pid" 2>/dev/null || true ;;
 		esac
 	fi
-	for identity_file in "$work"/*/state/dwm-status-runtime.identities; do
+	for identity_file in "$work"/*/state/dwm-status-runtime.identities "$work"/*/state/dwm-crash-watch-runtime.identities; do
 		[ -f "$identity_file" ] || continue
 		while IFS= read -r runtime_identity; do
 			test_identity_matches "$runtime_identity" || continue
@@ -78,7 +78,7 @@ cleanup() {
 		done <"$identity_file"
 	done
 	sleep 0.05
-	for identity_file in "$work"/*/state/dwm-status-runtime.identities; do
+	for identity_file in "$work"/*/state/dwm-status-runtime.identities "$work"/*/state/dwm-crash-watch-runtime.identities; do
 		[ -f "$identity_file" ] || continue
 		while IFS= read -r runtime_identity; do
 			test_identity_matches "$runtime_identity" || continue
@@ -298,6 +298,10 @@ while :; do
 done
 EOF
 chmod +x "$work/bin/dwm-status"
+# Keep crash watching inside the fixture, including its display-scoped identity
+# and cleanup. Never follow the host journal from these mocked X sessions.
+sed 's/dwm-status/dwm-crash-watch/g' "$work/bin/dwm-status" >"$work/bin/dwm-crash-watch"
+chmod +x "$work/bin/dwm-crash-watch"
 
 cat >"$work/bin/quickshell" <<'EOF'
 #!/bin/sh

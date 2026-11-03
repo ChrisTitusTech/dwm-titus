@@ -1,0 +1,466 @@
+#!/usr/bin/env bash
+# Pick, install, log in to, and launch the AI coding agent used for
+# "Diagnose with AI". The diagnosis method itself lives in the dwm-titus-debug
+# skill so every agent follows the same steps.
+set -euo pipefail
+
+AGENTS=(codex opencode gemini claude cursor-agent hermes)
+
+config_dir=${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus
+data_dir=${XDG_DATA_HOME:-$HOME/.local/share}/dwm-titus
+agent_file=$config_dir/agent
+hang_toggle=$config_dir/hang-detection
+crash_off_toggle=$config_dir/crash-notifications-off
+# The dwm-titus-ai-skills package can ship newer skills than the desktop.
+skills_source=$data_dir/config/agents/skills
+[[ -d /usr/share/dwm-titus/agents/skills ]] && skills_source=/usr/share/dwm-titus/agents/skills
+# Codex, OpenCode and Gemini CLI read skills from ~/.agents/skills; Claude
+# Code, Cursor CLI and Hermes mainly from their own folders.
+skills_target=$HOME/.agents/skills
+skills_targets=("$skills_target" "$HOME/.claude/skills" "$HOME/.cursor/skills" "$HOME/.hermes/skills")
+mise_shims=${MISE_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/mise}/shims
+
+usage() {
+	cat <<'EOF'
+Usage: dwm-agent [--inline] [--prompt TEXT]
+       dwm-agent default [codex|opencode|gemini|claude|cursor-agent|hermes]
+       dwm-agent setup [codex|opencode|gemini|claude|cursor-agent|hermes]
+       dwm-agent list
+       dwm-agent install <codex|opencode|gemini|claude|cursor-agent|hermes>
+       dwm-agent login [codex|opencode|gemini|claude|cursor-agent|hermes]
+       dwm-agent link-skills
+       dwm-agent status
+       dwm-agent set <crash-notifications|hang-detection> <on|off>
+EOF
+}
+
+die() {
+	printf 'dwm-agent: %s\n' "$*" >&2
+	exit 1
+}
+
+known_agent() {
+	local agent
+	for agent in "${AGENTS[@]}"; do
+		[[ $agent == "$1" ]] && return 0
+	done
+	return 1
+}
+
+agent_name() {
+	case $1 in
+	codex) printf 'Codex' ;;
+	opencode) printf 'OpenCode' ;;
+	gemini) printf 'Gemini CLI' ;;
+	claude) printf 'Claude Code' ;;
+	cursor-agent) printf 'Cursor CLI' ;;
+	hermes) printf 'Hermes Agent' ;;
+	esac
+}
+
+current_agent() {
+	local agent=''
+	[[ -f $agent_file ]] && read -r agent <"$agent_file" || true
+	known_agent "$agent" && printf '%s\n' "$agent"
+	return 0
+}
+
+use_mise_path() {
+	[[ :$PATH: == *":$mise_shims:"* ]] || PATH=$mise_shims:$PATH
+	export PATH
+}
+
+agent_present() {
+	use_mise_path
+	command -v "$1" >/dev/null 2>&1
+}
+
+set_default() {
+	known_agent "$1" || die "unknown agent '$1' (choose: ${AGENTS[*]})"
+	mkdir -p "$config_dir"
+	printf '%s\n' "$1" >"$agent_file.tmp"
+	mv -f "$agent_file.tmp" "$agent_file"
+}
+
+# dwm-install-ai-agent owns optional installation through an existing mise.
+install_agent() {
+	local agent=$1 installer=dwm-install-ai-agent
+	known_agent "$agent" || die "unknown agent '$agent'"
+	[[ -x ${BASH_SOURCE[0]%/*}/dwm-install-ai-agent ]] && installer=${BASH_SOURCE[0]%/*}/dwm-install-ai-agent
+	"$installer" "$agent"
+	agent_present "$agent" || die "$(agent_name "$agent") did not install"
+}
+
+# Settings waits for the whole list, so one agent that hangs must not block
+# it: every probe gets a time limit and reports unknown when it runs out.
+probe_seconds=${DWM_AGENT_PROBE_SECONDS:-10}
+
+probe() {
+	timeout --kill-after=2 "$probe_seconds" "$@"
+}
+
+agent_version() {
+	use_mise_path
+	probe "$1" --version 2>/dev/null | head -n 1 | grep -oE '[0-9]+(\.[0-9]+)+' | head -n 1 || true
+}
+
+# Whether the agent has credentials. Each agent keeps them differently:
+#   codex     `codex login status` exits 0 when logged in
+#   opencode  provider credentials in ~/.local/share/opencode/auth.json
+#   gemini    Google login in ~/.gemini/oauth_creds.json, or an API key or
+#             Vertex AI settings in the environment
+#   claude    `claude auth status` exits 0 when logged in
+#   cursor    `cursor-agent status` prints "Logged in as ..."
+#   hermes    `hermes auth list` lists "<provider> (N credentials):" blocks
+# yes for exit 0, unknown when the probe timed out, otherwise no.
+probe_result() {
+	case $1 in
+	0) echo yes ;;
+	124 | 137) echo unknown ;;
+	*) echo no ;;
+	esac
+}
+
+agent_signed_in() {
+	local count output status=0
+	use_mise_path
+	case $1 in
+	codex)
+		probe codex login status >/dev/null 2>&1 && status=0 || status=$?
+		probe_result "$status"
+		;;
+	opencode)
+		count=$(jq -r 'length' "${XDG_DATA_HOME:-$HOME/.local/share}/opencode/auth.json" 2>/dev/null) || count=0
+		if [[ $count =~ ^[0-9]+$ ]] && ((count > 0)); then echo yes; else echo no; fi
+		;;
+	gemini)
+		if [[ ${GOOGLE_GENAI_USE_VERTEXAI:-} == true ]]; then
+			# A selector is not a credential. ADC cannot be verified without
+			# contacting Google, so keep Sign in available for that case.
+			if [[ -n ${GOOGLE_API_KEY:-} ]]; then echo yes; else echo unknown; fi
+		elif [[ -s $HOME/.gemini/oauth_creds.json || -n ${GEMINI_API_KEY:-} ]]; then
+			echo yes
+		else
+			echo no
+		fi
+		;;
+	claude)
+		probe claude auth status >/dev/null 2>&1 && status=0 || status=$?
+		probe_result "$status"
+		;;
+	# Read the whole output first: `hermes auth list` exits nonzero even when
+	# it lists credentials, which pipefail would count as a failed check.
+	cursor-agent)
+		output=$(probe cursor-agent status 2>/dev/null) || status=$?
+		((${status:-0} == 124 || ${status:-0} == 137)) && {
+			echo unknown
+			return
+		}
+		if grep -q 'Logged in as' <<<"$output"; then echo yes; else echo no; fi
+		;;
+	hermes)
+		output=$(probe hermes auth list 2>/dev/null) || status=$?
+		((${status:-0} == 124 || ${status:-0} == 137)) && {
+			echo unknown
+			return
+		}
+		if grep -qE '\([0-9]+ credentials?\)' <<<"$output"; then echo yes; else echo no; fi
+		;;
+	*) echo unknown ;;
+	esac
+}
+
+# Each agent's own login. Codex and OpenCode open the default browser; Gemini
+# CLI asks how to sign in on its first interactive start.
+login_agent() {
+	local agent=$1
+	use_mise_path
+	case $agent in
+	codex) codex login ;;
+	opencode) opencode auth login ;;
+	gemini)
+		printf 'Gemini CLI signs in on its first start. Pick "Login with Google",\n'
+		printf 'finish in the browser, then type /quit.\n'
+		gemini
+		;;
+	claude) claude auth login ;;
+	cursor-agent) cursor-agent login ;;
+	hermes) hermes setup ;;
+	esac
+}
+
+link_skills() {
+	local skill name target dir
+	[[ -d $skills_source ]] || die "no skills in $skills_source"
+	for dir in "${skills_targets[@]}"; do
+		mkdir -p "$dir"
+		for skill in "$skills_source"/*/; do
+			name=$(basename "$skill")
+			target=$dir/$name
+			if [[ -L $target ]]; then
+				case $(readlink -- "$target") in
+				"$data_dir/config/agents/skills/$name" | "/usr/share/dwm-titus/agents/skills/$name")
+					ln -sfn "${skill%/}" "$target"
+					continue
+					;;
+				esac
+			fi
+			if [[ -e $target || -L $target ]]; then
+				printf 'Keeping existing skill %s.\n' "$target" >&2
+				continue
+			fi
+			ln -s "${skill%/}" "$target"
+		done
+	done
+}
+
+skills_linked() {
+	local dir name target destination
+	[[ -d $skills_source ]] || return 1
+	for dir in "${skills_targets[@]}"; do
+		for name in dwm-titus dwm-titus-debug; do
+			target=$dir/$name
+			[[ -e $target || -L $target ]] || return 1
+			if [[ -L $target ]]; then
+				destination=$(readlink -- "$target")
+				case $destination in
+				"$data_dir/config/agents/skills/$name" | "/usr/share/dwm-titus/agents/skills/$name")
+					[[ -f $target/SKILL.md && $destination == "$skills_source/$name" ]] || return 1
+					;;
+				esac
+			fi
+			# Custom entries belong to the user, including dangling links.
+		done
+	done
+}
+
+confirm() {
+	local question=$1 default=$2 reply
+	if [[ $default == yes ]]; then
+		read -r -p "$question [Y/n] " reply || reply=
+		[[ -z $reply || $reply == [Yy]* ]]
+	else
+		read -r -p "$question [y/N] " reply || reply=
+		[[ $reply == [Yy]* ]]
+	fi
+}
+
+setup() {
+	local agent=${1:-} choice i state crash_default=yes hang_default=no
+	printf 'Diagnose with AI: setup\n\n'
+	if [[ -z $agent ]]; then
+		printf 'Which agent should dwm-titus open when you ask for a diagnosis?\n'
+		for i in "${!AGENTS[@]}"; do
+			agent=${AGENTS[$i]}
+			state='not installed'
+			if agent_present "$agent"; then
+				state=installed
+				[[ $(agent_signed_in "$agent") == yes ]] && state='installed, signed in'
+			fi
+			printf '  %d) %s (%s)\n' "$((i + 1))" "$(agent_name "$agent")" "$state"
+		done
+		read -r -p "Choice [1-${#AGENTS[@]}]: " choice
+		if ! [[ $choice =~ ^[0-9]+$ ]] || ((choice < 1 || choice > ${#AGENTS[@]})); then
+			die "no agent chosen"
+		fi
+		agent=${AGENTS[$((choice - 1))]}
+	fi
+	known_agent "$agent" || die "unknown agent '$agent' (choose: ${AGENTS[*]})"
+
+	agent_present "$agent" || install_agent "$agent"
+	set_default "$agent"
+	link_skills
+
+	if [[ $(agent_signed_in "$agent") == yes ]]; then
+		printf '%s is already signed in.\n' "$(agent_name "$agent")"
+	elif confirm "Log in to $(agent_name "$agent") now?" yes; then
+		login_agent "$agent"
+	fi
+
+	printf '\nCrash notifications tell you when one of your programs crashes and\n'
+	printf 'offer to diagnose it.\n'
+	[[ -e $crash_off_toggle ]] && crash_default=no
+	if confirm "Keep crash notifications on?" "$crash_default"; then
+		rm -f "$crash_off_toggle"
+	else
+		: >"$crash_off_toggle"
+	fi
+
+	cat <<'EOF'
+
+Hang detection makes dwm check every few seconds that windows still answer.
+A window that stops answering for 10 seconds gets a "not responding"
+notification with Diagnose with AI / Force quit / Wait.
+
+It can be wrong: games, virtual machines and apps that are busy on purpose
+(big exports, compiles) can show up as not responding when they are fine.
+You can turn it off again in Settings or with: rm ~/.config/dwm-titus/hang-detection
+EOF
+	[[ -e $hang_toggle ]] && hang_default=yes
+	if confirm "Turn on hang detection?" "$hang_default"; then
+		: >"$hang_toggle"
+	else
+		rm -f "$hang_toggle"
+	fi
+	printf '\nDone. Default agent: %s\n' "$(agent_name "$agent")"
+}
+
+status() {
+	local agent
+	agent=$(current_agent)
+	printf 'agent\t%s\n' "${agent:-none}"
+	for agent in "${AGENTS[@]}"; do
+		printf 'installed\t%s\t%s\n' "$agent" "$(agent_present "$agent" && echo yes || echo no)"
+	done
+	printf 'crash-notifications\t%s\n' "$([[ -e $crash_off_toggle ]] && echo off || echo on)"
+	printf 'hang-detection\t%s\n' "$([[ -e $hang_toggle ]] && echo on || echo off)"
+	printf 'skills\t%s\n' "$(skills_linked && echo linked || echo missing)"
+}
+
+# One line per agent: name, label, installed, version, signed in, default.
+list_agents() {
+	local agent default installed version signed
+	default=$(current_agent)
+	for agent in "${AGENTS[@]}"; do
+		installed=no version='' signed=no
+		if agent_present "$agent"; then
+			installed=yes
+			version=$(agent_version "$agent")
+			signed=$(agent_signed_in "$agent")
+		fi
+		printf 'agent\t%s\t%s\t%s\t%s\t%s\t%s\n' "$agent" "$(agent_name "$agent")" \
+			"$installed" "${version:--}" "$signed" "$([[ $agent == "$default" ]] && echo yes || echo no)"
+	done
+}
+
+set_toggle() {
+	local name=$1 value=$2 file create
+	case $value in
+	on | off) ;;
+	*) die "value must be on or off, not '$value'" ;;
+	esac
+	case $name in
+	crash-notifications)
+		file=$crash_off_toggle
+		create=off
+		;;
+	hang-detection)
+		file=$hang_toggle
+		create=on
+		;;
+	*) die "unknown setting '$name' (choose: crash-notifications hang-detection)" ;;
+	esac
+	mkdir -p "$config_dir"
+	if [[ $value == "$create" ]]; then
+		: >"$file"
+	else
+		rm -f "$file"
+	fi
+}
+
+# Keep the agent's configured approval and sandbox policy. Clicking Diagnose
+# authorizes inspection, not unattended changes.
+launch() {
+	local inline=0 prompt='' agent
+	local -a command
+	while (($#)); do
+		case $1 in
+		--inline)
+			inline=1
+			shift
+			;;
+		--prompt)
+			(($# >= 2)) || die "--prompt needs a value"
+			prompt=$2
+			shift 2
+			;;
+		*) die "unexpected argument: $1" ;;
+		esac
+	done
+
+	agent=$(current_agent)
+	if ((!inline)); then
+		if [[ -z $agent ]]; then
+			command=("$0" setup)
+		else
+			command=("$0" --inline --prompt "$prompt")
+		fi
+		# Enter the terminal before checking the selected binary. Setup and
+		# launch failures must stay visible even when notification stderr is hidden.
+		# Expand arguments/status in the terminal shell, not this launcher.
+		# shellcheck disable=SC2016
+		exec dwm-terminal -e bash -c '
+status=0
+"$@" || status=$?
+printf "\nPress Enter to close..."
+IFS= read -r _ || true
+exit "$status"
+' dwm-agent-terminal "${command[@]}"
+	fi
+	[[ -n $agent ]] || die "no agent chosen; run: dwm-agent setup"
+	agent_present "$agent" || die "$(agent_name "$agent") is not installed; run: dwm-agent install $agent"
+	# Relink when the skills moved, for example after the skills package was
+	# installed or removed.
+	skills_linked || (link_skills) >/dev/null 2>&1 || true
+
+	case $agent in
+	codex)
+		command=(codex)
+		[[ -n $prompt ]] && command+=(-- "$prompt")
+		;;
+	opencode)
+		command=(opencode)
+		[[ -n $prompt ]] && command+=(--prompt "$prompt")
+		;;
+	gemini)
+		command=(gemini)
+		[[ -n $prompt ]] && command+=(--prompt-interactive "$prompt")
+		;;
+	claude)
+		command=(claude)
+		[[ -n $prompt ]] && command+=(-- "$prompt")
+		;;
+	cursor-agent)
+		# Naming the agent subcommand keeps a one-word prompt such as
+		# "login" from running that subcommand instead.
+		command=(cursor-agent)
+		[[ -n $prompt ]] && command+=(agent -- "$prompt")
+		;;
+	hermes)
+		if [[ -n $prompt ]]; then
+			command=(env -u HERMES_SESSION_SOURCE hermes chat --tui "--query=$prompt")
+		else
+			command=(hermes)
+		fi
+		;;
+	esac
+
+	cd "$HOME"
+	exec "${command[@]}"
+}
+
+case ${1:-} in
+-h | --help) usage ;;
+default)
+	if (($# > 1)); then set_default "$2"; else current_agent; fi
+	;;
+setup) setup "${2:-}" ;;
+list) list_agents ;;
+install)
+	(($# == 2)) || die "usage: dwm-agent install <${AGENTS[*]}>"
+	install_agent "$2"
+	;;
+login)
+	agent=${2:-$(current_agent)}
+	[[ -n $agent ]] || die "no agent chosen; run: dwm-agent setup"
+	known_agent "$agent" || die "unknown agent '$agent'"
+	login_agent "$agent"
+	;;
+link-skills) link_skills ;;
+status) status ;;
+set)
+	(($# == 3)) || die "usage: dwm-agent set <crash-notifications|hang-detection> <on|off>"
+	set_toggle "$2" "$3"
+	;;
+*) launch "$@" ;;
+esac

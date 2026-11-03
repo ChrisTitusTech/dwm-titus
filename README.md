@@ -289,6 +289,12 @@ If the problem remains, [open an issue](https://github.com/ChrisTitusTech/dwm-ti
 and include the relevant diagnostic output. Review it first and remove any
 private system information.
 
+## AI assistance
+
+Packaged customization and diagnosis skills, optional crash/hang diagnosis, and
+agent setup are documented in [AI assistance](docs/AI-ASSIST.md). Open Settings >
+AI assistant or run `dwm-agent setup`. Diagnosis preserves normal agent approvals.
+
 ## Contributing
 
 Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) for the

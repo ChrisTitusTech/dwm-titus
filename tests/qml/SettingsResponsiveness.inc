@@ -3,6 +3,7 @@
     property bool checkedDisplayRecovery: false
     property bool checkedInputRecovery: false
     property string delayedSection: ""
+    property int responseSectionIndex: 0
     property int delayedFrames: 0
     property bool checkedPolicyRead: false
     property bool checkedUpdaterRead: false
@@ -37,7 +38,7 @@
         return result;
     }
     function responsePaneItems() {
-        return responseItems(settingsWindow.contentItem, item => /^(Display|Input|Network|Bluetooth|Audio|Power|Defaults|Appearance|System)SettingsPane_QML/.test(String(item)));
+        return responseItems(settingsWindow.contentItem, item => /^(Display|Input|Network|Bluetooth|Audio|Power|Defaults|Agent|Appearance|System)SettingsPane_QML/.test(String(item)));
     }
     function setTypographyScale(scale) {
         const token = scale === 1 ? "1.0" : scale.toString();
@@ -199,8 +200,8 @@
                 root.responseFirstPane.profileName = "Unsaved display profile";
                 root.responseStage = 2;
                 settingsModel.setSearch("");
-            } else if (root.responseStage >= 2 && root.responseStage <= 10) {
-                const index = root.responseStage - 2;
+            } else if (root.responseStage === 2) {
+                const index = root.responseSectionIndex;
                 const section = settingsModel.sections[index];
                 if (root.delayedSection !== section.id) {
                     root.delayedSection = section.id;
@@ -215,7 +216,7 @@
                     }
                     if (section.id === "power") powerModel.refresh();
                 }
-                const expected = ["Display", "Input", "Network", "Bluetooth", "Audio", "Power", "Defaults", "Appearance", "System"][index];
+                const expected = ["Display", "Input", "Network", "Bluetooth", "Audio", "Power", "Defaults", "Agent", "Appearance", "System"][index];
                 const pane = root.responsePaneItems().find(item => String(item).startsWith(expected + "SettingsPane"));
                 if (pane && !pane.parent.presented && section.id === "input" && settingsModel.inputActionBusy) {
                     root.responseCheck(pane.opacity === 0 && !pane.enabled,
@@ -260,7 +261,7 @@
                     root.responseCheck(settingsModel.testInputReads === reads + 1, "Explicit Refresh reloads input state");
                 }
                 root.responsePanes.push(pane);
-                root.responseStage++;
+                if (++root.responseSectionIndex === settingsModel.sections.length) root.responseStage = 11;
             } else if (root.responseStage === 11) {
                 root.responseCheck(!settingsWindow.testEarlyPresentation, "First presentation waits for every pending provider");
                 root.responseCheck(root.checkedDisplayRecovery && root.checkedInputRecovery,
@@ -274,11 +275,11 @@
                     "Exercised panel/accessibility reads finishing after other Appearance data");
                 settingsModel.testInitialLoading = true;
                 settingsModel.close();
-                root.responseCheck(root.responsePaneItems().length === 9, "Closing retains visited panes");
+                root.responseCheck(root.responsePaneItems().length === settingsModel.sections.length, "Closing retains visited panes");
                 settingsModel.openWindow();
                 root.responseStage++;
             } else if (root.responseStage === 12) {
-                root.responseCheck(root.responsePaneItems().length === 9, "Reopening does not duplicate panes");
+                root.responseCheck(root.responsePaneItems().length === settingsModel.sections.length, "Reopening does not duplicate panes");
                 root.responseCheck(root.responseFirstPane.opacity === 1 && root.responseFirstPane.enabled,
                     "Previously loaded controls stay usable when reopening during a refresh");
                 settingsModel.testInitialLoading = false;

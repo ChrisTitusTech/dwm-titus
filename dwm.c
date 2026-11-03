@@ -37,6 +37,7 @@
 #include <sys/wait.h>
 #include <sys/inotify.h>
 #include <sys/select.h>
+#include <time.h>
 #include <X11/cursorfont.h>
 #include <X11/keysym.h>
 #include <X11/XF86keysym.h>
@@ -85,7 +86,7 @@ enum { NetSupported, NetWMName, NetWMPid, NetWMState, NetWMCheck,
        NetWMWindowTypeMenu, NetWMWindowTypePopupMenu, NetWMWindowTypeDropdownMenu,
        NetWMWindowTypeCombo, NetWMWindowTypeDnd,
        NetClientList, NetDesktopNames, NetDesktopViewport, NetNumberOfDesktops, NetCurrentDesktop,
-       NetWMDesktop, NetDwmMonitorDesktops, NetDwmSelectedMonitor, NetLast }; /* EWMH atoms */
+       NetWMDesktop, NetDwmMonitorDesktops, NetDwmSelectedMonitor, NetWMPing, NetLast }; /* EWMH atoms */
 enum { WMProtocols, WMDelete, WMState, WMTakeFocus, WMLast }; /* default atoms */
 enum { ClkTagBar, ClkLtSymbol, ClkStatusText, ClkWinTitle,
        ClkClientWin, ClkRootWin, ClkLast }; /* clicks */
@@ -124,6 +125,12 @@ struct Client {
 	int iswindowedfullscreen; /* Monitor-sized geometry without EWMH fullscreen. */
 	int beingmoved;
 	int fakefullscreen;
+	int pingsupported; /* cached WM_PROTOCOLS capability */
+	int pingpending; /* a _NET_WM_PING is waiting for its reply */
+	unsigned long pingserial;
+	unsigned long long hanggeneration;
+	int hung;        /* the reply is overdue; reported to dwm-hang-event */
+	long long pingsent;
 	pid_t pid;
 	Client *next;
 	Client *snext;
@@ -330,6 +337,15 @@ static void maprequest(XEvent *e);
 static void motionnotify(XEvent *e);
 static void propertynotify(XEvent *e);
 static void run(void);
+static long long hangnow(void);
+static int hangdetectionenabled(void);
+static void hangcheck(void);
+static long long hangwait(void);
+static void hangevent(Client *c, const char *state);
+static void hangpong(Window w, unsigned long serial);
+static int pingclient(Client *c);
+static void updatepingprotocol(Client *c);
+static void hangkillrequest(Window target);
 static pid_t runautoscript(const char *script);
 static void runautostart(void);
 static void runautostop(void);
@@ -440,6 +456,9 @@ static int selectedmonitorcache;
 static int selectedmonitorcachevalid;
 static Atom dwmfullscreenmonitorsatom, dwmtagupdateatom;
 /* XKB keyboard group state published on the root window (see SPEC.md 5.1) */
+static Atom hangrequestatom, hanggenerationatom;
+static int hangtogglecached = -1;
+static long long hangtogglechecked;
 static Atom kbgroupatom, kbnamesatom, kbsymbolsatom, kbrequestatom, kbutf8atom;
 static int xkbeventbase = -1;  /* -1: no usable XKB extension */
 static long kbpublished[2] = { -1, -1 }; /* group, group count */
@@ -458,6 +477,18 @@ static const char *alttrayname = "tray";
 
 /* configuration, allows nested code to access above variables */
 #include "config.h"
+
+/* Hang detection: ping clients that support _NET_WM_PING and report the ones
+ * that stop answering. Override these in config.h if needed. */
+#ifndef HANG_PING_INTERVAL_MS
+#define HANG_PING_INTERVAL_MS 5000
+#endif
+#ifndef HANG_TIMEOUT_MS
+#define HANG_TIMEOUT_MS 10000
+#endif
+#if HANG_PING_INTERVAL_MS <= 0 || HANG_TIMEOUT_MS <= 0
+#error "Hang detection intervals must be positive"
+#endif
 
 /* ── Hot-reload runtime state ─────────────────────────────── */
 /* Runtime keybindings loaded from hotkeys.toml */
@@ -976,6 +1007,13 @@ clientmessage(XEvent *e)
 	unsigned long i, j, nstates, out;
 	int changed = 0, enabled, truncated, updateabove = 0;
 
+	/* A _NET_WM_PING reply is sent back to the root window and names the
+	 * pinged client in data.l[2]. */
+	if (cme->window == root && cme->message_type == wmatom[WMProtocols]
+	&& cme->format == 32 && (Atom)cme->data.l[0] == netatom[NetWMPing]) {
+		hangpong((Window)cme->data.l[2], (unsigned long)cme->data.l[1] & 0xffffffffUL);
+		return;
+	}
 	if (cme->message_type == netatom[NetCurrentDesktop]) {
 		long desktop = cme->data.l[0];
 
@@ -2052,6 +2090,7 @@ manage(Window w, XWindowAttributes *wa)
 	c->x = c->mon->mx + (c->mon->mw - WIDTH(c)) / 2;
 	c->y = c->mon->my + (c->mon->mh - HEIGHT(c)) / 2;
 	XSelectInput(dpy, w, EnterWindowMask|FocusChangeMask|PropertyChangeMask|StructureNotifyMask);
+	updatepingprotocol(c);
 	grabbuttons(c, 0);
 	if (!c->isfloating)
 		c->isfloating = c->oldstate = trans != None || c->isfixed;
@@ -2512,9 +2551,13 @@ propertynotify(XEvent *e)
 	}
 	if ((ev->window == root) && (ev->atom == XA_WM_NAME)) {
 		updatestatus();
+	} else if (ev->atom == hangrequestatom) {
+		if (ev->state == PropertyNewValue) hangkillrequest(ev->window);
 	} else if (ev->window == root && ev->atom == kbrequestatom) {
 		if (ev->state == PropertyNewValue)
 			keyboardrequest();
+	} else if (ev->atom == wmatom[WMProtocols] && (c = wintoclient(ev->window))) {
+		updatepingprotocol(c);
 	} else if (ev->state == PropertyDelete) {
 		return; /* ignore */
 	} else if ((c = wintoclient(ev->window))) {
@@ -2895,6 +2938,10 @@ run(void)
 		if (!running) break;
 
 		runtime_config_reload_if_pending();
+		hangcheck();
+		/* Xlib protocol queries can buffer events while checking clients. */
+		if (XPending(dpy))
+			continue;
 
 		FD_ZERO(&rfds);
 		FD_SET(x11_fd, &rfds);
@@ -2906,7 +2953,14 @@ run(void)
 				maxfd = config_fd;
 		}
 
-		if (select(maxfd + 1, &rfds, NULL, NULL, NULL) < 0) {
+		/* Wake up for hang checks even when no events arrive. */
+		long long waitms = hangwait();
+		struct timeval hangtv = { waitms / 1000, (waitms % 1000) * 1000 };
+		/* The inotify watch wakes a disabled detector without idle polling.
+		 * Fall back to periodic checks only when no config watch exists. */
+		int ready = select(maxfd + 1, &rfds, NULL, NULL,
+		    hangdetectionenabled() || inotify_wd < 0 ? &hangtv : NULL);
+		if (ready < 0) {
 			if (errno == EINTR) continue; /* interrupted by signal */
 			break;
 		}
@@ -2914,6 +2968,277 @@ run(void)
 		if (config_fd >= 0 && FD_ISSET(config_fd, &rfds))
 			runtime_config_poll_inotify();
 	}
+}
+
+extern char **environ;
+
+static long long
+hangnow(void)
+{
+	struct timespec ts;
+
+	if (clock_gettime(CLOCK_MONOTONIC, &ts) < 0)
+		die("dwm: clock_gettime:");
+	return (long long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
+/* Cache the opt-in flag. inotify invalidates it; without a watch, sample at
+ * most once per ping interval, never on each X event-loop wakeup. */
+static int
+hangdetectionenabled(void)
+{
+	char path[PATH_MAX];
+	long long now = hangnow();
+
+	if (hangtogglecached >= 0 && (inotify_wd >= 0
+	    || now - hangtogglechecked < HANG_PING_INTERVAL_MS))
+		return hangtogglecached;
+	hangtogglechecked = now;
+	hangtogglecached = toml_config_dir[0] != '\0'
+	    && pathjoin(path, sizeof(path), toml_config_dir, "hang-detection")
+	    && access(path, F_OK) == 0;
+	return hangtogglecached;
+}
+
+/* Query only when a window's protocol property or identity changes. */
+static void
+updatepingprotocol(Client *c)
+{
+	int n;
+	Atom *protocols;
+
+	c->pingsupported = 0;
+	if (XGetWMProtocols(dpy, c->win, &protocols, &n)) {
+		while (n--)
+			if (protocols[n] == netatom[NetWMPing]) c->pingsupported = 1;
+		XFree(protocols);
+	}
+	if (!c->pingsupported) {
+		if (c->hung) hangevent(c, "recovered");
+		c->hung = c->pingpending = 0;
+	}
+}
+
+static int
+pingclient(Client *c)
+{
+	static unsigned long lastserial;
+	unsigned long serial;
+	Monitor *m;
+	Client *other;
+	int used;
+	XEvent ev;
+
+	if (!c->pingsupported)
+		return 0;
+	if (!lastserial) lastserial = (unsigned long)hangnow() & 0xffffffffUL;
+	/* Legacy clients may omit the window field. Never reuse a serial that
+	 * is still outstanding, even when the 32-bit counter wraps. */
+	do {
+		serial = lastserial = (lastserial + 1) & 0xffffffffUL;
+		used = !serial;
+		for (m = mons; m && !used; m = m->next)
+			for (other = m->clients; other; other = other->next)
+				if (other->pingpending && other->pingserial == serial) used = 1;
+	} while (used);
+
+	memset(&ev, 0, sizeof(ev));
+	ev.type = ClientMessage;
+	ev.xclient.window = c->win;
+	ev.xclient.message_type = wmatom[WMProtocols];
+	ev.xclient.format = 32;
+	ev.xclient.data.l[0] = netatom[NetWMPing];
+	c->pingserial = serial;
+	ev.xclient.data.l[1] = (long)c->pingserial;
+	ev.xclient.data.l[2] = c->win;
+	XSendEvent(dpy, c->win, False, NoEventMask, &ev);
+	return 1;
+}
+
+static long long hanglastround;
+
+/* Milliseconds until the next hang check round is due. */
+static long long
+hangwait(void)
+{
+	long long left;
+
+	if (!hanglastround)
+		return HANG_PING_INTERVAL_MS;
+	left = hanglastround + HANG_PING_INTERVAL_MS - hangnow();
+	if (left < 0)
+		return 0;
+	return left > HANG_PING_INTERVAL_MS ? HANG_PING_INTERVAL_MS : left;
+}
+
+static void
+hangcheck(void)
+{
+	long long now = hangnow();
+	int enabled;
+	Monitor *m;
+	Client *c;
+
+	enabled = hangdetectionenabled();
+	if (!enabled && !hanglastround)
+		return;
+	if (enabled && hanglastround && now - hanglastround < HANG_PING_INTERVAL_MS)
+		return;
+	hanglastround = enabled ? now : 0;
+
+	for (m = mons; m; m = m->next) {
+		for (c = m->clients; c; c = c->next) {
+			if (!enabled) {
+				/* Switching off forgets any state so nothing
+				 * stale is reported when it is switched on, and
+				 * clears a "not responding" notification. */
+				if (c->hung)
+					hangevent(c, "recovered");
+				c->pingpending = c->hung = 0;
+				continue;
+			}
+			if (c->pingpending) {
+				if (!c->hung && now - c->pingsent >= HANG_TIMEOUT_MS) {
+					c->hung = 1;
+					hangevent(c, "hung");
+				}
+				continue;
+			}
+			if (pingclient(c)) {
+				c->pingpending = 1;
+				c->pingsent = now;
+			}
+		}
+	}
+	XFlush(dpy);
+}
+
+static void
+hangpong(Window w, unsigned long serial)
+{
+	Client *c = wintoclient(w);
+
+	Monitor *m;
+	Client *other, *match = NULL;
+
+	if (!c || !c->pingpending || serial != c->pingserial) {
+		for (m = mons; m; m = m->next)
+			for (other = m->clients; other; other = other->next)
+				if (other->pingpending && other->pingserial == serial) {
+					if (match) return; /* Refuse ambiguous legacy replies. */
+					match = other;
+				}
+		if (!(c = match)) return;
+	}
+	c->pingpending = 0;
+	if (c->hung) {
+		c->hung = 0;
+		hangevent(c, "recovered");
+	}
+}
+
+/* A user action returns through dwm, which owns the current hang generation.
+ * Verify the window's server-side identity under the same grab as XKillClient:
+ * a recycled XID cannot acquire the old window's generation property. */
+static void
+hangkillrequest(Window target)
+{
+	Atom type;
+	int format;
+	unsigned long count, after, window;
+	unsigned long long generation;
+	unsigned char *data = NULL;
+	char request[96], extra;
+	Client *c;
+
+	XGrabServer(dpy);
+	XSetErrorHandler(xerrordummy);
+	if (XGetWindowProperty(dpy, target, hangrequestatom, 0, sizeof(request) / 4,
+	    True, AnyPropertyType, &type, &format, &count, &after, &data) != Success)
+		goto done;
+	if (after) XDeleteProperty(dpy, target, hangrequestatom);
+	if (!data || type != XA_STRING || format != 8 || after || count >= sizeof(request)
+	    || memchr(data, '\0', count)) goto done;
+	memcpy(request, data, count);
+	request[count] = '\0';
+	XFree(data);
+	data = NULL;
+	if (sscanf(request, "0x%lx %llu %c", &window, &generation, &extra) != 2
+	    || window != target || !generation || !(c = wintoclient((Window)window)) || !c->hung
+	    || c->hanggeneration != generation) goto done;
+	if (XGetWindowProperty(dpy, c->win, hanggenerationatom, 0, 2, False,
+	    XA_CARDINAL, &type, &format, &count, &after, &data) == Success
+	    && data && type == XA_CARDINAL && format == 32 && count == 2 && !after
+	    && (((unsigned long *)data)[0] & 0xffffffffUL) == (generation & 0xffffffffUL)
+	    && (((unsigned long *)data)[1] & 0xffffffffUL) == (generation >> 32)) {
+		XSetCloseDownMode(dpy, DestroyAll);
+		XKillClient(dpy, c->win);
+	}
+done:
+	if (data) XFree(data);
+	XSync(dpy, False);
+	XSetErrorHandler(xerror);
+	XUngrabServer(dpy);
+	XFlush(dpy);
+}
+
+/* Run dwm-hang-event <hung|recovered|gone> <window> <pid> <class> <title>, next to
+ * the dwm binary when possible. Arguments go straight to exec, never through
+ * a shell, because the title and class come from the client. */
+static void
+hangevent(Client *c, const char *state)
+{
+	char helper[PATH_MAX], winid[32], pidstr[32], sequence[32];
+	static long long lastsequence;
+	long long now = hangnow();
+	char *separator;
+	char *argv[8];
+	pid_t eventpid = c->swallowing ? c->swallowing->pid : c->pid;
+	XClassHint ch = { NULL, NULL };
+	ssize_t len;
+
+	snprintf(winid, sizeof(winid), "0x%lx", (unsigned long)c->win);
+	snprintf(pidstr, sizeof(pidstr), "%d", eventpid > 0 ? (int)eventpid : 0);
+	XGetClassHint(dpy, c->win, &ch);
+
+	argv[0] = "dwm-hang-event";
+	argv[1] = (char *)state;
+	argv[2] = winid;
+	argv[3] = pidstr;
+	argv[4] = ch.res_class ? ch.res_class : "";
+	argv[5] = c->name;
+	lastsequence = now > lastsequence ? now : lastsequence + 1;
+	c->hanggeneration = strcmp(state, "hung") == 0 ? (unsigned long long)lastsequence : 0;
+	if (c->hanggeneration) {
+		unsigned long identity[2] = { c->hanggeneration & 0xffffffffUL, c->hanggeneration >> 32 };
+		XChangeProperty(dpy, c->win, hanggenerationatom, XA_CARDINAL, 32,
+		                PropModeReplace, (unsigned char *)identity, 2);
+		XFlush(dpy);
+	}
+	snprintf(sequence, sizeof(sequence), "%lld", lastsequence);
+	argv[6] = sequence;
+	argv[7] = NULL;
+
+	fprintf(stderr, "dwm: client %s %s (%s)\n", winid, state, argv[4]);
+	len = readlink("/proc/self/exe", helper, sizeof(helper));
+	if (len > 0 && (size_t)len < sizeof(helper)) {
+		helper[len] = '\0';
+		separator = strrchr(helper, '/');
+		if (separator && (size_t)(separator - helper) + sizeof("/dwm-hang-event") <= sizeof(helper)) {
+			memcpy(separator, "/dwm-hang-event", sizeof("/dwm-hang-event"));
+			if (access(helper, X_OK) == 0
+			&& posix_spawn(NULL, helper, NULL, NULL, argv, environ) == 0)
+				goto done;
+		}
+	}
+	int spawn_error = posix_spawnp(NULL, argv[0], NULL, NULL, argv, environ);
+	if (spawn_error)
+		fprintf(stderr, "dwm: hang helper: %s\n", strerror(spawn_error));
+done:
+	if (ch.res_class)
+		XFree(ch.res_class);
+	if (ch.res_name)
+		XFree(ch.res_name);
 }
 
 pid_t
@@ -4112,7 +4437,17 @@ runtime_config_poll_inotify(void)
 		struct inotify_event *ie = (struct inotify_event *)ptr;
 		if (ptr + sizeof(struct inotify_event) + ie->len > end)
 			break;
-		if (ie->len > 0 &&
+		if (ie->mask & IN_Q_OVERFLOW)
+			hangtogglecached = -1;
+		if (ie->wd == inotify_wd) {
+			if (ie->mask & (IN_IGNORED | IN_DELETE_SELF | IN_MOVE_SELF)) {
+				inotify_wd = -1;
+				hangtogglecached = -1;
+			} else if (ie->len > 0 && strcmp(ie->name, "hang-detection") == 0) {
+				hangtogglecached = -1;
+			}
+		}
+		if (ie->len > 0 && (ie->mask & (IN_CLOSE_WRITE | IN_MOVED_TO)) &&
 		    (strcmp(ie->name, "hotkeys.toml")      == 0 ||
 		     strcmp(ie->name, "themes.toml")       == 0 ||
 		     strcmp(ie->name, "window-rules.toml") == 0))
@@ -4127,6 +4462,7 @@ static void
 runtime_config_reload(void)
 {
 	runtime_config_ensure_user_watch();
+	hangtogglecached = -1;
 	reload_config();
 }
 
@@ -4140,7 +4476,7 @@ runtime_config_ensure_user_watch(void)
 		return;
 	}
 	inotify_wd = inotify_add_watch(inotify_fd, toml_config_dir,
-	                               IN_CLOSE_WRITE | IN_MOVED_TO);
+	                               IN_CLOSE_WRITE | IN_MOVED_TO | IN_DELETE | IN_CREATE | IN_MOVED_FROM | IN_DELETE_SELF | IN_MOVE_SELF);
 	if (inotify_wd < 0)
 		inotify_wd = -1;
 }
@@ -4234,7 +4570,7 @@ setup_inotify(void)
 	if (inotify_fd < 0) { perror("dwm: inotify_init1"); return; }
 
 	inotify_wd = inotify_add_watch(inotify_fd, toml_config_dir,
-	                               IN_CLOSE_WRITE | IN_MOVED_TO);
+	                               IN_CLOSE_WRITE | IN_MOVED_TO | IN_DELETE | IN_CREATE | IN_MOVED_FROM | IN_DELETE_SELF | IN_MOVE_SELF);
 	if (inotify_wd < 0) {
 		/* User config dir not present – watch only the default dir */
 		inotify_wd = -1;
@@ -4242,7 +4578,7 @@ setup_inotify(void)
 
 	/* Watch the default dir so updates there also trigger hot-reload */
 	inotify_wd3 = inotify_add_watch(inotify_fd, toml_default_dir,
-	                                IN_CLOSE_WRITE | IN_MOVED_TO);
+	                                IN_CLOSE_WRITE | IN_MOVED_TO | IN_DELETE | IN_CREATE | IN_MOVED_FROM | IN_DELETE_SELF | IN_MOVE_SELF);
 
 	if (inotify_wd < 0 && inotify_wd3 < 0) {
 		/* Neither dir is watchable – disable inotify */
@@ -4283,6 +4619,8 @@ setup(void)
 	reconcilemonitortags();
 	/* init atoms */
 	utf8string = XInternAtom(dpy, "UTF8_STRING", False);
+	hangrequestatom = XInternAtom(dpy, "_DWM_TITUS_HANG_KILL", False);
+	hanggenerationatom = XInternAtom(dpy, "_DWM_TITUS_HANG_GENERATION", False);
 	wmatom[WMProtocols] = XInternAtom(dpy, "WM_PROTOCOLS", False);
 	wmatom[WMDelete] = XInternAtom(dpy, "WM_DELETE_WINDOW", False);
 	wmatom[WMState] = XInternAtom(dpy, "WM_STATE", False);
@@ -4318,6 +4656,7 @@ setup(void)
 	netatom[NetWMDesktop] = XInternAtom(dpy, "_NET_WM_DESKTOP", False);
 	netatom[NetDwmMonitorDesktops] = XInternAtom(dpy, "_DWM_MONITOR_DESKTOPS", False);
 	netatom[NetDwmSelectedMonitor] = XInternAtom(dpy, "_DWM_SELECTED_MONITOR", False);
+	netatom[NetWMPing] = XInternAtom(dpy, "_NET_WM_PING", False);
 	dwmfullscreenmonitorsatom = XInternAtom(dpy, "_DWM_FULLSCREEN_MONITORS", False);
 	dwmtagupdateatom = XInternAtom(dpy, "DWM_TAG_UPDATE", False);
 	/* init cursors */
@@ -4452,12 +4791,18 @@ swallow(Client *p, Client *c)
 	setclientstate(c, WithdrawnState);
 	XUnmapWindow(dpy, p->win);
 
+	/* Ping state belongs to the X window, not the reused Client record. */
+	if (p->hung)
+		hangevent(p, "gone");
+	p->hung = p->pingpending = 0;
+	c->hung = c->pingpending = 0;
 	p->swallowing = c;
 	c->mon = p->mon;
 
 	Window w = p->win;
 	p->win = c->win;
 	c->win = w;
+	updatepingprotocol(p);
 	int ewmhabove = p->ewmhabove;
 	p->ewmhabove = c->ewmhabove;
 	c->ewmhabove = ewmhabove;
@@ -4861,6 +5206,11 @@ unmanage(Client *c, int destroyed)
 	Client *top = NULL;
 	XWindowChanges wc;
 
+	/* Withdraw a "not responding" notification for a window that is gone. */
+	if (c->hung) {
+		hangevent(c, "gone");
+		c->hung = c->pingpending = 0;
+	}
 	if (c->swallowing) {
 		unswallow(c);
 		return;
@@ -5027,7 +5377,9 @@ untrackoverridewindow(Window win)
 void
 unswallow(Client *c)
 {
+	c->hung = c->pingpending = 0;
 	c->win = c->swallowing->win;
+	updatepingprotocol(c);
 	c->ewmhabove = c->swallowing->ewmhabove;
 	c->iswindowedfullscreen = c->swallowing->iswindowedfullscreen;
 	c->rulefullscreenapplied = c->swallowing->rulefullscreenapplied;

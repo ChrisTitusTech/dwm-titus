@@ -1,0 +1,170 @@
+#!/usr/bin/env bash
+# Called by dwm when a window stops answering _NET_WM_PING ("hung"), answers
+# again ("recovered"), or is closed while hung ("gone"). Arguments come from the
+# client: treat them as data only.
+set -euo pipefail
+
+state=${1:-}
+window=${2:-}
+pid=${3:-0}
+class=${4:-}
+title=${5:-}
+
+config_dir=${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus
+ignore_file=$config_dir/hang-ignore
+runtime=${XDG_RUNTIME_DIR:-/run/user/$UID}/dwm-titus/hang/$(printf %s "${DISPLAY:-}" | sha256sum | cut -d' ' -f1)
+
+[[ $window =~ ^0x[0-9a-f]+$ ]] || exit 2
+[[ $pid =~ ^[0-9]+$ ]] || pid=0
+command -v notify-send >/dev/null 2>&1 || exit 0
+
+mkdir -p "$runtime"
+record=$runtime/$window
+# Start time (field 22 of /proc/<pid>/stat). The name in field 2 can contain
+# spaces and parentheses, so read everything after its closing parenthesis.
+start_time_of() {
+	local stat fields
+	stat=$(cat "/proc/$1/stat" 2>/dev/null) || return 0
+	read -ra fields <<<"${stat##*) }"
+	printf '%s' "${fields[19]:-}"
+}
+
+# dwm starts a handler per event and they can run out of order, so each one
+# receives a monotonic sequence from dwm. Recovered and gone leave that
+# sequence here; an older hung handler stands down even if scheduled later.
+closed_marker=$runtime/$window.closed
+self_start=${6:-}
+[[ $self_start =~ ^[0-9]+$ ]] || exit 2
+# Serialize posting and withdrawal; dwm assigns ordering before spawning us.
+exec 9>"$runtime/$window.lock"
+flock 9
+
+recovered_since_hung() {
+	local closed_at=''
+	[[ -f $closed_marker ]] || return 1
+	read -r closed_at <"$closed_marker" || return 1
+	[[ $closed_at =~ ^[0-9]+$ ]] && ((closed_at >= self_start))
+}
+
+ignored() {
+	local line
+	[[ -n $class && -f $ignore_file ]] || return 1
+	while IFS= read -r line || [[ -n $line ]]; do
+		line=${line%%#*}
+		line=${line#"${line%%[![:space:]]*}"}
+		line=${line%"${line##*[![:space:]]}"}
+		[[ -n $line && ${line,,} == "${class,,}" ]] && return 0
+	done <"$ignore_file"
+	return 1
+}
+
+close_id() {
+	[[ ${1:-} =~ ^[1-9][0-9]*$ ]] || return 0
+	gdbus call --session --dest org.freedesktop.Notifications \
+		--object-path /org/freedesktop/Notifications \
+		--method org.freedesktop.Notifications.CloseNotification "$1" >/dev/null 2>&1 || true
+}
+
+withdraw_record() {
+	local id='' waiter='' record_sequence=0 waiter_start=0
+	[[ -f $record ]] || return 0
+	read -r id waiter record_sequence waiter_start <"$record" || true
+	rm -f "$record"
+	if [[ $waiter =~ ^[0-9]+$ && -n $waiter_start ]] && [[ $(start_time_of "$waiter") == "$waiter_start" ]]; then
+		kill "$waiter" 2>/dev/null || true
+		close_id "$id"
+	fi
+}
+
+close_notification() {
+	local previous=0 record_sequence=0
+	[[ -f $closed_marker ]] && read -r previous <"$closed_marker" || true
+	[[ $previous =~ ^[0-9]+$ ]] || previous=0
+	((previous > self_start)) && return 0
+	printf '%s\n' "$self_start" >"$closed_marker"
+	[[ -f $record ]] || return 0
+	read -r _ _ record_sequence _ <"$record" || true
+	[[ $record_sequence =~ ^[0-9]+$ ]] && ((record_sequence > self_start)) && return 0
+	withdraw_record
+}
+
+case $state in
+recovered | gone)
+	close_notification
+	exit 0
+	;;
+hung) ;;
+*) exit 2 ;;
+esac
+
+ignored && exit 0
+recovered_since_hung && exit 0
+# Supersede an older offer, but never let delayed handlers replace a newer one.
+if [[ -f $record ]]; then
+	current_sequence=0
+	read -r _ _ current_sequence _ <"$record" || true
+	[[ $current_sequence =~ ^[0-9]+$ ]] && ((current_sequence >= self_start)) && exit 0
+	withdraw_record
+fi
+
+name=${class:-${title:-Window}}
+name=${name//[$'\t\r\n']/ }
+name=${name:0:60}
+
+if [[ -n $(dwm-agent default 2>/dev/null) ]]; then
+	diagnose_label="Diagnose with AI"
+else
+	diagnose_label="Set up AI diagnosis"
+fi
+
+# notify-send prints the notification id first and, after the click, the
+# action. A plain file (not a FIFO) means killing it can never leave this
+# handler blocked.
+out=$runtime/$window.$self_start.out
+: >"$out"
+notify-send --app-name=dwm-titus --urgency=critical --print-id \
+	--action=diagnose="$diagnose_label" --action=kill="Force quit" --action=wait=Wait \
+	"$name is not responding" \
+	"It has not answered for 10 seconds. It may still recover." >"$out" 2>/dev/null 9>&- &
+waiter=$!
+waiter_start=$(start_time_of "$waiter")
+printf '0 %s %s %s\n' "$waiter" "$self_start" "$waiter_start" >"$record"
+id=''
+for _ in {1..50}; do
+	read -r id <"$out" || id=''
+	[[ -n $id ]] && break
+	kill -0 "$waiter" 2>/dev/null || break
+	sleep 0.1
+done
+[[ -f $record ]] && printf '%s %s %s %s\n' "${id:-0}" "$waiter" "$self_start" "$waiter_start" >"$record"
+# The window answered while the notification was being posted.
+if recovered_since_hung; then
+	rm -f "$record" "$out"
+	kill "$waiter" 2>/dev/null || true
+	close_id "$id"
+	exit 0
+fi
+flock -u 9
+wait "$waiter" 2>/dev/null || true
+flock 9
+action=$(sed -n 2p "$out")
+current_sequence=0
+[[ -f $record ]] && read -r _ _ current_sequence _ <"$record" || true
+rm -f "$out"
+[[ $current_sequence == "$self_start" ]] || exit 0
+recovered_since_hung && exit 0
+# Keep a tombstone after answering, so a delayed older hung event cannot
+# resurrect an offer. The lock also excludes newer state while acting.
+close_notification
+
+case $action in
+diagnose)
+	setsid -f dwm-agent-diagnose hang "$window" "$pid" "$class" </dev/null >/dev/null 2>&1 9>&-
+	;;
+kill)
+	# dwm verifies both the current generation and the X window identity
+	# before closing its connection. Per-window requests cannot overwrite
+	# another window's pending action. Never kill a recycled XID here.
+	xprop -id "$window" -f _DWM_TITUS_HANG_KILL 8s -set _DWM_TITUS_HANG_KILL "$window $self_start" 2>/dev/null || exit 0
+	;;
+esac

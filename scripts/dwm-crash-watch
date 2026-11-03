@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# Watch for this user's crashes and offer an AI diagnosis. systemd-coredump
+# journals every core dump under a fixed MESSAGE_ID with COREDUMP_* fields.
+set -uo pipefail
+
+# startx does not terminate a logind X11 scope on logout. Tie the detached
+# journal worker (and its pending notification children) to the X connection,
+# so an old watcher cannot keep owning notifications on a dead display.
+if [[ ${1:-} != --journal && -n ${DISPLAY:-} ]] && command -v xprop >/dev/null 2>&1; then
+	setsid "$0" --journal &
+	worker=$!
+	xprop -root -spy _NET_SUPPORTING_WM_CHECK >/dev/null 2>&1 &
+	anchor=$!
+	# shellcheck disable=SC2329
+	cleanup_watch() {
+		trap - EXIT HUP INT TERM
+		kill -- "-$worker" 2>/dev/null || true
+		kill "$worker" "$anchor" 2>/dev/null || true
+		wait "$worker" "$anchor" 2>/dev/null || true
+	}
+	trap cleanup_watch EXIT
+	trap 'exit 0' HUP INT TERM
+	wait -n "$worker" "$anchor" 2>/dev/null || true
+	exit 0
+fi
+
+# See systemd.journal-fields(7).
+readonly COREDUMP_MESSAGE_ID=fc2e22bc6ee647b6b90729ab34a250b1
+
+config_dir=${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus
+crash_off_toggle=$config_dir/crash-notifications-off
+# Crash loops dump core again and again; announce each program once a window.
+dedupe_seconds=${DWM_CRASH_DEDUPE_SECONDS:-60}
+# Extended regex of program names never worth announcing.
+ignore_pattern=${DWM_CRASH_IGNORE:-}
+
+command -v journalctl >/dev/null 2>&1 || exit 0
+command -v jq >/dev/null 2>&1 || exit 0
+command -v notify-send >/dev/null 2>&1 || exit 0
+
+declare -A last_notified
+
+# notify-send waits for the click, so each announcement runs on its own.
+announce() {
+	local name=$1 pid=$2 exe=$3 signal=$4 timestamp=$5 boot=$6 action label
+
+	if [[ -n $(dwm-agent default 2>/dev/null) ]]; then
+		label="Diagnose with AI"
+	else
+		label="Set up AI diagnosis"
+	fi
+	(
+		action=$(notify-send --app-name=dwm-titus --urgency=critical \
+			--action=diagnose="$label" --action=ignore=Ignore \
+			"Process crashed: $name" "Signal $signal. Click to diagnose with AI." 2>/dev/null) || exit 0
+		[[ $action == diagnose ]] || exit 0
+		# Crash details are separate argv words, never shell text.
+		setsid -f dwm-agent-diagnose crash "$pid" "$name" "$exe" "$signal" "$timestamp" "$boot" </dev/null >/dev/null 2>&1
+	) &
+}
+
+# -n 0 so a restart does not announce crashes that were already handled.
+journalctl -f -n 0 -o json "MESSAGE_ID=$COREDUMP_MESSAGE_ID" "COREDUMP_UID=$UID" 2>/dev/null |
+	while IFS= read -r entry; do
+		IFS=$'\t' read -r uid comm pid exe signal timestamp boot < <(
+			jq -r '[(.COREDUMP_UID // ._UID // "-"),
+				(.COREDUMP_COMM // "-"),
+				(.COREDUMP_PID // "-"),
+				(.COREDUMP_EXE // "-"),
+				(.COREDUMP_SIGNAL_NAME // "-"),
+				(.__REALTIME_TIMESTAMP // "-"), (._BOOT_ID // "-")] | @tsv' <<<"$entry" 2>/dev/null
+		)
+
+		[[ ${pid:-} =~ ^[0-9]+$ ]] || continue
+		[[ -e $crash_off_toggle ]] && continue
+
+		# Only this user's programs; a system daemon crash is for the admin.
+		[[ $uid =~ ^[0-9]+$ ]] || continue
+		((uid == UID)) || continue
+
+		# comm is cut to 15 characters, so prefer the binary's name.
+		name=$comm
+		[[ $exe == /* ]] && name=${exe##*/}
+
+		[[ -n $ignore_pattern && $name =~ $ignore_pattern ]] && continue
+		# Never announce our own tools, or a broken one notifies about itself.
+		[[ $name == dwm-crash-watch || $name == dwm-agent* || $name == dwm-hang-event || $name == notify-send ]] && continue
+
+		now=$EPOCHSECONDS
+		(((now - ${last_notified[$name]:-0}) < dedupe_seconds)) && continue
+		last_notified[$name]=$now
+		announce "$name" "$pid" "$exe" "$signal" "$timestamp" "$boot"
+	done

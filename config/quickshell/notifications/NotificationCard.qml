@@ -10,6 +10,7 @@ Rectangle {
 
     signal dismiss
     signal expired
+    signal actionInvoked(string identifier)
 
     Layout.fillWidth: true
     Layout.preferredHeight: Math.max(Theme.scaledSize(82), content.implicitHeight + Theme.scaledSize(28))
@@ -21,10 +22,18 @@ Rectangle {
     border.width: Theme.controlBorderWidth
 
     Timer {
-        interval: root.item.timeoutMs
-        running: true
+        interval: Math.max(1, root.item.timeoutMs)
+        running: root.item.timeoutMs > 0
         repeat: false
         onTriggered: root.expired()
+    }
+
+    // Clicking the body runs the client's default action, when it has one.
+    MouseArea {
+        anchors.fill: parent
+        enabled: root.item.hasDefaultAction === true
+        cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+        onClicked: root.actionInvoked("default")
     }
 
     RowLayout {
@@ -76,6 +85,13 @@ Rectangle {
                 wrapMode: Text.WordWrap
                 maximumLineCount: 3
                 elide: Text.ElideRight
+            }
+
+            NotificationActions {
+                Layout.topMargin: Theme.tightSpacing
+                actions: root.item.actions || []
+                critical: root.item.urgency === NotificationUrgency.Critical
+                onInvoked: identifier => root.actionInvoked(identifier)
             }
         }
 

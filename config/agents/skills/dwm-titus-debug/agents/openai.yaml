@@ -1,0 +1,4 @@
+interface:
+  display_name: "dwm-titus Debug"
+  short_description: "Diagnose dwm-titus desktop failures"
+  default_prompt: "Use $dwm-titus-debug to find out why this dwm-titus app or desktop component is broken."

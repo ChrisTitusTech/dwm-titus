@@ -8,6 +8,12 @@ versions from `config.mk`.
 
 ### Added
 
+- Ship titstack customization and diagnosis skills, an AI assistant Settings
+  page, an optional skills RPM, actionable crash notifications, and opt-in X11 hang
+  detection. Diagnosis
+  preserves agent approvals; optional agent installation uses existing mise.
+  See [AI assistance](docs/AI-ASSIST.md) for setup and recovery (#298, #378).
+
 - Enable automatic time synchronization with systemd-timesyncd on new Fedora
   installations and both image variants; preserve existing time providers and
   explicit service masks when rerunning the installer.

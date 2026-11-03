@@ -304,6 +304,18 @@ contract for every developer deployment. Every live update must:
    active and that the graphical-session and XDG autostart lifecycle starts
    tray clients for the new X11 session.
 
+### 5.5.1 Optional AI assistance
+
+Ship the titstack-derived customization and read-only diagnosis skills with the
+managed user data, with an optional noarch RPM for independent skill updates.
+Prefer the system package when present. Retarget only links to the two managed
+skill trees; preserve custom agent skill paths.
+Offer crash diagnosis only after an explicit notification action; keep X11
+`_NET_WM_PING` hang detection opt-in. Preserve agent approval and sandbox policy,
+keep untrusted window titles out of prompts, and never kill an application-supplied
+PID. The Settings frontend remains unprivileged. Optional agent installation
+uses an existing mise installation without adding system repositories.
+
 ### 5.6 Build System
 
 The build must:
@@ -851,6 +863,11 @@ configuration and unrelated application configuration by default.
 - Third-party executable installers must run as the target user in an isolated
   staging directory. Both the reviewed installer and resulting binary must
   match repository-pinned checksums before the binary is installed.
+- The explicitly requested optional AI agent path in Section 5.5.1 is an
+  exception to the preceding download/checksum requirements: the desktop user
+  delegates installation to their existing mise and its registry verification.
+  These agent artifacts are not pinned or checksum-reviewed by dwm-titus.
+  This exception adds no system repositories and never runs as root.
 - Do not run user configuration or desktop helpers as root.
 - Quote paths and arguments that may contain whitespace.
 - Prevent command injection through distribution metadata, configuration

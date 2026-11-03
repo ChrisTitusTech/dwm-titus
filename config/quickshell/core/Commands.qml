@@ -96,6 +96,16 @@ Singleton {
         return powerHelperCommand("session-action", [action]);
     }
 
+    function agentCommand(action, args) {
+        return helperCommand("dwm-agent", action, args, true);
+    }
+
+    function agentTerminalCommand(action, args) {
+        const hold = '\"$@\"; status=$?; printf "\\nAI assistant exited with status %s. Press Enter to close..." "$status"; read -r reply; exit "$status"';
+        const command = ["sh", "-c", hold, "dwm-agent-terminal"].concat(agentCommand(action, args));
+        return helperCommand("dwm-terminal", "-e", command, true);
+    }
+
     function defaultsHelperCommand(action, args) {
         return helperCommand("dwm-default-apps", action, args, true);
     }
