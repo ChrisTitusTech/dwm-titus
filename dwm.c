@@ -345,7 +345,7 @@ static void hangevent(Client *c, const char *state);
 static void hangpong(Window w, unsigned long serial);
 static int pingclient(Client *c);
 static void updatepingprotocol(Client *c);
-static void hangkillrequest(void);
+static void hangkillrequest(Window target);
 static pid_t runautoscript(const char *script);
 static void runautostart(void);
 static void runautostop(void);
@@ -457,6 +457,8 @@ static int selectedmonitorcachevalid;
 static Atom dwmfullscreenmonitorsatom, dwmtagupdateatom;
 /* XKB keyboard group state published on the root window (see SPEC.md 5.1) */
 static Atom hangrequestatom, hanggenerationatom;
+static int hangtogglecached = -1;
+static long long hangtogglechecked;
 static Atom kbgroupatom, kbnamesatom, kbsymbolsatom, kbrequestatom, kbutf8atom;
 static int xkbeventbase = -1;  /* -1: no usable XKB extension */
 static long kbpublished[2] = { -1, -1 }; /* group, group count */
@@ -2549,8 +2551,8 @@ propertynotify(XEvent *e)
 	}
 	if ((ev->window == root) && (ev->atom == XA_WM_NAME)) {
 		updatestatus();
-	} else if (ev->window == root && ev->atom == hangrequestatom) {
-		if (ev->state == PropertyNewValue) hangkillrequest();
+	} else if (ev->atom == hangrequestatom) {
+		if (ev->state == PropertyNewValue) hangkillrequest(ev->window);
 	} else if (ev->window == root && ev->atom == kbrequestatom) {
 		if (ev->state == PropertyNewValue)
 			keyboardrequest();
@@ -2980,17 +2982,22 @@ hangnow(void)
 	return (long long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
 }
 
-/* Off unless the user opted in: ${XDG_CONFIG_HOME}/dwm-titus/hang-detection
- * exists. Checked on every round so the switch needs no restart. */
+/* Cache the opt-in flag. inotify invalidates it; without a watch, sample at
+ * most once per ping interval, never on each X event-loop wakeup. */
 static int
 hangdetectionenabled(void)
 {
 	char path[PATH_MAX];
+	long long now = hangnow();
 
-	if (toml_config_dir[0] == '\0'
-	|| !pathjoin(path, sizeof(path), toml_config_dir, "hang-detection"))
-		return 0;
-	return access(path, F_OK) == 0;
+	if (hangtogglecached >= 0 && (inotify_wd >= 0
+	    || now - hangtogglechecked < HANG_PING_INTERVAL_MS))
+		return hangtogglecached;
+	hangtogglechecked = now;
+	hangtogglecached = toml_config_dir[0] != '\0'
+	    && pathjoin(path, sizeof(path), toml_config_dir, "hang-detection")
+	    && access(path, F_OK) == 0;
+	return hangtogglecached;
 }
 
 /* Query only when a window's protocol property or identity changes. */
@@ -3134,7 +3141,7 @@ hangpong(Window w, unsigned long serial)
  * Verify the window's server-side identity under the same grab as XKillClient:
  * a recycled XID cannot acquire the old window's generation property. */
 static void
-hangkillrequest(void)
+hangkillrequest(Window target)
 {
 	Atom type;
 	int format;
@@ -3146,10 +3153,10 @@ hangkillrequest(void)
 
 	XGrabServer(dpy);
 	XSetErrorHandler(xerrordummy);
-	if (XGetWindowProperty(dpy, root, hangrequestatom, 0, sizeof(request) / 4,
+	if (XGetWindowProperty(dpy, target, hangrequestatom, 0, sizeof(request) / 4,
 	    True, AnyPropertyType, &type, &format, &count, &after, &data) != Success)
 		goto done;
-	if (after) XDeleteProperty(dpy, root, hangrequestatom);
+	if (after) XDeleteProperty(dpy, target, hangrequestatom);
 	if (!data || type != XA_STRING || format != 8 || after || count >= sizeof(request)
 	    || memchr(data, '\0', count)) goto done;
 	memcpy(request, data, count);
@@ -3157,7 +3164,7 @@ hangkillrequest(void)
 	XFree(data);
 	data = NULL;
 	if (sscanf(request, "0x%lx %llu %c", &window, &generation, &extra) != 2
-	    || !generation || !(c = wintoclient((Window)window)) || !c->hung
+	    || window != target || !generation || !(c = wintoclient((Window)window)) || !c->hung
 	    || c->hanggeneration != generation) goto done;
 	if (XGetWindowProperty(dpy, c->win, hanggenerationatom, 0, 2, False,
 	    XA_CARDINAL, &type, &format, &count, &after, &data) == Success
@@ -4430,6 +4437,16 @@ runtime_config_poll_inotify(void)
 		struct inotify_event *ie = (struct inotify_event *)ptr;
 		if (ptr + sizeof(struct inotify_event) + ie->len > end)
 			break;
+		if (ie->mask & IN_Q_OVERFLOW)
+			hangtogglecached = -1;
+		if (ie->wd == inotify_wd) {
+			if (ie->mask & (IN_IGNORED | IN_DELETE_SELF | IN_MOVE_SELF)) {
+				inotify_wd = -1;
+				hangtogglecached = -1;
+			} else if (ie->len > 0 && strcmp(ie->name, "hang-detection") == 0) {
+				hangtogglecached = -1;
+			}
+		}
 		if (ie->len > 0 && (ie->mask & (IN_CLOSE_WRITE | IN_MOVED_TO)) &&
 		    (strcmp(ie->name, "hotkeys.toml")      == 0 ||
 		     strcmp(ie->name, "themes.toml")       == 0 ||
@@ -4445,6 +4462,7 @@ static void
 runtime_config_reload(void)
 {
 	runtime_config_ensure_user_watch();
+	hangtogglecached = -1;
 	reload_config();
 }
 
@@ -4458,7 +4476,7 @@ runtime_config_ensure_user_watch(void)
 		return;
 	}
 	inotify_wd = inotify_add_watch(inotify_fd, toml_config_dir,
-	                               IN_CLOSE_WRITE | IN_MOVED_TO | IN_DELETE | IN_CREATE | IN_MOVED_FROM);
+	                               IN_CLOSE_WRITE | IN_MOVED_TO | IN_DELETE | IN_CREATE | IN_MOVED_FROM | IN_DELETE_SELF | IN_MOVE_SELF);
 	if (inotify_wd < 0)
 		inotify_wd = -1;
 }
@@ -4552,7 +4570,7 @@ setup_inotify(void)
 	if (inotify_fd < 0) { perror("dwm: inotify_init1"); return; }
 
 	inotify_wd = inotify_add_watch(inotify_fd, toml_config_dir,
-	                               IN_CLOSE_WRITE | IN_MOVED_TO | IN_DELETE | IN_CREATE | IN_MOVED_FROM);
+	                               IN_CLOSE_WRITE | IN_MOVED_TO | IN_DELETE | IN_CREATE | IN_MOVED_FROM | IN_DELETE_SELF | IN_MOVE_SELF);
 	if (inotify_wd < 0) {
 		/* User config dir not present – watch only the default dir */
 		inotify_wd = -1;
@@ -4560,7 +4578,7 @@ setup_inotify(void)
 
 	/* Watch the default dir so updates there also trigger hot-reload */
 	inotify_wd3 = inotify_add_watch(inotify_fd, toml_default_dir,
-	                                IN_CLOSE_WRITE | IN_MOVED_TO | IN_DELETE | IN_CREATE | IN_MOVED_FROM);
+	                                IN_CLOSE_WRITE | IN_MOVED_TO | IN_DELETE | IN_CREATE | IN_MOVED_FROM | IN_DELETE_SELF | IN_MOVE_SELF);
 
 	if (inotify_wd < 0 && inotify_wd3 < 0) {
 		/* Neither dir is watchable – disable inotify */
@@ -4603,7 +4621,6 @@ setup(void)
 	utf8string = XInternAtom(dpy, "UTF8_STRING", False);
 	hangrequestatom = XInternAtom(dpy, "_DWM_TITUS_HANG_KILL", False);
 	hanggenerationatom = XInternAtom(dpy, "_DWM_TITUS_HANG_GENERATION", False);
-	XDeleteProperty(dpy, root, hangrequestatom);
 	wmatom[WMProtocols] = XInternAtom(dpy, "WM_PROTOCOLS", False);
 	wmatom[WMDelete] = XInternAtom(dpy, "WM_DELETE_WINDOW", False);
 	wmatom[WMState] = XInternAtom(dpy, "WM_STATE", False);

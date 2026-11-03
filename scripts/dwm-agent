@@ -379,10 +379,25 @@ launch() {
 	done
 
 	agent=$(current_agent)
-	if [[ -z $agent ]]; then
-		((inline)) && die "no agent chosen; run: dwm-agent setup"
-		exec dwm-terminal -e "$0" setup
+	if ((!inline)); then
+		if [[ -z $agent ]]; then
+			command=("$0" setup)
+		else
+			command=("$0" --inline --prompt "$prompt")
+		fi
+		# Enter the terminal before checking the selected binary. Setup and
+		# launch failures must stay visible even when notification stderr is hidden.
+		# Expand arguments/status in the terminal shell, not this launcher.
+		# shellcheck disable=SC2016
+		exec dwm-terminal -e bash -c '
+status=0
+"$@" || status=$?
+printf "\nPress Enter to close..."
+IFS= read -r _ || true
+exit "$status"
+' dwm-agent-terminal "${command[@]}"
 	fi
+	[[ -n $agent ]] || die "no agent chosen; run: dwm-agent setup"
 	agent_present "$agent" || die "$(agent_name "$agent") is not installed; run: dwm-agent install $agent"
 	# Relink when the skills moved, for example after the skills package was
 	# installed or removed.
@@ -421,10 +436,7 @@ launch() {
 	esac
 
 	cd "$HOME"
-	if ((inline)); then
-		exec "${command[@]}"
-	fi
-	exec dwm-terminal -e "${command[@]}"
+	exec "${command[@]}"
 }
 
 case ${1:-} in

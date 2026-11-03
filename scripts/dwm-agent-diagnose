@@ -101,6 +101,7 @@ hang_prompt() {
 	local window pid class
 	window=$(window_id "${1:-}")
 	pid=$(number "${2:-}")
+	[[ $pid =~ ^0+$ ]] && pid=
 	class=$(ident "${3:-}")
 	cat <<EOF
 A window on this dwm-titus desktop stopped responding and I want to know why.
@@ -109,7 +110,8 @@ dwm pings windows with _NET_WM_PING; this one stopped answering.
   window: ${window:-unknown}
   PID:    ${pid:-unknown}
   class:  ${class:-unknown}
-  since:  $(date '+%Y-%m-%d %H:%M:%S')
+  diagnosis requested at: $(date '+%Y-%m-%d %H:%M:%S %z')
+  hang onset: unknown; the offer may have been open for some time
 
 It may also have recovered by now, or be busy on purpose (a game, a VM, a
 long export). Check the process state first (ps, /proc/<pid>/status,

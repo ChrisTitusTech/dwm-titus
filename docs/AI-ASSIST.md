@@ -64,7 +64,9 @@ Games, VMs and busy applications can produce false alarms. Add exact window
 classes, one per line, to `~/.config/dwm-titus/hang-ignore` to suppress their
 offers. Recovery, closing the window, or disabling detection withdraws the
 notification. **Wait** dismisses the offer; **Force quit** closes the client's
-X connection and can lose unsaved work. The request returns through dwm, which
+X connection and can lose unsaved work. Each window has its own request property,
+so concurrent Force quit actions cannot overwrite each other. The request returns
+through dwm, which
 checks the current hang generation and window identity before closing it. It does
 not send a kill signal to an application-supplied PID. A stopped process may need separate manual cleanup.
 
@@ -100,7 +102,8 @@ Optional agent downloads use your existing mise and its registry verification;
 they are not pinned or checksum-reviewed by dwm-titus. Existing global Node and
 uv selections are preserved. Repeating setup preserves the current alert
 preferences when you accept its defaults. Setup and sign-in terminals retain
-helper errors until you press Enter.
+helper errors until you press Enter. Diagnosis launch errors use the same
+acknowledgement behavior, including when the selected agent is missing.
 
 Agent CLI releases and authentication behavior can change independently of the
 desktop. A missing or timed-out status probe is not proof that credentials are

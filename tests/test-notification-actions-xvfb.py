@@ -46,9 +46,11 @@ with tempfile.TemporaryDirectory(dir=os.environ.get("TMPDIR")) as directory:
 import Quickshell
 import Quickshell.Io
 import "notifications" as Notifications
+import "settings" as Settings
 import qs.core
 ShellRoot {
     Notifications.NotificationModel { id: model }
+    Settings.AgentSettingsModel { id: agentModel }
     PanelWindow { id: panel; anchors { top: true; left: true; right: true } implicitHeight: 30 }
     Notifications.NotificationPopupWindow { notificationModel: model; panelWindow: panel }
     QtObject { id: fixtureAction; property string identifier: "fixture"; property string text: "Before" }
@@ -67,6 +69,9 @@ ShellRoot {
     }
     IpcHandler {
         target: "test"
+        function agentState(): string { return JSON.stringify({loaded:agentModel.loaded, busy:agentModel.busy, hang:agentModel.hangDetection}); }
+        function agentRefresh(): void { agentModel.refresh(); }
+        function agentToggle(enabled: bool): void { agentModel.setToggle("hang-detection", enabled); }
         function addFixture(): void { model.add(fixture); }
         function relabelFixture(): void { fixtureAction.text = "After"; }
         function state(): string {
@@ -89,6 +94,30 @@ ShellRoot {
            "XDG_DATA_HOME": str(work / "data"), "XDG_CACHE_HOME": str(work / "cache"),
            "XDG_STATE_HOME": str(work / "state"), "XDG_RUNTIME_DIR": str(work / "r"),
            "QT_QPA_PLATFORMTHEME": "", "QT_QUICK_BACKEND": "software", "QSG_RHI_BACKEND": "software"}
+    managed = Path(env["XDG_DATA_HOME"]) / "dwm-titus/scripts"
+    managed.mkdir(parents=True)
+    agent_calls = work / "agent-calls"
+    slow_list = work / "slow-list"
+    env["DWM_TEST_AGENT_CALLS"] = str(agent_calls)
+    env["DWM_TEST_SLOW_LIST"] = str(slow_list)
+    agent_fixture = managed / "dwm-agent"
+    agent_fixture.write_text("""#!/usr/bin/python3
+import os, sys, time
+from pathlib import Path
+action = sys.argv[1]
+with open(os.environ['DWM_TEST_AGENT_CALLS'], 'a') as log: log.write(action + '\\n')
+toggle = Path(os.environ['DWM_TEST_AGENT_CALLS'] + '.toggle')
+if action == 'list':
+    if Path(os.environ['DWM_TEST_SLOW_LIST']).exists(): time.sleep(5)
+    print('agent\\tcodex\\tCodex\\tyes\\t1.0\\tyes\\tyes')
+elif action == 'status':
+    print('hang-detection\\t' + ('on' if toggle.exists() else 'off'))
+elif action == 'set':
+    time.sleep(0.4)
+    if sys.argv[3] == 'on': toggle.touch()
+    else: toggle.unlink(missing_ok=True)
+""")
+    agent_fixture.chmod(0o755)
     Path(env["XDG_RUNTIME_DIR"]).mkdir(mode=0o700)
     processes = []
     read_fd, write_fd = os.pipe()
@@ -126,6 +155,21 @@ ShellRoot {
             raise AssertionError("Notification condition timed out: " + json.dumps(state()))
 
         wait_for(lambda: state()["policy"] in ("available", "defaults"))
+        def agent_state():
+            return json.loads(ipc("agentState"))
+        ipc("agentRefresh")
+        wait_for(lambda: agent_state()["loaded"] and not agent_state()["busy"])
+        slow_list.touch()
+        ipc("agentToggle", "true")
+        wait_for(lambda: agent_state()["hang"] and not agent_state()["busy"], 3)
+        assert agent_calls.read_text().splitlines().count("list") == 1
+        slow_list.unlink()
+        ipc("agentToggle", "false")
+        ipc("agentRefresh")  # Reopen/refresh while the mutation is pending.
+        wait_for(lambda: not agent_state()["hang"] and not agent_state()["busy"])
+        assert agent_calls.read_text().splitlines().count("list") == 2
+        print("Agent Settings: toggle avoids slow probes; pending-action refresh reads final state PASS")
+        agent_fixture.unlink()
         terminal_bin = work / "terminal-bin"
         terminal_bin.mkdir()
         terminal = terminal_bin / "dwm-terminal"
@@ -310,9 +354,9 @@ ShellRoot {
         low, high = [int(v.strip()) for v in generation_output.split("=", 1)[1].split(",")]
         generation = low + (high << 32)
         def request_kill(value):
-            subprocess.run(["xprop", "-root", "-f", "_DWM_TITUS_HANG_KILL", "8s", "-set",
+            subprocess.run(["xprop", "-id", app_window, "-f", "_DWM_TITUS_HANG_KILL", "8s", "-set",
                             "_DWM_TITUS_HANG_KILL", app_window + " " + str(value)], env=env, check=True, timeout=5)
-            wait_for(lambda: "not found" in subprocess.check_output(["xprop", "-root",
+            wait_for(lambda: "not found" in subprocess.check_output(["xprop", "-id", app_window,
                 "_DWM_TITUS_HANG_KILL"], env=env, text=True, timeout=5))
             subprocess.run(["xwininfo", "-id", app_window], env=env, check=True, capture_output=True, timeout=5)
         request_kill(generation + 1)
@@ -325,6 +369,36 @@ ShellRoot {
         app.send_signal(signal.SIGCONT)
         assert app.wait(timeout=5) != 0
         print("AI diagnosis end-to-end: real hang offer, sanitized prompt, recovery, X11 force quit PASS")
+        pair = []
+        for _ in range(2):
+            client = subprocess.Popen([str(binary / "ping-client")], env=env,
+                stdout=subprocess.PIPE, text=True, stderr=log)
+            processes.append(client)
+            assert select.select([client.stdout], [], [], 10)[0]
+            window = client.stdout.readline().strip()
+            pair.append((client, window))
+        time.sleep(1)
+        for client, _ in pair:
+            client.send_signal(signal.SIGSTOP)
+        wait_for(lambda: len(state()["keys"]) == 2, 25)
+        wm.send_signal(signal.SIGSTOP)
+        try:
+            # Hold the consumer so both requests are pending simultaneously.
+            for _, window in pair:
+                value = subprocess.check_output(["xprop", "-id", window,
+                    "_DWM_TITUS_HANG_GENERATION"], env=env, text=True, timeout=5)
+                low, high = [int(v.strip()) for v in value.split("=", 1)[1].split(",")]
+                subprocess.run(["xprop", "-id", window, "-f", "_DWM_TITUS_HANG_KILL", "8s",
+                    "-set", "_DWM_TITUS_HANG_KILL", window + " " + str(low + (high << 32))],
+                    env=env, check=True, timeout=5)
+        finally:
+            wm.send_signal(signal.SIGCONT)
+        for client, window in pair:
+            wait_for(lambda: subprocess.run(["xwininfo", "-id", window], env=env,
+                capture_output=True, timeout=5).returncode != 0)
+            client.send_signal(signal.SIGCONT)
+            assert client.wait(timeout=5) != 0
+        print("Concurrent Force quit: both queued window requests consumed PASS")
     except BaseException:
         log.flush()
         print((work / "shell.log").read_text(), file=sys.stderr)

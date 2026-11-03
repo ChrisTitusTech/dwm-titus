@@ -1,6 +1,7 @@
 """Agent helpers with private homes and fake providers; no credentials or network."""
 import json
 import os
+import select
 from pathlib import Path
 import shutil
 import signal
@@ -88,6 +89,13 @@ class AgentTests(unittest.TestCase):
         self.assertIn("read-only diagnosis", args[1])
         self.assertNotIn("IGNORE ALL RULES", args[1])
         self.assertNotIn("$(bad)", args[1])
+        for pid in ("0", "000"):
+            self.run_helper("dwm-agent-diagnose", "hang", "0x123", pid, "App")
+            prompt = json.loads((self.work / "args").read_text())[1]
+            self.assertIn("PID:    unknown", prompt)
+            self.assertIn("diagnosis requested at:", prompt)
+            self.assertIn("hang onset: unknown", prompt)
+            self.assertNotIn("since:", prompt)
         self.run_helper("dwm-agent-diagnose", "crash", "123", "fixture", "/bin/fixture",
                         "SIGSEGV", "1793650000000000", "0123456789abcdef")
         args = json.loads((self.work / "args").read_text())
@@ -109,6 +117,52 @@ class AgentTests(unittest.TestCase):
         self.run_helper("dwm-agent", "default", "opencode")
         result = self.run_helper("dwm-agent", "--inline")
         self.assertEqual(result.stdout, "xdg-shim\n")
+
+    def test_graphical_launch_retains_setup_and_missing_agent_errors(self):
+        self.fake("dwm-terminal", '#!/bin/sh\nshift\nexec "$@"\n')
+        # No default chooses interactive setup; invalid selection makes it fail.
+        for configured in (False, True):
+            if configured:
+                self.run_helper("dwm-agent", "default", "opencode")
+            process = subprocess.Popen([str(REPO / "scripts/dwm-agent"), "--prompt", "inspect"],
+                env=self.env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            try:
+                if not configured:
+                    process.stdin.write(b"invalid\n")
+                    process.stdin.flush()
+                output = b""
+                deadline = time.monotonic() + 10
+                while b"Press Enter to close" not in output and time.monotonic() < deadline:
+                    if select.select([process.stdout], [], [], 0.2)[0]:
+                        chunk = os.read(process.stdout.fileno(), 4096)
+                        if not chunk:
+                            break
+                        output += chunk
+                self.assertIn(b"Press Enter to close", output)
+                self.assertIn(b"not installed" if configured else b"no agent chosen", output)
+                self.assertIsNone(process.poll())
+                process.communicate(b"\n", timeout=5)
+                self.assertNotEqual(process.returncode, 0)
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                    process.wait()
+        # Provider exit status survives the wrapper too.
+        self.fake("opencode", '#!/bin/sh\necho provider-failed\nexit 7\n')
+        result = subprocess.run([str(REPO / "scripts/dwm-agent"), "--prompt", "inspect"],
+            env=self.env, input="\n", text=True, capture_output=True, timeout=5)
+        self.assertEqual(result.returncode, 7)
+        self.assertIn("provider-failed", result.stdout)
+        self.assertIn("Press Enter to close", result.stdout)
+
+    def test_ignore_classes_preserve_spaces_and_final_line(self):
+        self.fake("notify-send", '#!/bin/sh\necho notified > "$ARGS"\n')
+        config = self.work / "config/dwm-titus"
+        config.mkdir(parents=True)
+        (config / "hang-ignore").write_text("  VirtualBox Machine  # comment\nsteam")
+        for index, name in enumerate(("VirtualBox Machine", "steam")):
+            self.run_helper("dwm-hang-event", "hung", "0x" + str(index + 1), "0", name, "", "100")
+        self.assertFalse((self.work / "args").exists())
 
     def test_recovery_before_delayed_hang_suppresses_notification(self):
         self.fake("notify-send", '#!/bin/sh\necho notified > "$ARGS"\n')
@@ -158,9 +212,51 @@ class AgentTests(unittest.TestCase):
         self.run_helper("dwm-crash-watch", "--journal")
         self.assertEqual((self.work / "args").read_text().splitlines(), ["notified"])
 
+    def test_hang_toggle_cache_avoids_hot_loop_filesystem_reads(self):
+        source = (REPO / "dwm.c").read_text()
+        function = source[source.index("static int\nhangdetectionenabled(void)"):
+                          source.index("\n/* Query only when")]
+        harness = r'''
+#include <assert.h>
+#include <stdio.h>
+#define PATH_MAX 4096
+#define F_OK 0
+#define HANG_PING_INTERVAL_MS 5000
+static int hangtogglecached=-1, inotify_wd=4, reads, exists;
+static long long hangtogglechecked, now=100;
+static char toml_config_dir[]="/fixture";
+static long long hangnow(void) { return now; }
+static int pathjoin(char *p, int size, const char *a, const char *b) {
+    return snprintf(p,size,"%s/%s",a,b)>0;
+}
+static int access(const char *p, int mode) { (void)p; (void)mode; reads++; return exists ? 0 : -1; }
+'''
+        main = r'''
+int main(void) {
+    for (int i=0;i<100;i++) assert(!hangdetectionenabled());
+    assert(reads==1);
+    exists=1; now+=10000;
+    assert(!hangdetectionenabled() && reads==1);
+    /* Property/file events invalidate the watched cache. */
+    hangtogglecached=-1;
+    assert(hangdetectionenabled() && reads==2);
+    inotify_wd=-1; exists=0;
+    for (int i=0;i<100;i++) assert(hangdetectionenabled());
+    assert(reads==2);
+    now+=5000;
+    assert(!hangdetectionenabled() && reads==3);
+    return 0;
+}
+'''
+        binary = self.work / "toggle-cache"
+        subprocess.run([os.environ.get("CC", "cc"), "-std=c99", "-Wall", "-Wextra",
+                        "-x", "c", "-", "-o", str(binary)], input=harness+function+main,
+                       text=True, check=True, timeout=30)
+        subprocess.run([str(binary)], check=True, timeout=5)
+
     def test_force_quit_checks_generation_and_window_identity_under_grab(self):
         source = (REPO / "dwm.c").read_text()
-        function = source[source.index("static void\nhangkillrequest(void)"):
+        function = source[source.index("static void\nhangkillrequest(Window target)"):
                           source.index("\n/* Run dwm-hang-event")]
         harness = r'''
 #include <X11/Xlib.h>
@@ -171,7 +267,7 @@ class AgentTests(unittest.TestCase):
 #include <string.h>
 typedef struct { Window win; int hung; unsigned long long hanggeneration; } Client;
 static Client client = {10, 1, 0x180000001ULL};
-static Window root=1;
+
 static Display *dpy;
 static Atom hangrequestatom=2, hanggenerationatom=3;
 static int grabbed, kills, identity=1;
@@ -191,9 +287,9 @@ int XKillClient(Display *d, XID w) { (void)d; assert(grabbed && w==client.win); 
 int XGetWindowProperty(Display *d, Window w, Atom a, long offset, long length,
     Bool del, Atom req, Atom *type, int *format, unsigned long *count,
     unsigned long *after, unsigned char **data) {
-    (void)d; (void)a; (void)offset; (void)length; (void)del; (void)req;
+    (void)d; (void)w; (void)a; (void)offset; (void)length; (void)del; (void)req;
     assert(grabbed); *after=0; *data=NULL;
-    if (w==root) {
+    if (a==hangrequestatom) {
         *type=XA_STRING; *format=8; *count=strlen(request_value);
         *data=malloc(*count+1); memcpy(*data,request_value,*count+1);
     } else if (identity) {
@@ -210,12 +306,13 @@ int XGetWindowProperty(Display *d, Window w, Atom a, long offset, long length,
         main = r'''
 int main(void) {
     snprintf(request_value,sizeof(request_value),"0xa %llu",client.hanggeneration+1);
-    hangkillrequest(); assert(!kills && !grabbed);
+    hangkillrequest(client.win); assert(!kills && !grabbed);
     snprintf(request_value,sizeof(request_value),"0xa %llu",client.hanggeneration);
-    identity=0; hangkillrequest(); assert(!kills && !grabbed);
-    identity=2; hangkillrequest(); assert(!kills && !grabbed);
-    identity=1; client.hung=0; hangkillrequest(); assert(!kills && !grabbed);
-    client.hung=1; hangkillrequest(); assert(kills==1 && !grabbed);
+    hangkillrequest(client.win+1); assert(!kills && !grabbed);
+    identity=0; hangkillrequest(client.win); assert(!kills && !grabbed);
+    identity=2; hangkillrequest(client.win); assert(!kills && !grabbed);
+    identity=1; client.hung=0; hangkillrequest(client.win); assert(!kills && !grabbed);
+    client.hung=1; hangkillrequest(client.win); assert(kills==1 && !grabbed);
     return 0;
 }
 '''

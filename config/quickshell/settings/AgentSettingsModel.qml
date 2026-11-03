@@ -18,6 +18,7 @@ Scope {
     property bool statusLoaded: false
     property bool refreshQueued: false
     property var agents: []
+    property string lastAction: ""
     property bool crashNotifications: true
     property bool hangDetection: false
     property string skills: "missing"
@@ -62,7 +63,7 @@ Scope {
     }
 
     function refresh() {
-        if (root.reading) {
+        if (root.reading || actionProcess.running) {
             root.refreshQueued = true;
             return;
         }
@@ -73,7 +74,8 @@ Scope {
     }
 
     function runAction(action, args) {
-        if (actionProcess.running) return;
+        if (root.busy) return;
+        root.lastAction = action;
         root.message = "";
         actionProcess.command = Commands.checkedCommand(Commands.agentCommand(action, args));
         actionProcess.running = true;
@@ -167,10 +169,15 @@ Scope {
             }
         }
 
+        onRunningChanged: if (!running) root.readFinished()
+
         onExited: (exitCode, exitStatus) => { // qmllint disable signal-handler-parameters
             const failed = exitCode !== 0;
             const error = failed && root.message.length === 0 ? "Could not change the setting" : root.message;
-            root.refresh();
+            if (root.lastAction === "set" && !root.refreshQueued && !root.reading) {
+                root.message = "";
+                statusProcess.running = true;
+            } else root.refresh();
             if (failed) root.message = error;
         }
     }

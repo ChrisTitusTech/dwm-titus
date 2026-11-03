@@ -69,7 +69,8 @@ with tempfile.TemporaryDirectory(dir=os.environ.get("TMPDIR")) as directory:
         assert window.startswith("0x")
         time.sleep(1)
         client.send_signal(signal.SIGSTOP)
-        time.sleep(1)
+        # Cover a complete five-second ping interval plus ten-second timeout.
+        time.sleep(16)
         assert not events.read_text(), "Detection was enabled without opting in"
         toggle = config / "hang-detection"
         toggle.touch()
@@ -95,6 +96,19 @@ with tempfile.TemporaryDirectory(dir=os.environ.get("TMPDIR")) as directory:
         wait_for(lambda: events.read_text().splitlines().count("hung") == 3)
         toggle.unlink()
         wait_for(lambda: events.read_text().splitlines().count("recovered") == 3, 5)
+        staged = config / "hang-detection.new"
+        staged.touch()
+        staged.rename(toggle)
+        wait_for(lambda: events.read_text().splitlines().count("hung") == 4)
+        toggle.rename(staged)
+        wait_for(lambda: events.read_text().splitlines().count("recovered") == 4, 5)
+        # Losing the watched directory must fall back to bounded rechecks.
+        config.rename(config.with_name("old-config"))
+        config.mkdir()
+        toggle.touch()
+        wait_for(lambda: events.read_text().splitlines().count("hung") == 5, 27)
+        toggle.unlink()
+        wait_for(lambda: events.read_text().splitlines().count("recovered") == 5, 7)
         assert wm.poll() is None
         print("AI assist Xvfb: opt-in, hang, focus/close during pending ping, legacy replies, protocol removal/re-addition, disable PASS")
     finally:

@@ -49,9 +49,10 @@ recovered_since_hung() {
 ignored() {
 	local line
 	[[ -n $class && -f $ignore_file ]] || return 1
-	while IFS= read -r line; do
+	while IFS= read -r line || [[ -n $line ]]; do
 		line=${line%%#*}
-		line=${line//[[:space:]]/}
+		line=${line#"${line%%[![:space:]]*}"}
+		line=${line%"${line##*[![:space:]]}"}
 		[[ -n $line && ${line,,} == "${class,,}" ]] && return 0
 	done <"$ignore_file"
 	return 1
@@ -162,7 +163,8 @@ diagnose)
 	;;
 kill)
 	# dwm verifies both the current generation and the X window identity
-	# before closing its connection. Never kill a potentially recycled XID here.
-	xprop -root -f _DWM_TITUS_HANG_KILL 8s -set _DWM_TITUS_HANG_KILL "$window $self_start" 2>/dev/null || exit 0
+	# before closing its connection. Per-window requests cannot overwrite
+	# another window's pending action. Never kill a recycled XID here.
+	xprop -id "$window" -f _DWM_TITUS_HANG_KILL 8s -set _DWM_TITUS_HANG_KILL "$window $self_start" 2>/dev/null || exit 0
 	;;
 esac
