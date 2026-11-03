@@ -304,6 +304,16 @@ contract for every developer deployment. Every live update must:
    active and that the graphical-session and XDG autostart lifecycle starts
    tray clients for the new X11 session.
 
+### 5.5.1 Optional AI assistance
+
+Ship the titstack-derived customization and read-only diagnosis skills with the
+managed user data. Preserve existing agent skill paths when linking them.
+Offer crash diagnosis only after an explicit notification action; keep X11
+`_NET_WM_PING` hang detection opt-in. Preserve agent approval and sandbox policy,
+keep untrusted window titles out of prompts, and never kill an application-supplied
+PID. The Settings frontend remains unprivileged. Optional agent installation
+uses an existing mise installation without adding system repositories.
+
 ### 5.6 Build System
 
 The build must:

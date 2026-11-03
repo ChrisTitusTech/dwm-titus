@@ -563,6 +563,18 @@ if ! command -v "$lock_watch" >/dev/null 2>&1; then
 fi
 start_detached_once dwm-lock-watch "$lock_watch"
 
+# Offer an AI diagnosis when one of the user's programs crashes. It reads the
+# crash-notifications-off switch itself, so turning it off needs no restart.
+crash_watch=dwm-crash-watch
+if ! command -v "$crash_watch" >/dev/null 2>&1; then
+	case $0 in
+	*/*)
+		crash_watch=${0%/*}/dwm-crash-watch
+		;;
+	esac
+fi
+start_detached_once dwm-crash-watch "$crash_watch"
+
 # Polkit authentication agent (try common agents)
 for agent in \
 	/usr/lib/mate-polkit/polkit-mate-authentication-agent-1 \

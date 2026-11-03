@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+# Install an AI coding agent for "Diagnose with AI" through mise, the way
+# Omarchy does. mise must already be installed by the user.
+set -euo pipefail
+
+AGENTS=(codex opencode gemini claude cursor-agent hermes)
+
+usage() {
+	cat <<EOF
+Usage: dwm-install-ai-agent [--dry-run] <codex|opencode|gemini|claude|cursor-agent|hermes>
+
+Install the agent for the current user with an existing mise (mise use -g).
+This downloads third-party software and changes the user mise configuration.
+No system repositories are added. Install mise separately if it is missing.
+
+  codex     OpenAI Codex CLI          (mise: codex)
+  opencode  OpenCode                  (mise: opencode)
+  gemini    Google Gemini CLI         (mise: node@lts, npm:@google/gemini-cli)
+  claude    Claude Code               (mise: claude)
+  cursor-agent Cursor CLI             (mise: cursor-agent)
+  hermes    Hermes Agent              (mise: uv, pipx:hermes-agent on Python 3.13)
+
+Options:
+  --dry-run  Print what would be installed and exit.
+  -h, --help Show this help.
+EOF
+}
+
+die() {
+	printf 'dwm-install-ai-agent: %s\n' "$*" >&2
+	exit 1
+}
+
+# mise tools for each agent, in install order.
+agent_tools() {
+	case $1 in
+	codex) printf '%s\n' codex ;;
+	opencode) printf '%s\n' opencode ;;
+	gemini) printf '%s\n' node@lts npm:@google/gemini-cli ;;
+	claude) printf '%s\n' claude ;;
+	cursor-agent) printf '%s\n' cursor-agent ;;
+	# Hermes pins Python 3.11-3.13, so uv builds it a private environment on
+	# its own Python 3.13 (see UV_PYTHON below) instead of the system one.
+	hermes) printf '%s\n' uv 'pipx:hermes-agent[extras=all]' ;;
+	*) return 1 ;;
+	esac
+}
+
+dry_run=false
+agent=''
+while (($#)); do
+	case $1 in
+	--dry-run) dry_run=true ;;
+	-h | --help)
+		usage
+		exit 0
+		;;
+	-*)
+		usage >&2
+		exit 2
+		;;
+	*)
+		[[ -z $agent ]] || die "only one agent at a time"
+		agent=$1
+		;;
+	esac
+	shift
+done
+[[ -n $agent ]] || {
+	usage >&2
+	exit 2
+}
+agent_tools "$agent" >/dev/null || die "unknown agent '$agent' (choose: ${AGENTS[*]})"
+
+if [[ $(id -u) -eq 0 ]]; then
+	die "run as the desktop user, not as root"
+fi
+
+# Package installation is for Fedora only, like the rest of dwm-titus.
+os_id=''
+[[ -r /etc/os-release ]] && os_id=$(sed -n 's/^ID=//p' /etc/os-release | tr -d "\"'")
+[[ $os_id == fedora ]] || die "supported on Fedora only (found '${os_id:-unknown}')"
+
+if $dry_run; then
+	command -v mise >/dev/null 2>&1 || printf 'requires mise to be installed first\n'
+	while IFS= read -r tool; do
+		printf 'would run: mise use -g %s\n' "$tool"
+	done < <(agent_tools "$agent")
+	exit 0
+fi
+
+command -v mise >/dev/null 2>&1 || die "mise is required; install it separately, then retry (https://mise.jdx.dev/getting-started.html)"
+
+while IFS= read -r tool; do
+	printf '==> mise use -g %s\n' "$tool"
+	case $tool in
+	pipx:hermes-agent*) UV_PYTHON=3.13 mise use -g "$tool" ;;
+	*) mise use -g "$tool" ;;
+	esac
+done < <(agent_tools "$agent")
+
+shims=${MISE_DATA_DIR:-$HOME/.local/share/mise}/shims
+PATH=$shims:$PATH command -v "$agent" >/dev/null 2>&1 || die "$agent did not install"
+printf '==> %s is installed\n' "$agent"

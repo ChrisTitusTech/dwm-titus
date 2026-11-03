@@ -70,6 +70,10 @@ INSTALL_COMMANDS = dwm-clipboard-observer \
 	scripts/dwm-settings-theme \
 	scripts/dwm-settings-provider \
 	scripts/dwm-session-launch \
+	scripts/dwm-agent \
+	scripts/dwm-agent-diagnose \
+	scripts/dwm-crash-watch \
+	scripts/dwm-hang-event \
 	scripts/dwm-xsettings \
 	scripts/dwm-terminal \
 	scripts/dwm-utils.sh \
@@ -77,6 +81,7 @@ INSTALL_COMMANDS = dwm-clipboard-observer \
 	scripts/dwm-flatpak-setup \
 	scripts/install-gearlever \
 	scripts/install-herdr \
+	scripts/dwm-install-ai-agent \
 	scripts/nvidia-gpu \
 	scripts/nvidia-suspend-test.sh \
 	scripts/nvidia-temp \
@@ -288,7 +293,7 @@ install-user-files:
 	mkdir -p ${CFG_DIR}
 	for dir in config/*/; do \
 		b=$$(basename "$$dir"); \
-		if [ "$$b" = quickshell ]; then \
+		if [ "$$b" = quickshell ] || [ "$$b" = agents ]; then \
 			continue; \
 		fi; \
 		dst=${CFG_DIR}/$$b; \
@@ -361,10 +366,13 @@ install-user-files:
 	# Managed data keeps source modes; it may also be the user's Git checkout.
 	for dir in config/*/; do \
 		b=$$(basename $$dir); \
-		if [ ! -L "${CFG_DIR}/$$b" ]; then \
+		if [ "$$b" != agents ] && [ ! -L "${CFG_DIR}/$$b" ]; then \
 			find "${CFG_DIR}/$$b" \( -name '*.sh' -o -name '*.py' \) -print0 2>/dev/null | xargs -0 -r chmod +x; \
 		fi; \
 	done
+	@echo "==> Linking agent skills..."
+	HOME="${USER_HOME}" XDG_DATA_HOME="${XDG_DATA_HOME}" XDG_CONFIG_HOME="${XDG_CONFIG_HOME}" \
+		scripts/dwm-agent link-skills || echo "  Skipping agent skill links."
 	@echo "==> Applying initial theme convergence..."
 	HOME="${USER_HOME}" XDG_CONFIG_HOME="${XDG_CONFIG_HOME}" scripts/theme-apply.sh
 	HOME="${USER_HOME}" XDG_CONFIG_HOME="${XDG_CONFIG_HOME}" XDG_DATA_HOME="${XDG_DATA_HOME}" XDG_STATE_HOME="${XDG_STATE_HOME}" \
@@ -421,10 +429,10 @@ release: all
 	echo "==> Created ${RELEASE_ARCHIVE}"
 
 check-shell:
-	shellcheck install.sh scripts/dwm-accessibility-settings scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-display-setup scripts/dwm-lock scripts/dwm-lock-watch scripts/dwm-keybinds scripts/dwm-panel-settings scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-pointer scripts/dwm-quickshell-state scripts/dwm-quickshell-version-check scripts/dwm-settings scripts/dwm-settings-appearance scripts/dwm-settings-font scripts/dwm-settings-personalization scripts/dwm-settings-wallpaper scripts/dwm-settings-theme scripts/dwm-settings-provider scripts/dwm-session-launch scripts/dwm-status scripts/dwm-system-health scripts/dwm-terminal scripts/dwm-xdg-autostart scripts/dwm-xsettings scripts/install-herdr scripts/quickshell-qmllint scripts/run-tests scripts/run-tests-podman scripts/webapp-launch scripts/*.sh tests/*.sh
+	shellcheck install.sh scripts/dwm-accessibility-settings scripts/dwm-agent scripts/dwm-agent-diagnose scripts/dwm-crash-watch scripts/dwm-hang-event scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-display-setup scripts/dwm-lock scripts/dwm-lock-watch scripts/dwm-keybinds scripts/dwm-panel-settings scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-pointer scripts/dwm-quickshell-state scripts/dwm-quickshell-version-check scripts/dwm-settings scripts/dwm-settings-appearance scripts/dwm-settings-font scripts/dwm-settings-personalization scripts/dwm-settings-wallpaper scripts/dwm-settings-theme scripts/dwm-settings-provider scripts/dwm-session-launch scripts/dwm-status scripts/dwm-system-health scripts/dwm-terminal scripts/dwm-xdg-autostart scripts/dwm-xsettings scripts/dwm-install-ai-agent scripts/install-herdr scripts/quickshell-qmllint scripts/run-tests scripts/run-tests-podman scripts/webapp-launch scripts/*.sh tests/*.sh
 
 check-format:
-	shfmt -d install.sh scripts/dwm-accessibility-settings scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-display-setup scripts/dwm-lock scripts/dwm-lock-watch scripts/dwm-keybinds scripts/dwm-panel-settings scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-pointer scripts/dwm-quickshell-state scripts/dwm-quickshell-version-check scripts/dwm-settings scripts/dwm-settings-appearance scripts/dwm-settings-font scripts/dwm-settings-personalization scripts/dwm-settings-wallpaper scripts/dwm-settings-theme scripts/dwm-settings-provider scripts/dwm-session-launch scripts/dwm-status scripts/dwm-system-health scripts/dwm-terminal scripts/dwm-xdg-autostart scripts/dwm-xsettings scripts/install-herdr scripts/quickshell-qmllint scripts/run-tests scripts/run-tests-podman scripts/webapp-launch scripts/*.sh tests/*.sh
+	shfmt -d install.sh scripts/dwm-accessibility-settings scripts/dwm-agent scripts/dwm-agent-diagnose scripts/dwm-crash-watch scripts/dwm-hang-event scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-display-setup scripts/dwm-lock scripts/dwm-lock-watch scripts/dwm-keybinds scripts/dwm-panel-settings scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-pointer scripts/dwm-quickshell-state scripts/dwm-quickshell-version-check scripts/dwm-settings scripts/dwm-settings-appearance scripts/dwm-settings-font scripts/dwm-settings-personalization scripts/dwm-settings-wallpaper scripts/dwm-settings-theme scripts/dwm-settings-provider scripts/dwm-session-launch scripts/dwm-status scripts/dwm-system-health scripts/dwm-terminal scripts/dwm-xdg-autostart scripts/dwm-xsettings scripts/dwm-install-ai-agent scripts/install-herdr scripts/quickshell-qmllint scripts/run-tests scripts/run-tests-podman scripts/webapp-launch scripts/*.sh tests/*.sh
 
 check-timesync:
 	tests/test-timesync.sh
@@ -529,6 +537,18 @@ check-quickshell-session-actions:
 
 check-quickshell-defaults-model:
 	tests/test-quickshell-defaults-model.sh
+
+check-ai-assist:
+	$(call run_managed_test,python3 tests/test-ai-assist.py)
+
+check-notification-actions-xvfb:
+	$(call run_managed_test,python3 tests/test-notification-actions-xvfb.py)
+
+check-ai-assist-xvfb: all
+	$(call run_managed_test,python3 tests/test-ai-assist-xvfb.py)
+
+check-quickshell-agent-settings:
+	tests/test-quickshell-agent-settings.sh
 
 check-quickshell-appearance-model:
 	tests/test-quickshell-appearance-model.sh
@@ -816,6 +836,10 @@ check: check-picom check-picom-xvfb
 	$(MAKE) check-quickshell-power-model
 	$(MAKE) check-quickshell-session-actions
 	$(MAKE) check-quickshell-defaults-model
+	$(MAKE) check-quickshell-agent-settings
+	$(MAKE) check-ai-assist
+	$(MAKE) check-ai-assist-xvfb
+	$(MAKE) check-notification-actions-xvfb
 	$(MAKE) check-quickshell-appearance-model
 	$(MAKE) check-quickshell-settings-xvfb
 	$(MAKE) check-quickshell-settings-responsiveness-xvfb
@@ -870,8 +894,10 @@ check: check-picom check-picom-xvfb
 	check-display-profile check-display-setup check-fedora-iso-builder check-fedora-packages check-fedora-platform check-format check-install \
 	check-gearlever-install check-herdr-install check-install-manifest check-install-preservation check-kickstart check-lock \
 	check-timesync check-session-guards check-session-migration check-screenshot check-release-helper check-shell check-webapp-launch check-diagnostics check-status check-system-health check-system-management check-quickshell-system-management check-settings \
-	check-quickshell-launcher check-quickshell-controls check-quickshell-audio check-quickshell-controlcenter check-quickshell-power check-quickshell-power-backend check-quickshell-power-model check-quickshell-session-actions check-quickshell-defaults-model check-quickshell-appearance-model check-quickshell-design-system check-quickshell-large-surfaces check-quickshell-large-surfaces-xvfb check-quickshell-panel-menus check-quickshell-panel-settings check-quickshell-command-menu check-quickshell-notifications check-quickshell-tray check-quickshell-health-xvfb check-quickshell-settings-xvfb check-quickshell-settings-responsiveness-xvfb check-quickshell-network check-quickshell-connectivity check-quickshell-qml check-lightdm-config check-terminal check-xvfb-runtime check-keyboard-layout install install-system install-user \
+	check-quickshell-launcher check-quickshell-controls check-quickshell-audio check-quickshell-controlcenter check-quickshell-power check-quickshell-power-backend check-quickshell-power-model check-quickshell-session-actions check-quickshell-defaults-model check-quickshell-agent-settings check-quickshell-appearance-model check-quickshell-design-system check-quickshell-large-surfaces check-quickshell-large-surfaces-xvfb check-quickshell-panel-menus check-quickshell-panel-settings check-quickshell-command-menu check-quickshell-notifications check-quickshell-tray check-quickshell-health-xvfb check-quickshell-settings-xvfb check-quickshell-settings-responsiveness-xvfb check-quickshell-network check-quickshell-connectivity check-quickshell-qml check-lightdm-config check-terminal check-xvfb-runtime check-keyboard-layout install install-system install-user \
 	install-cursors install-app-themes check-app-themes native release release-check uninstall uninstall-files
 
 .PHONY: check-clipboard
 .PHONY: check-clipboard-observer
+
+.PHONY: check-ai-assist check-ai-assist-xvfb check-notification-actions-xvfb

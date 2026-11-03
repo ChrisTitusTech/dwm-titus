@@ -96,6 +96,14 @@ Singleton {
         return powerHelperCommand("session-action", [action]);
     }
 
+    function agentCommand(action, args) {
+        return helperCommand("dwm-agent", action, args, true);
+    }
+
+    function agentTerminalCommand(action, args) {
+        return helperCommand("dwm-terminal", "-e", agentCommand(action, args), true);
+    }
+
     function defaultsHelperCommand(action, args) {
         return helperCommand("dwm-default-apps", action, args, true);
     }

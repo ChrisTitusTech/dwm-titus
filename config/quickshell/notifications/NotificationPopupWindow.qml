@@ -57,6 +57,7 @@ PopupWindow {
                     item: notificationCard.modelData
                     onDismiss: root.notificationModel.dismiss(notificationCard.modelData.key)
                     onExpired: root.notificationModel.expire(notificationCard.modelData.key)
+                    onActionInvoked: identifier => root.notificationModel.invokeAction(notificationCard.modelData.key, identifier)
                 }
             }
         }

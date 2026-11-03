@@ -159,6 +159,17 @@ FloatingWindow {
                                     maximumLineCount: 3
                                     elide: Text.ElideRight
                                 }
+
+                                // Only notifications that are still open keep
+                                // working actions.
+                                NotificationActions {
+                                    Layout.topMargin: Theme.tightSpacing
+                                    actions: root.notificationModel.actionable[historyEntry.modelData.key]
+                                        ? root.notificationModel.actionsFor(historyEntry.modelData.key) : []
+                                    critical: historyEntry.modelData.urgencyName === "critical"
+                                    showDefault: true
+                                    onInvoked: identifier => root.notificationModel.invokeAction(historyEntry.modelData.key, identifier)
+                                }
                             }
                         }
                     }
