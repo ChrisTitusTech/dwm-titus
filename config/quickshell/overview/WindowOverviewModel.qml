@@ -82,7 +82,7 @@ Scope {
     onQueryChanged: root.filter()
 
     Process {
-        command: Commands.helperCommand("dwm-window-overview", "watch", [], true)
+        command: Commands.helperCommand("dwm-window-overview", "watch", ["--exclude-pid", String(Quickshell.processId)], true)
         running: root.visible
         stdout: SplitParser { onRead: data => root.parse(data) }
         stderr: StdioCollector { onStreamFinished: { if (text.trim()) root.message = text.trim(); } }
@@ -93,7 +93,7 @@ Scope {
     Process {
         id: capture
         running: root.pendingOpen
-        command: Commands.helperCommand("dwm-window-overview", "list", [], true)
+        command: Commands.helperCommand("dwm-window-overview", "context", [String(Quickshell.processId)], true)
         stdout: StdioCollector {
             onStreamFinished: {
                 if (!root.pendingOpen) return;

@@ -31,10 +31,13 @@ class XError(C.Structure):
 
 
 class Connection:
-    def __init__(self):
+    def __init__(self, exclude_pid=0):
+        self.exclude_pid = exclude_pid
         self.x = C.CDLL(ctypes.util.find_library("X11") or "libX11.so.6")
         signatures = {
             "XOpenDisplay": ([C.c_char_p], C.c_void_p),
+            "XCreateSimpleWindow": ([C.c_void_p, C.c_ulong, C.c_int, C.c_int, C.c_uint, C.c_uint, C.c_uint, C.c_ulong, C.c_ulong], C.c_ulong),
+            "XDestroyWindow": ([C.c_void_p, C.c_ulong], C.c_int),
             "XDefaultRootWindow": ([C.c_void_p], C.c_ulong),
             "XInternAtom": ([C.c_void_p, C.c_char_p, C.c_int], C.c_ulong),
             "XGetWindowProperty": ([C.c_void_p, C.c_ulong, C.c_ulong, C.c_long,
@@ -97,7 +100,7 @@ class Connection:
                 self.x.XFree(data)
 
     def state(self):
-        if self.property(self.root, "_DWM_WINDOW_OVERVIEW", 6, 1) != [1]:
+        if self.property(self.root, "_DWM_WINDOW_OVERVIEW", 6, 1) != [2]:
             return {"protocol": 1, "available": False, "windows": [],
                 "detail": "Restart dwm to enable the window overview"}
         ids = self.property(self.root, "_NET_CLIENT_LIST", 33, 4096) or []
@@ -118,7 +121,7 @@ class Connection:
             app = self.property(window, "WM_CLASS", 31) or b"Application"
             if not isinstance(app, bytes):
                 app = b"Application"
-            if title.rstrip(b"\0") == b"dwm window overview":
+            if self.exclude_pid and self.property(window, "_NET_WM_PID", 6, 1) == [self.exclude_pid]:
                 continue
             classes = [value for value in app.split(b"\0") if value]
             rows.append({"id": str(window), "title": title.decode("utf-8", "replace")[:1024],
@@ -132,22 +135,40 @@ class Connection:
         ids = self.property(self.root, "_NET_CLIENT_LIST", 33, 4096) or []
         if window not in ids or not self.property(window, "_DWM_CLIENT_INFO", 6, 16):
             raise RuntimeError("This window has closed; choose another window")
-        event = Event()
-        event.message = Message(33, 0, True, self.display, window,
-            self.atom("_DWM_WINDOW_ACTIVATE"), 32, Data())
-        event.message.data.l[0] = 1
-        event.message.data.l[1] = int(restore)
-        if not self.x.XSendEvent(self.display, self.root, False, (1 << 20) | (1 << 19), C.byref(event)):
-            raise RuntimeError("Could not activate the window")
-        self.x.XFlush(self.display)
-        deadline = time.monotonic() + 2
-        while time.monotonic() < deadline:
-            if self.property(self.root, "_NET_ACTIVE_WINDOW", 33, 1) == [window]:
-                return
-            if window not in (self.property(self.root, "_NET_CLIENT_LIST", 33, 4096) or []):
-                raise RuntimeError("This window has closed; choose another window")
-            self.wait(max(0, deadline - time.monotonic()))
-        raise RuntimeError("dwm did not focus the selected window; restart dwm if it predates the overview")
+        self.request(window, int(restore))
+
+    def context(self, excluded_pid):
+        return self.request(self.root, 2, excluded_pid)
+
+    def request(self, window, mode, excluded_pid=0):
+        if self.property(self.root, "_DWM_WINDOW_OVERVIEW", 6, 1) != [2]:
+            raise RuntimeError("Restart dwm to enable the current window overview interface")
+        reply = self.x.XCreateSimpleWindow(self.display, self.root, 0, 0, 1, 1, 0, 0, 0)
+        if not reply:
+            raise RuntimeError("Could not create the request acknowledgement window")
+        try:
+            self.x.XSelectInput(self.display, reply, 1 << 22)
+            event = Event()
+            event.message = Message(33, 0, True, self.display, window,
+                self.atom("_DWM_WINDOW_ACTIVATE"), 32, Data())
+            event.message.data.l[:] = (2, mode, reply, excluded_pid, 0)
+            if not self.x.XSendEvent(self.display, self.root, False, (1 << 20) | (1 << 19), C.byref(event)):
+                raise RuntimeError("Could not send the window request")
+            self.x.XFlush(self.display)
+            deadline = time.monotonic() + 2
+            while time.monotonic() < deadline:
+                result = self.property(reply, "_DWM_WINDOW_RESULT", 6, 4)
+                if result and len(result) == 4 and result[:2] == [2, mode]:
+                    if result[3] == 1 and (mode == 2 or result[2] == window):
+                        return result[2]
+                    raise RuntimeError("This window has closed or is no longer visible; choose another window")
+                if mode != 2 and window not in (self.property(self.root, "_NET_CLIENT_LIST", 33, 4096) or []):
+                    raise RuntimeError("This window has closed; choose another window")
+                self.wait(max(0, deadline - time.monotonic()))
+            raise RuntimeError("dwm did not acknowledge the window request")
+        finally:
+            self.x.XDestroyWindow(self.display, reply)
+            self.x.XFlush(self.display)
 
     def wait(self, timeout=None):
         if not self.x.XPending(self.display):
@@ -164,8 +185,9 @@ class Connection:
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("list", "watch", "activate", "restore", "open", "toggle", "close"))
+    parser.add_argument("action", choices=("list", "watch", "activate", "restore", "context", "open", "toggle", "close"))
     parser.add_argument("window", nargs="?", type=lambda value: int(value, 0))
+    parser.add_argument("--exclude-pid", type=int, default=0)
     args = parser.parse_args()
     if args.action in ("open", "toggle", "close"):
         import os
@@ -175,10 +197,17 @@ def main():
         return subprocess.call(["quickshell", "ipc", "--path", str(config), "call", "windowOverview", args.action])
     if args.action in ("activate", "restore") and (args.window is None or not 0 < args.window <= 0xffffffff):
         parser.error("activate requires a valid X11 window ID")
-    connection = Connection()
+    if args.action == "context" and (args.window is None or not 0 < args.window <= 0x7fffffff):
+        parser.error("context requires a process ID to exclude")
+    if not 0 <= args.exclude_pid <= 0x7fffffff:
+        parser.error("exclude-pid must be a nonnegative process ID")
+    connection = Connection(args.exclude_pid)
     try:
         if args.action in ("activate", "restore"):
             connection.activate(args.window, restore=args.action == "restore")
+        elif args.action == "context":
+            window = connection.context(args.window)
+            print(json.dumps({"active": str(window) if window else ""}), flush=True)
         else:
             previous = None
             while True:

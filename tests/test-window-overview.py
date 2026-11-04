@@ -140,6 +140,7 @@ ShellRoot {
             with open(work / "qml.log", "w") as qlog:
                 shell = subprocess.Popen(["quickshell", "--no-duplicate", "--path", str(qml / "shell.qml")], stdout=qlog, stderr=qlog)
             processes.append(shell)
+            connection.exclude_pid = shell.pid
 
             def ipc(method, *args):
                 return run("quickshell", "ipc", "--path", str(qml / "shell.qml"), "call", "overviewTest", method, *args, check=False)

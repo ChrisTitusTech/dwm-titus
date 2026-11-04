@@ -21,9 +21,14 @@ Cards are used instead of live pixel previews, including on hidden tags.
 instance. Existing hotkeys are preserved. A custom binding can invoke
 `dwm-window-overview toggle`. `list` prints a JSON snapshot including active client; `watch` streams
 changed snapshots while subscribed; `activate XID` validates membership and
-waits up to two seconds for focus. Internal `restore XID` restores focus on
+waits up to two seconds for a per-request acknowledgement. This also supports
+clients with Input=false and WM_TAKE_FOCUS. Internal `restore XID` restores focus on
 cancellation only while the client remains visible, without switching tags or
-exiting a fullscreen peer. The backend uses Python's standard library
+exiting a fullscreen peer. `context PID` returns the most recently focused visible
+client outside that process on the selected monitor, including when a shell
+surface currently has focus. `list` and `watch` accept `--exclude-pid PID`;
+the GUI excludes its own shell process using window PID metadata, never an
+application title. The backend uses Python's standard library
 and libX11, with bounded property and client-list reads (4096 windows maximum).
 
 The C core only publishes versioned full-tag and monitor metadata and handles
@@ -34,14 +39,21 @@ restart is required.
 
 ## Interface
 
-- `_DWM_WINDOW_OVERVIEW` on the root: CARDINAL/32 version 1.
+- `_DWM_WINDOW_OVERVIEW` on the root: CARDINAL/32 version 2.
 - `_DWM_CLIENT_INFO` on each managed client: CARDINAL/32 values version (1),
   full tag mask and dwm monitor number. Docks and unmanaged overlays have no
-  such metadata and are omitted. The overview excludes its own shell window.
+  such metadata and are omitted.
 - `_DWM_WINDOW_ACTIVATE`: root-directed ClientMessage/32 naming the client in
-  `window`, version 1 in `data.l[0]`, and mode 0 (select) or 1 (restore
-visible focus only) in `data.l[1]`. dwm ignores unknown clients, formats
-  and versions. The ordinary `_NET_ACTIVE_WINDOW` policy is preserved.
+  `window` (root for context), version 2 in `data.l[0]`, mode 0 (select),
+  1 (restore visible focus only) or 2 (context) in `data.l[1]`, and the caller's
+  private unmapped reply-window XID in `data.l[2]`. Context supplies the process
+  ID to exclude in `data.l[3]` and scans at most 4096 focus-stack entries.
+- `_DWM_WINDOW_RESULT` on the reply window: CARDINAL/32 values version (2),
+  mode, selected/context client XID (zero for no context), and handled status
+  (1 success, 0 rejected). Distinct reply windows prevent stale or concurrent
+  requests satisfying one another. The helper destroys its reply window on
+  success, rejection or timeout. The ordinary `_NET_ACTIVE_WINDOW` and
+  WM_TAKE_FOCUS policies are preserved.
 
 ## Validation
 
@@ -50,7 +62,10 @@ and two-monitor Xinerama servers. It covers individual same-application cards,
 multiple tags, titles changing while open, keyboard and actual mouse selection,
 Escape focus restoration, multi-tag assignment preservation, closing before
 selection, fullscreen occlusion, swallowing/restoration metadata, malformed optional title metadata and the empty state. An 80-card
-UI fixture checks scrolling to the final row. It samples idle CPU. Set
+UI fixture checks scrolling to the final row. The production-shell fixture also
+checks title collisions, cancellation over Launcher/Menu/Clipboard, a hidden
+selection with an earlier tiled peer, and Input=false/WM_TAKE_FOCUS activation.
+The fixtures sample idle CPU. Set
 `DWM_FEATURE_EVIDENCE_DIR` to save dark and shipped light-theme screenshots.
 Physical hotplug, distinct physical display arrangements and GPU behavior still
 need hardware qualification; the two-screen fixture uses Xvfb Xinerama.
