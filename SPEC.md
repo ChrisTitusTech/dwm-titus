@@ -106,6 +106,12 @@ The installed session must provide:
   appear above real fullscreen clients without becoming managed or taking focus.
   Ordinary shell popups and EWMH above hints retain their existing priority.
 - Window icons from `_NET_WM_ICON`.
+- A searchable window overview with individual cards across all tags. Selecting
+  a card chooses its actual monitor, retains an already-visible assigned tag
+  or selects its lowest assigned tag, and focuses the existing window without
+  changing assignments. Keyboard selection and Escape dismissal are supported.
+  The overview tracks clients through X11 events only while open and releases
+  its window list and delegates when closed.
 - Keyboard layout group state for the panel, when the X server has XKB. dwm
   selects `XkbStateNotify` for group changes (the group comes from the event)
   and new keyboard, map, names and controls notifications (a full re-read; map

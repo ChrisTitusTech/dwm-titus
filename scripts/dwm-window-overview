@@ -1,0 +1,199 @@
+#!/usr/bin/env python3
+"""List and activate managed windows across tags using dwm and X11 events."""
+
+import argparse
+import ctypes as C
+import ctypes.util
+import json
+import select
+import sys
+import time
+
+
+class Data(C.Union):
+    _fields_ = [("b", C.c_char * 20), ("s", C.c_short * 10), ("l", C.c_long * 5)]
+
+
+class Message(C.Structure):
+    _fields_ = [("type", C.c_int), ("serial", C.c_ulong), ("send_event", C.c_int),
+                ("display", C.c_void_p), ("window", C.c_ulong),
+                ("message_type", C.c_ulong), ("format", C.c_int), ("data", Data)]
+
+
+class Event(C.Union):
+    _fields_ = [("message", Message), ("pad", C.c_long * 24)]
+
+
+class XError(C.Structure):
+    _fields_ = [("type", C.c_int), ("display", C.c_void_p), ("resource", C.c_ulong),
+                ("serial", C.c_ulong), ("code", C.c_ubyte),
+                ("request", C.c_ubyte), ("minor", C.c_ubyte)]
+
+
+class Connection:
+    def __init__(self):
+        self.x = C.CDLL(ctypes.util.find_library("X11") or "libX11.so.6")
+        signatures = {
+            "XOpenDisplay": ([C.c_char_p], C.c_void_p),
+            "XDefaultRootWindow": ([C.c_void_p], C.c_ulong),
+            "XInternAtom": ([C.c_void_p, C.c_char_p, C.c_int], C.c_ulong),
+            "XGetWindowProperty": ([C.c_void_p, C.c_ulong, C.c_ulong, C.c_long,
+                C.c_long, C.c_int, C.c_ulong, C.POINTER(C.c_ulong), C.POINTER(C.c_int),
+                C.POINTER(C.c_ulong), C.POINTER(C.c_ulong), C.POINTER(C.c_void_p)], C.c_int),
+            "XSelectInput": ([C.c_void_p, C.c_ulong, C.c_long], C.c_int),
+            "XNextEvent": ([C.c_void_p, C.POINTER(Event)], C.c_int),
+            "XPending": ([C.c_void_p], C.c_int),
+            "XConnectionNumber": ([C.c_void_p], C.c_int),
+            "XSendEvent": ([C.c_void_p, C.c_ulong, C.c_int, C.c_long, C.POINTER(Event)], C.c_int),
+            "XFlush": ([C.c_void_p], C.c_int),
+            "XFree": ([C.c_void_p], C.c_int),
+            "XCloseDisplay": ([C.c_void_p], C.c_int),
+        }
+        for name, (args, result) in signatures.items():
+            function = getattr(self.x, name)
+            function.argtypes, function.restype = args, result
+        # A client can close between enumeration and subscription/read. Xlib's
+        # default handler exits the process even for this ordinary race.
+        self.failure = ""
+        def handle_error(display, event):
+            error = C.cast(event, C.POINTER(XError)).contents
+            if error.code != 3:  # BadWindow is the ordinary close/read race.
+                self.failure = f"X11 window request failed (error {error.code}, request {error.request})"
+            return 0
+        self.error_handler = C.CFUNCTYPE(C.c_int, C.c_void_p, C.c_void_p)(handle_error)
+        self.x.XSetErrorHandler.argtypes = [C.c_void_p]
+        self.x.XSetErrorHandler(self.error_handler)
+        self.display = self.x.XOpenDisplay(None)
+        if not self.display:
+            raise RuntimeError("Cannot connect to the X11 session")
+        self.root = self.x.XDefaultRootWindow(self.display)
+        self.atoms = {}
+        self.watched = set()
+        self.x.XSelectInput(self.display, self.root, 1 << 22)
+
+    def atom(self, name):
+        if name not in self.atoms:
+            self.atoms[name] = self.x.XInternAtom(self.display, name.encode(), False)
+        return self.atoms[name]
+
+    def property(self, window, name, kind=0, limit=16384):
+        actual, count, after = C.c_ulong(), C.c_ulong(), C.c_ulong()
+        form, data = C.c_int(), C.c_void_p()
+        status = self.x.XGetWindowProperty(self.display, window, self.atom(name),
+            0, limit, False, kind, C.byref(actual), C.byref(form), C.byref(count),
+            C.byref(after), C.byref(data))
+        try:
+            if self.failure:
+                raise RuntimeError(self.failure)
+            if status or not actual.value or (kind and actual.value != kind) or after.value:
+                return None
+            if form.value == 32:
+                return list(C.cast(data, C.POINTER(C.c_ulong))[:count.value])
+            if form.value == 8:
+                return C.string_at(data, count.value)
+            return None
+        finally:
+            if data:
+                self.x.XFree(data)
+
+    def state(self):
+        if self.property(self.root, "_DWM_WINDOW_OVERVIEW", 6, 1) != [1]:
+            return {"protocol": 1, "available": False, "windows": [],
+                "detail": "Restart dwm to enable the window overview"}
+        ids = self.property(self.root, "_NET_CLIENT_LIST", 33, 4096) or []
+        ids = set(ids)
+        for window in ids - self.watched:
+            self.x.XSelectInput(self.display, window, (1 << 22) | (1 << 17))
+        self.watched = ids
+        rows = []
+        for window in sorted(ids):
+            info = self.property(window, "_DWM_CLIENT_INFO", 6, 16)
+            if not info or len(info) < 3 or info[0] != 1:
+                continue
+            title = self.property(window, "_NET_WM_NAME")
+            if not isinstance(title, bytes) or not title:
+                title = self.property(window, "WM_NAME")
+            if not isinstance(title, bytes) or not title:
+                title = b"Untitled window"
+            app = self.property(window, "WM_CLASS", 31) or b"Application"
+            if not isinstance(app, bytes):
+                app = b"Application"
+            if title.rstrip(b"\0") == b"dwm window overview":
+                continue
+            classes = [value for value in app.split(b"\0") if value]
+            rows.append({"id": str(window), "title": title.decode("utf-8", "replace")[:1024],
+                "app": (classes[-1] if classes else b"Application").decode("utf-8", "replace")[:256],
+                "tags": info[1], "monitor": info[2]})
+        return {"protocol": 1, "available": True, "windows": rows}
+
+    def activate(self, window):
+        ids = self.property(self.root, "_NET_CLIENT_LIST", 33, 4096) or []
+        if window not in ids or not self.property(window, "_DWM_CLIENT_INFO", 6, 16):
+            raise RuntimeError("This window has closed; choose another window")
+        event = Event()
+        event.message = Message(33, 0, True, self.display, window,
+            self.atom("_DWM_WINDOW_ACTIVATE"), 32, Data())
+        event.message.data.l[0] = 1
+        if not self.x.XSendEvent(self.display, self.root, False, (1 << 20) | (1 << 19), C.byref(event)):
+            raise RuntimeError("Could not activate the window")
+        self.x.XFlush(self.display)
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline:
+            if self.property(self.root, "_NET_ACTIVE_WINDOW", 33, 1) == [window]:
+                return
+            if window not in (self.property(self.root, "_NET_CLIENT_LIST", 33, 4096) or []):
+                raise RuntimeError("This window has closed; choose another window")
+            self.wait(max(0, deadline - time.monotonic()))
+        raise RuntimeError("dwm did not focus the selected window; restart dwm if it predates the overview")
+
+    def wait(self, timeout=None):
+        if not self.x.XPending(self.display):
+            ready, _, _ = select.select([self.x.XConnectionNumber(self.display)], [], [], timeout)
+            if not ready:
+                return False
+        event = Event()
+        self.x.XNextEvent(self.display, C.byref(event))
+        return True
+
+    def close(self):
+        self.x.XCloseDisplay(self.display)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("action", choices=("list", "watch", "activate", "open", "toggle", "close"))
+    parser.add_argument("window", nargs="?", type=lambda value: int(value, 0))
+    args = parser.parse_args()
+    if args.action in ("open", "toggle", "close"):
+        import os
+        import subprocess
+        from pathlib import Path
+        config = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "quickshell/shell.qml"
+        return subprocess.call(["quickshell", "ipc", "--path", str(config), "call", "windowOverview", args.action])
+    if args.action == "activate" and (args.window is None or not 0 < args.window <= 0xffffffff):
+        parser.error("activate requires a valid X11 window ID")
+    connection = Connection()
+    try:
+        if args.action == "activate":
+            connection.activate(args.window)
+        else:
+            previous = None
+            while True:
+                state = connection.state()
+                if state != previous:
+                    print(json.dumps(state), flush=True)
+                    previous = state
+                if args.action == "list":
+                    break
+                connection.wait()
+    finally:
+        connection.close()
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except (OSError, RuntimeError) as error:
+        print(str(error), file=sys.stderr)
+        sys.exit(1)

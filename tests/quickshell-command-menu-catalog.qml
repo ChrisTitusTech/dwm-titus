@@ -9,11 +9,16 @@ QtObject {
     Component.onCompleted: {
         try {
             const rootEntries = Catalog.entriesFor("root");
-            require(rootEntries.length === 11, "root taxonomy must contain eleven entries");
+            require(rootEntries.length === 12, "root taxonomy must include the window overview");
             require(rootEntries[0].label === "Apps", "Apps must lead the root menu");
             require(rootEntries[0].provider === "applications", "Apps must declare its dynamic provider");
             require(Catalog.entriesFor(rootEntries[0].target).length === 0, "dynamic Apps submenu must resolve in the catalog");
             require(rootEntries[rootEntries.length - 1].label === "System", "System must close the root menu");
+
+            const overviewEntry = rootEntries.find(entry => entry.id === "window-overview");
+            require(overviewEntry && overviewEntry.actionType === "ipc"
+                && overviewEntry.target === "windowOverview" && overviewEntry.action === "open",
+                "window overview must open through managed-shell IPC");
 
             const clipboardEntry = rootEntries.find(entry => entry.id === "clipboard");
             require(clipboardEntry && clipboardEntry.actionType === "ipc"

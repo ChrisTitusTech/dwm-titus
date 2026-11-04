@@ -457,6 +457,7 @@ static int selectedmonitorcachevalid;
 static Atom dwmfullscreenmonitorsatom, dwmtagupdateatom;
 /* XKB keyboard group state published on the root window (see SPEC.md 5.1) */
 static Atom hangrequestatom, hanggenerationatom;
+static Atom overviewinfoatom, overviewactivateatom, overviewversionatom;
 static int hangtogglecached = -1;
 static long long hangtogglechecked;
 static Atom kbgroupatom, kbnamesatom, kbsymbolsatom, kbrequestatom, kbutf8atom;
@@ -981,6 +982,7 @@ cleanup(void)
 	XSync(dpy, False);
 	XSetInputFocus(dpy, PointerRoot, RevertToPointerRoot, CurrentTime);
 	ewmh_clear_active_window();
+	XDeleteProperty(dpy, root, overviewversionatom);
 }
 
 void
@@ -1012,6 +1014,28 @@ clientmessage(XEvent *e)
 	if (cme->window == root && cme->message_type == wmatom[WMProtocols]
 	&& cme->format == 32 && (Atom)cme->data.l[0] == netatom[NetWMPing]) {
 		hangpong((Window)cme->data.l[2], (unsigned long)cme->data.l[1] & 0xffffffffUL);
+		return;
+	}
+	if (cme->message_type == overviewactivateatom) {
+		unsigned int visible, target;
+		Arg arg;
+
+		if (!c || cme->format != 32 || cme->data.l[0] != 1)
+			return;
+		if (selmon != c->mon) {
+			unfocus(selmon->sel, 0);
+			selmon = c->mon;
+		}
+		visible = c->tags & selmon->tagset[selmon->seltags];
+		if (!visible) {
+			target = c->tags & getmontagmask(selmon->num);
+			if (!target) return;
+			arg.ui = target & (~target + 1U);
+			view(&arg);
+		}
+		focus(c);
+		restack(c->mon);
+		updatecurrentdesktop();
 		return;
 	}
 	if (cme->message_type == netatom[NetCurrentDesktop]) {
@@ -3624,6 +3648,11 @@ setclientdesktop(Client *c)
         data[0] = 0xFFFFFFFF;
     }
     
+	/* Versioned shell metadata preserves the full tag mask and actual monitor,
+	 * unlike _NET_WM_DESKTOP which represents only the first assigned tag. */
+	long info[] = { 1, c->tags, c->mon->num };
+	XChangeProperty(dpy, c->win, overviewinfoatom, XA_CARDINAL, 32,
+		PropModeReplace, (unsigned char *)info, LENGTH(info));
 	ewmh_replace_window_cardinal(c->win, netatom[NetWMDesktop], data, 1);
 	updatefullscreenmonitors();
 	data[0] = ++tagupdatesequence;
@@ -4618,6 +4647,12 @@ setup(void)
 	/* Reconcile monitor-specific tags after geometry is set up */
 	reconcilemonitortags();
 	/* init atoms */
+	overviewversionatom = XInternAtom(dpy, "_DWM_WINDOW_OVERVIEW", False);
+	long overviewversion[] = {1};
+	XChangeProperty(dpy, root, overviewversionatom, XA_CARDINAL, 32,
+		PropModeReplace, (unsigned char *)overviewversion, 1);
+	overviewinfoatom = XInternAtom(dpy, "_DWM_CLIENT_INFO", False);
+	overviewactivateatom = XInternAtom(dpy, "_DWM_WINDOW_ACTIVATE", False);
 	utf8string = XInternAtom(dpy, "UTF8_STRING", False);
 	hangrequestatom = XInternAtom(dpy, "_DWM_TITUS_HANG_KILL", False);
 	hanggenerationatom = XInternAtom(dpy, "_DWM_TITUS_HANG_GENERATION", False);

@@ -36,6 +36,7 @@ INSTALL_COMMANDS = dwm-clipboard-observer \
 	scripts/dwm-display-setup \
 	scripts/dwm-initial-update \
 	scripts/dwm-keybinds \
+	scripts/dwm-window-overview \
 	scripts/dwm-lock \
 	scripts/dwm-lock-watch \
 	scripts/dwm-migrate-clipboard-surface \
@@ -500,6 +501,10 @@ check-clipboard: dwm-clipboard-observer
 	python3 tests/test-clipboard-migration.py
 	python3 tests/test-clipboard-runtime.py
 	python3 tests/test-clipboard-end-to-end.py
+check-window-overview: all
+	$(call run_managed_test,dbus-run-session -- xvfb-run -a -s "-screen 0 1280x800x24" python3 tests/test-window-overview.py)
+	$(call run_managed_test,dbus-run-session -- xvfb-run -a -s "-screen 0 1280x800x24 -screen 1 800x600x24 +xinerama" python3 tests/test-window-overview.py)
+
 check-keyboard-layout: all
 	python3 tests/test-keyboard-refresh.py
 	tests/test-keyboard-layout-xvfb.sh
@@ -828,6 +833,7 @@ check: check-picom check-picom-xvfb
 	$(MAKE) check-clipboard
 	$(MAKE) check-clipboard-observer
 	$(MAKE) check-keyboard-layout
+	$(MAKE) check-window-overview
 	$(MAKE) check-quickshell-launcher
 	$(MAKE) check-quickshell-controls
 	$(MAKE) check-quickshell-audio
@@ -901,3 +907,5 @@ check: check-picom check-picom-xvfb
 .PHONY: check-clipboard-observer
 
 .PHONY: check-ai-assist check-ai-assist-xvfb check-notification-actions-xvfb
+
+.PHONY: check-window-overview
