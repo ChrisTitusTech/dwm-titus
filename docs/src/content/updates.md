@@ -68,10 +68,13 @@ the saved operation and resumes progress reporting.
 
 Updates preserve personal TOML files, application configuration, `.xinitrc`,
 and `config.h`. They replace the managed Quickshell tree and the managed
-`config` and `scripts` data trees. Development branches, any tracked or
-untracked checkout changes, ignored files inside `config/` or `scripts/`, linked
-worktrees, and divergent history are blocked with instructions to use the source
-workflow instead.
+`config` and `scripts` data trees from a fixed official revision. Local branches,
+edits, generated caches, worktrees, and divergent Git history do not block
+installation updates. The full previous data tree, including local work in those
+managed directories, remains in the recovery backup. Local Git metadata and
+unrelated files are retained without advancing Git HEAD; external development
+checkouts are left untouched. Keep development work in a separate checkout so
+managed installation updates do not replace its files.
 
 ## Initial Fedora update
 

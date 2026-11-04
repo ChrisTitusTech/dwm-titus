@@ -264,6 +264,15 @@ ShellRoot {{
             }};
             return probeRow.Accessible.name + "|" + probeRow.visibleDetail();
         }}
+        function probeBlockedUpdate(): string {{
+            const original = probeRow.provider;
+            probeRow.provider = {{ id: "dwm-titus", name: "DWM-Titus", status: "restricted", pending: 1, managed: 1,
+                freshness: "fresh", lastSuccess: 30, updateAvailable: false, errorCode: "",
+                detail: "Managed system directories are missing. Run the source installer to restore them.", restart: "none", items: [] }};
+            const label = probeRow.statusLabel();
+            probeRow.provider = original;
+            return label;
+        }}
         function probeStatusLabel(): string {{ return probeRow.statusLabel(); }}
         function probeStatusLabelColor(): string {{ return String(probeRow.statusLabelColor()); }}
         function setProbeScanning(value: bool): void {{ probeRow.scanning = value; }}
@@ -410,6 +419,7 @@ with tempfile.TemporaryDirectory(prefix="update-center-xvfb-", dir=tmp_root) as 
         assert call("setProbeRestart", "session") == "Fedora, Restart session|Sign out and back in to complete this update."
         assert call("setProbeRestart", "system") == "Fedora, Restart system|Restart the system to complete this update."
         assert call("setProbeRestart", "none") == "Fedora, Up to date|"
+        assert call("probeBlockedUpdate") == "Restricted", "Blocked update was advertised as available"
         assert call("probeStatusLabel") == "Up to date"
         call("setProbeScanning", "true")
         assert call("probeStatusLabel") == "Checking"

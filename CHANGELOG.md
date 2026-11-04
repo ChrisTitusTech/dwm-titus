@@ -100,6 +100,11 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Decouple desktop installation updates from local Git branches, changes,
+  generated caches, worktrees, and divergent history. Preserve the previous
+  managed data tree for recovery and leave external source checkouts untouched.
+  Show genuine update blockers accurately in Update Center.
+
 - Isolate the managed test runtime directory before starting private D-Bus
   sessions, preventing test document portals from replacing the live desktop's
   portal mount and leaving its service failed.

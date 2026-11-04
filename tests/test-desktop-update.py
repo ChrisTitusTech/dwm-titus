@@ -1026,22 +1026,6 @@ class DesktopUpdate(unittest.TestCase):
                 finally:
                     rules.rmdir() if kind == "directory" else rules.unlink()
 
-    def test_local_branch_and_dirty_source_block_updates(self):
-        (self.data / ".git").mkdir()
-        self.command.return_value = "topic"
-        self.assertIn("development branch", update.checkout_reason(self.data))
-        self.command.side_effect = ["main", " M scripts/helper"]
-        self.assertIn("has changes", update.checkout_reason(self.data))
-
-    def test_empty_or_invalid_git_directory_does_not_crash_checkout_reason(self):
-        (self.data / ".git").mkdir()
-        self.command.side_effect = [update.CommandFailure("fatal: not a git repository", 128),
-                                    "", update.CommandFailure("fatal: not a git repository", 128)]
-        self.assertEqual(update.checkout_reason(self.data),
-                         "Local source repository is invalid or unreadable. Update it with the source installer.")
-        self.assertEqual(update.checkout_ancestry_reason(self.data, "a" * 40),
-                         "Local source repository is invalid or unreadable. Update it with the source installer.")
-
     def test_git_checkout_ignores_hostile_hooks_templates_and_config(self):
         home = self.base / "git-home"
         hooks = home / "hooks"
@@ -1079,7 +1063,7 @@ class DesktopUpdate(unittest.TestCase):
         self.assertFalse((target / ".git/injected-template").exists())
         self.assertEqual((target / "file").read_text(), "official")
 
-    def test_git_checkout_is_staged_as_a_clean_fast_forward(self):
+    def test_local_checkout_state_does_not_block_installation_update(self):
         def git(path, *args):
             return subprocess.check_output(["git", "-C", path, "-c", "user.name=Desktop Test",
                                             "-c", "user.email=desktop-test@example.invalid", *args],
@@ -1088,53 +1072,65 @@ class DesktopUpdate(unittest.TestCase):
         git(self.data, "init", "-b", "main")
         git(self.data, "add", ".")
         git(self.data, "commit", "-m", "baseline")
-        original = git(self.data, "rev-parse", "HEAD")
         source = self.base / "upstream"
         subprocess.run(["git", "clone", "--quiet", self.data, source], check=True)
         (source / "config/quickshell").mkdir()
         (source / "config/quickshell/new.qml").write_text("new shell")
         git(source, "add", ".")
         git(source, "commit", "-m", "new shell")
-        with patch.object(update, "run", REAL_RUN):
-            entries = update.prepare_user(source, "e" * 32)
-        self.assertEqual(git(self.data, "rev-parse", "HEAD"), original)
-        self.assertEqual(git(Path(entries[0]["backup"]), "rev-parse", "HEAD"), git(source, "rev-parse", "HEAD"))
-        self.assertEqual(git(Path(entries[0]["backup"]), "status", "--porcelain"), "")
-        for name in ("config/local-work", "scripts/local-work"):
-            local = self.data / name
-            local.write_text("untracked work")
-            with patch.object(update, "run", REAL_RUN), self.assertRaisesRegex(RuntimeError, "has changes"):
-                update.prepare_user(source, "f" * 32)
-            self.assertEqual(local.read_text(), "untracked work")
-            local.unlink()
-        (self.data / ".git/info/exclude").write_text("config/ignored-work\n")
-        ignored = self.data / "config/ignored-work"
-        ignored.write_text("ignored personal work")
-        with patch.object(update, "run", REAL_RUN), self.assertRaisesRegex(RuntimeError, "has changes"):
-            update.prepare_user(source, "f" * 32)
-        self.assertEqual(ignored.read_text(), "ignored personal work")
-        ignored.unlink()
-        (self.data / "local-file").write_text("local")
-        git(self.data, "add", ".")
-        git(self.data, "commit", "-m", "divergent local work")
-        with patch.object(update, "run", REAL_RUN), self.assertRaises(RuntimeError):
-            update.prepare_user(source, "f" * 32)
-        self.assertFalse((self.data.parent / (".dwm-update-" + "f" * 32 + "-0")).exists())
-        with patch.object(update, "run", REAL_RUN), patch.object(update, "SOURCE", str(source)):
-            self.assertIn("divergent", update.checkout_ancestry_reason(self.data, git(source, "rev-parse", "HEAD")))
-            self.assertEqual(update.checkout_ancestry_reason(source, git(source, "rev-parse", "HEAD")), "")
+        for mode in ("clean", "dirty", "divergent", "worktree"):
+            with self.subTest(mode=mode):
+                if mode == "dirty":
+                    (self.data / "scripts/file").write_text("local edit")
+                    (self.data / "config/local-work").write_text("untracked work")
+                    (self.data / ".git/info/exclude").write_text("__pycache__/\nconfig/ignored-work\n")
+                    cache = self.data / "scripts/image/__pycache__/check-packagekit.cpython-314.pyc"
+                    cache.parent.mkdir(parents=True)
+                    cache.write_bytes(b"generated bytecode")
+                    (self.data / "config/ignored-work").write_text("ignored personal work")
+                elif mode == "divergent":
+                    git(self.data, "switch", "-c", "development")
+                    git(self.data, "add", ".")
+                    git(self.data, "commit", "-m", "local work")
+                elif mode == "worktree":
+                    # A .git indirection is copied, never read or mutated.
+                    shutil.rmtree(self.data / ".git")
+                    (self.data / ".git").write_text("gitdir: /external/worktree-metadata\n")
+                before = update.tree_manifest(self.data)
+                with patch.object(update, "run", REAL_RUN):
+                    entries = update.prepare_user(source, "e" * 32)
+                staged = Path(entries[0]["backup"])
+                self.assertEqual(update.tree_manifest(self.data), before, "Original local work changed before exchange")
+                self.assertEqual(entries[0]["original"], before, "Recovery journal omitted local work")
+                for name in ("config", "scripts"):
+                    self.assertEqual(update.tree_manifest(staged / name), update.tree_manifest(source / name))
+                self.assertEqual(update.user_manifest(staged / ".git"), update.user_manifest(self.data / ".git"))
+                update.exchange(self.data, staged)
+                self.assertEqual(update.tree_manifest(staged), before, "Update backup lost local work")
+                self.assertEqual(update.tree_manifest(self.data / "scripts"), update.tree_manifest(source / "scripts"))
+                update.exchange(self.data, staged)
+                self.assertEqual(update.tree_manifest(self.data), before, "Rollback lost local work")
+                for entry in entries:
+                    shutil.rmtree(entry["staging"])
+                with patch.object(update, "run", return_value="b" * 40 + "\trefs/heads/main") as runner:
+                    value = update.check(True)
+                self.assertTrue(value["canUpdate"], value["detail"])
+                runner.assert_called_once_with(["git", "ls-remote", "--exit-code", update.SOURCE,
+                                                "refs/heads/main"], timeout=30)
 
-    def test_external_checkout_ancestry_blocks_preview(self):
+    def test_external_development_checkout_does_not_block_preview(self):
         external = self.base / "external"
         external.mkdir()
+        (external / ".git").write_text("gitdir: /unavailable/metadata\n")
+        (external / "local-work").write_text("personal development")
         receipt = update.read_json(self.state / "installed.json")
         receipt["checkout"] = str(external)
         update.write_json(self.state / "installed.json", receipt)
-        with patch.object(update, "checkout_ancestry_reason", side_effect=["", "Local source has divergent history."]) as ancestry:
-            value = update.check(True)
-        self.assertEqual(value["state"], "blocked")
-        self.assertFalse(value["canUpdate"])
-        ancestry.assert_any_call(external, "a" * 40)
+        before = update.tree_manifest(external)
+        self.command.return_value = "b" * 40 + "\trefs/heads/main"
+        value = update.check(True)
+        self.assertTrue(value["canUpdate"], value["detail"])
+        self.assertEqual(update.tree_manifest(external), before)
 
     def test_root_candidate_accepts_new_contents_at_installed_destinations(self):
         candidate = copy.deepcopy(self.manifest)

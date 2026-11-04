@@ -87,8 +87,8 @@ Rectangle {
         if (root.provider.freshness === "stale") return "Stale";
         if (root.provider.restart === "session") return "Restart session";
         if (root.provider.restart === "system") return "Restart system";
-        if (root.provider.updateAvailable || root.provider.pending > 0) return "Available";
         if (root.provider.status === "restricted") return "Restricted";
+        if (root.provider.updateAvailable || root.provider.pending > 0) return "Available";
         if (root.provider.status === "partial") return "Partial";
         return "Up to date";
     }
