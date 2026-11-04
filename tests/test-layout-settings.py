@@ -100,7 +100,7 @@ ShellRoot {
 
             def set_value(key, value):
                 state = connection.state()
-                result = run(str(repo / "scripts/dwm-layout-settings"), "set", key, str(value), str(state["monitor"]), str(state["tags"]))
+                result = run(str(repo / "scripts/dwm-layout-settings"), "set", key, str(value), str(state["monitor"]), str(state["tags"]), str(state["owner"]))
                 assert json.loads(result.stdout)[key] == value
 
             for key, value in (("master", 5), ("master", 95), ("master", 65), ("gap", 16), ("count", 2), ("layout", 1), ("layout", 2), ("layout", 0)):
@@ -114,15 +114,29 @@ ShellRoot {
             run("xdotool", "key", "super+1")
             wait(lambda: connection.state()["tags"] == 1, "tag restoration failed")
             assert connection.state()["gap"] == 16
-            stale = run(str(repo / "scripts/dwm-layout-settings"), "set", "gap", "20", "0", "2", check=False)
+            stale = run(str(repo / "scripts/dwm-layout-settings"), "set", "gap", "20", "0", "2", "2", check=False)
             assert stale.returncode != 0 and connection.state()["gap"] == 16
-            wrong_monitor = run(str(repo / "scripts/dwm-layout-settings"), "set", "gap", "20", "999", "1", check=False)
+            wrong_monitor = run(str(repo / "scripts/dwm-layout-settings"), "set", "gap", "20", "999", "1", "1", check=False)
             assert wrong_monitor.returncode != 0 and connection.state()["gap"] == 16
             # Out-of-range messages are also rejected by the C endpoint.
-            connection.change(3, 999, 0, 1)
+            connection.change(3, 999, 0, 1, 1)
             connection.x.XSync(d, False)
             time.sleep(.1)
             assert connection.state()["gap"] == 16
+            # Identical visible masks can still belong to different per-tag owners.
+            run("xdotool", "key", "super+ctrl+2")
+            wait(lambda: connection.state()["tags"] == 3 and connection.state()["owner"] == 1, "First multitag owner failed")
+            old_view = connection.state()
+            run("xdotool", "key", "super+2", "super+ctrl+1")
+            wait(lambda: connection.state()["tags"] == 3 and connection.state()["owner"] == 2, "Second multitag owner failed")
+            stale = run(str(repo / "scripts/dwm-layout-settings"), "set", "gap", "20", str(old_view["monitor"]), "3", "1", check=False)
+            assert stale.returncode != 0 and connection.state()["gap"] == 8
+            connection.change(3, 20, old_view["monitor"], 3, 1)
+            connection.x.XSync(d, False)
+            time.sleep(.1)
+            assert connection.state()["gap"] == 8, "C accepted stale settings owner"
+            run("xdotool", "key", "super+1")
+            wait(lambda: connection.state()["tags"] == 1, "Multitag test did not restore tag")
             with open(work / "qml.log", "w") as qlog:
                 shell = subprocess.Popen(["quickshell", "--no-duplicate", "--path", str(qml / "shell.qml")], stdout=qlog, stderr=qlog)
             processes.append(shell)
@@ -167,6 +181,30 @@ ShellRoot {
             rect = json.loads(ipc("rect", "windowTileGaps").stdout)
             run("xdotool", "mousemove", str(round(rect["x"] + rect["width"] / 2)), str(round(rect["y"] + rect["height"] / 2)), "click", "1")
             wait(lambda: 30 <= connection.state()["gap"] <= 34, "Normal slider gesture did not apply")
+            # Capture the settings owner as well as the mask during real drags.
+            original_gap = connection.state()["gap"]
+            run("xdotool", "key", "super+ctrl+2")
+            wait(lambda: json.loads(ipc("state").stdout).get("tags") == 3 and json.loads(ipc("state").stdout).get("owner") == 1, "Pane did not observe first multitag owner")
+            rect = json.loads(ipc("rect", "windowTileGaps").stdout)
+            run("xdotool", "mousemove", str(round(rect["x"] + rect["width"] * .4)), str(round(rect["y"] + rect["height"] / 2)), "mousedown", "1")
+            try:
+                wait(lambda: json.loads(ipc("rect", "windowTileGaps").stdout)["pressed"], "Owner drag did not begin")
+                run("xdotool", "key", "super+2", "super+ctrl+1")
+                wait(lambda: json.loads(ipc("state").stdout).get("tags") == 3 and json.loads(ipc("state").stdout).get("owner") == 2, "Pane did not observe second multitag owner")
+                run("xdotool", "mousemove", str(round(rect["x"] + rect["width"] - 2)), str(round(rect["y"] + rect["height"] / 2)))
+            finally:
+                run("xdotool", "mouseup", "1")
+            time.sleep(.2)
+            assert connection.state()["gap"] == 8, "Same-mask drag changed a different settings owner"
+            run("xdotool", "key", "super+1")
+            wait(lambda: connection.state()["tags"] == 1, "Owner drag did not restore tag")
+            assert connection.state()["gap"] == original_gap
+            # Existing hotkeys may exceed the graphical range; minus must recover.
+            run("xdotool", "key", "--repeat", "22", "--delay", "15", "super+i")
+            wait(lambda: json.loads(ipc("state").stdout).get("count", 0) > 21, "High master hotkey count failed")
+            rect = json.loads(ipc("rect", "windowMasterMinus").stdout)
+            run("xdotool", "mousemove", str(round(rect["x"] + rect["width"] / 2)), str(round(rect["y"] + rect["height"] / 2)), "click", "1")
+            wait(lambda: connection.state()["count"] == 20, "Minus did not recover a hotkey count above its range")
             ticks_before = sum(map(int, Path(f"/proc/{shell.pid}/stat").read_text().rsplit(")", 1)[1].split()[11:13]))
             time.sleep(2)
             ticks_after = sum(map(int, Path(f"/proc/{shell.pid}/stat").read_text().rsplit(")", 1)[1].split()[11:13]))

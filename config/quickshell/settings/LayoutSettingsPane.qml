@@ -19,7 +19,7 @@ ColumnLayout {
         catch (error) { root.message = "Could not read layout state"; }
     }
     function currentView() {
-        return { monitor: root.snapshot.monitor, tags: root.snapshot.tags };
+        return { monitor: root.snapshot.monitor, tags: root.snapshot.tags, owner: root.snapshot.owner };
     }
     function sliderValue(setting, fallback) {
         return typeof root.snapshot[setting] === "number" ? root.snapshot[setting] : fallback;
@@ -27,14 +27,14 @@ ColumnLayout {
     function setValue(setting, value, view) {
         if (!root.editable) return;
         const target = view || root.currentView();
-        if (target.monitor !== root.snapshot.monitor || target.tags !== root.snapshot.tags) {
+        if (target.monitor !== root.snapshot.monitor || target.tags !== root.snapshot.tags || target.owner !== root.snapshot.owner) {
             root.message = "The edited monitor or tag changed; try again";
             return;
         }
         root.message = "";
         if (root.snapshot[setting] === value) return;
         action.command = Commands.helperCommand("dwm-layout-settings", "set",
-            [setting, String(value), String(target.monitor), String(target.tags)], true);
+            [setting, String(value), String(target.monitor), String(target.tags), String(target.owner)], true);
         action.running = true;
     }
 
@@ -99,7 +99,7 @@ ColumnLayout {
     }
     RowLayout {
         UiText { text: "Master windows: " + (root.snapshot.count || 0); color: Theme.menuText }
-        ShellButton { label: "-"; enabled: root.editable && root.snapshot.count > 0; onActivated: root.setValue("count", root.snapshot.count - 1) }
+        ShellButton { objectName: "windowMasterMinus"; label: "-"; enabled: root.editable && root.snapshot.count > 0; onActivated: root.setValue("count", Math.min(20, root.snapshot.count - 1)) }
         ShellButton { label: "+"; enabled: root.editable && root.snapshot.count < 20; onActivated: root.setValue("count", root.snapshot.count + 1) }
     }
     UiText { text: "Tile gaps: " + (root.snapshot.gap || 0) + " px"; color: Theme.menuText }

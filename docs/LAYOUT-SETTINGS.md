@@ -18,20 +18,21 @@ window corner rounding; dwm does not require a compositor.
 
 ## X11 interface
 
-`_DWM_LAYOUT_STATE` is an INTEGER/32 root property with seven values: monitor
+`_DWM_LAYOUT_STATE` is an INTEGER/32 root property with eight values: monitor
 number, visible tag mask, layout index, master percent, master count, tile gaps,
-and protocol version (1). dwm publishes only changed values.
+protocol version (2) and per-tag settings owner (0 means the all-tag state). dwm publishes only changed values.
 
 `_DWM_LAYOUT_REQUEST` is a 32-bit root ClientMessage containing operation,
-integer value, monitor number, visible tag mask and version (1). Operations are
+integer value, monitor number, visible tag mask and a final word containing version 2 in the low 16 bits
+and settings owner in the high 16 bits. Operations are
 layout (0), master percent (1), master count (2) and gap (3). Ranges are 0-2 for
 the shipped layouts, 5-95 percent, 0-20 master windows and 0-64 pixels. dwm
 rejects invalid values and requests for a different current monitor or view.
 
 The unprivileged `dwm-layout-settings status` command emits one JSON snapshot;
 `watch` streams changed snapshots using X11 events. `set SETTING VALUE MONITOR
-TAGMASK` waits up to two seconds for the requested state and fails on a stale
-view. A shell running against an older dwm explains that a session restart is
+TAGMASK OWNER` waits up to two seconds for the requested state and fails on a stale
+view, including the same visible tag mask reached from a different owner. A shell running against an older dwm explains that a session restart is
 needed. No new package dependency, polling timer, elevated helper or persistent
 settings file is introduced. The watcher stops when Appearance closes.
 
@@ -39,7 +40,7 @@ settings file is introduced. The watcher stops when Appearance closes.
 
 `make check-layout-settings` runs a real dwm and the QML pane on private single-
 and two-monitor Xinerama servers inside private D-Bus sessions. It exercises layout choices, slider values,
-master endpoints, gap geometry, tag restoration, invalid/stale requests,
+master endpoints, recovery from hotkey counts above 20, gap geometry, tag restoration, invalid/stale requests,
 mouse-equivalent QML actions, hotkey convergence and watcher reopening, and
 samples idle CPU. `make check-xvfb-runtime` retains the existing desktop smoke
 coverage. Physical monitor hotplug and GPU/compositor behavior need separate

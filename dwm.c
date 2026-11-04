@@ -461,7 +461,7 @@ static Atom dwmfullscreenmonitorsatom, dwmtagupdateatom;
 /* XKB keyboard group state published on the root window (see SPEC.md 5.1) */
 static Atom hangrequestatom, hanggenerationatom;
 static Atom layoutstateatom, layoutrequestatom;
-static long layoutcache[7];
+static long layoutcache[8];
 static int layoutcachevalid;
 static int hangtogglecached = -1;
 static long long hangtogglechecked;
@@ -3805,12 +3805,12 @@ setlayout(const Arg *arg)
 		drawbar(selmon);
 }
 
-/* Version 1: selected monitor, visible tag mask, layout index, master percent,
- * master count and tile gap. Publish only changes to keep shell watches idle. */
+/* Version 2 adds the per-tag settings owner to distinguish identical tag masks.
+ * Publish only changes to keep shell watches idle. */
 void
 publishlayout(void)
 {
-	long state[7];
+	long state[8];
 	unsigned int i;
 
 	if (!selmon || !layoutstateatom)
@@ -3822,7 +3822,8 @@ publishlayout(void)
 	state[3] = (long)(selmon->mfact * 100.0f + 0.5f);
 	state[4] = selmon->nmaster;
 	state[5] = selmon->gap;
-	state[6] = 1;
+	state[6] = 2;
+	state[7] = selmon->pertag->curtag;
 	if (layoutcachevalid && !memcmp(state, layoutcache, sizeof state))
 		return;
 	XChangeProperty(dpy, root, layoutstateatom, XA_INTEGER, 32,
@@ -3839,7 +3840,8 @@ layoutrequest(XClientMessageEvent *event)
 	long operation = event->data.l[0], value = event->data.l[1];
 	Arg arg = {0};
 
-	if (event->format != 32 || event->data.l[4] != 1 || !selmon
+	if (event->format != 32 || !selmon
+	|| event->data.l[4] != (2L | ((long)selmon->pertag->curtag << 16))
 	|| event->data.l[2] != selmon->num
 	|| (unsigned long)event->data.l[3] != selmon->tagset[selmon->seltags])
 		return;

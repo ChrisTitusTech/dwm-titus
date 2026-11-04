@@ -61,26 +61,26 @@ class Connection:
         actual, count, after = C.c_ulong(), C.c_ulong(), C.c_ulong()
         form, data = C.c_int(), C.c_void_p()
         status = self.x.XGetWindowProperty(self.display, self.root, self.state_atom,
-            0, 7, False, 19, C.byref(actual), C.byref(form), C.byref(count),
+            0, 8, False, 19, C.byref(actual), C.byref(form), C.byref(count),
             C.byref(after), C.byref(data))
         try:
-            if status or actual.value != 19 or form.value != 32 or count.value != 7 or after.value:
+            if status or actual.value != 19 or form.value != 32 or count.value != 8 or after.value:
                 return {"available": False, "detail": "Restart dwm to enable layout controls"}
-            values = list(C.cast(data, C.POINTER(C.c_long))[:7])
-            if values[6] != 1:
+            values = list(C.cast(data, C.POINTER(C.c_long))[:8])
+            if values[6] != 2:
                 return {"available": False, "detail": "Unsupported dwm layout interface"}
             result = dict(zip(("monitor", "tags", "layout", "master", "count", "gap"), values[:6]))
-            result.update(available=True, detail="Changes apply to this monitor and tag until dwm exits")
+            result.update(owner=values[7], available=True, detail="Changes apply to this monitor and tag until dwm exits")
             return result
         finally:
             if data:
                 self.x.XFree(data)
 
-    def change(self, operation, value, monitor, tags):
+    def change(self, operation, value, monitor, tags, owner):
         event = Event()
         event.message = Message(33, 0, True, self.display, self.root,
             self.request_atom, 32, Data())
-        event.message.data.l[:] = (operation, value, monitor, tags, 1)
+        event.message.data.l[:] = (operation, value, monitor, tags, 2 | (owner << 16))
         if not self.x.XSendEvent(self.display, self.root, False, (1 << 20) | (1 << 19), C.byref(event)):
             raise RuntimeError("Could not send the layout request")
         self.x.XFlush(self.display)
@@ -105,12 +105,13 @@ def main():
     parser.add_argument("value", nargs="?", type=int)
     parser.add_argument("monitor", nargs="?", type=int)
     parser.add_argument("tags", nargs="?", type=int)
+    parser.add_argument("owner", nargs="?", type=int)
     args = parser.parse_args()
     keys = ("layout", "master", "count", "gap")
     bounds = ((0, 2), (5, 95), (0, 20), (0, 64))
     if args.action == "set":
-        if args.setting is None or args.value is None or args.monitor is None or args.tags is None:
-            parser.error("set requires a setting, value, monitor and tag mask")
+        if args.setting is None or args.value is None or args.monitor is None or args.tags is None or args.owner is None:
+            parser.error("set requires a setting, value, monitor, tag mask and settings owner")
         operation = keys.index(args.setting)
         low, high = bounds[operation]
         if not low <= args.value <= high:
@@ -119,14 +120,14 @@ def main():
     try:
         if args.action == "set":
             state = connection.state()
-            if not state.get("available") or (state["monitor"], state["tags"]) != (args.monitor, args.tags):
+            if not state.get("available") or (state["monitor"], state["tags"], state["owner"]) != (args.monitor, args.tags, args.owner):
                 raise RuntimeError("The edited monitor or tag changed; try again")
             if state[args.setting] != args.value:
-                connection.change(operation, args.value, args.monitor, args.tags)
+                connection.change(operation, args.value, args.monitor, args.tags, args.owner)
                 deadline = time.monotonic() + 2
                 while time.monotonic() < deadline:
                     state = connection.state()
-                    if not state.get("available") or (state["monitor"], state["tags"]) != (args.monitor, args.tags):
+                    if not state.get("available") or (state["monitor"], state["tags"], state["owner"]) != (args.monitor, args.tags, args.owner):
                         raise RuntimeError("The edited monitor or tag changed; try again")
                     if state[args.setting] == args.value:
                         break
