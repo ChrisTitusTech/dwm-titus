@@ -137,6 +137,8 @@ struct Client {
 	Client *swallowing;
 	Monitor *mon;
 	Window win;
+	Window titlewin;
+	int titlemapped;
 	unsigned int icw, ich;
 	Picture icon;
 };
@@ -222,6 +224,10 @@ static void detachstack(Client *c);
 static Monitor *dirtomon(int dir);
 static void drawbar(Monitor *m);
 static void drawbars(void);
+static int titleheight(Client *c);
+static Client *wintotitleclient(Window win);
+static void updatetitlebar(Client *c);
+static void restacktitlebars(void);
 static void focus(Client *c);
 static OverrideWindow *overrideforwindow(Window win);
 static int focusfullscreenforoverride(Window win);
@@ -460,6 +466,7 @@ static int selectedmonitorcachevalid;
 static Atom dwmfullscreenmonitorsatom, dwmtagupdateatom;
 /* XKB keyboard group state published on the root window (see SPEC.md 5.1) */
 static Atom hangrequestatom, hanggenerationatom;
+static Atom titlebarforatom;
 static Atom layoutstateatom, layoutrequestatom;
 static long layoutcache[9];
 static int layoutcachevalid;
@@ -509,6 +516,8 @@ static Rule         *rt_rules  = NULL;
 static int           rt_nrules = 0;
 /* Runtime border pixel width (initialized to 1; overridden by themes.toml) */
 static unsigned int  dyn_borderpx;
+static int titlebarsenabled;
+static unsigned int titlebartags;
 /* inotify */
 static int           inotify_fd = -1;
 static int           inotify_wd = -1;
@@ -811,6 +820,11 @@ applysizehints(Client *c, int *x, int *y, int *w, int *h, int interact)
 		if (c->maxh)
 			*h = MIN(*h, c->maxh);
 	}
+	int decoration = titleheight(c);
+	if (decoration) {
+		Monitor *bounds = interact ? recttomon(*x, *y, *w, *h) : m;
+		*y = MAX(*y, bounds->wy + decoration);
+	}
 	return *x != c->x || *y != c->y || *w != c->w || *h != c->h;
 }
 
@@ -834,6 +848,8 @@ arrangemon(Monitor *m)
 	copystr(m->ltsymbol, sizeof m->ltsymbol, m->lt[m->sellt]->symbol);
 	if (m->lt[m->sellt]->arrange)
 		m->lt[m->sellt]->arrange(m);
+	for (Client *c = m->clients; c; c = c->next)
+		updatetitlebar(c);
 }
 
 void
@@ -878,6 +894,85 @@ attachstack(Client *c)
 }
 
 /* X event and lifecycle implementations */
+/* Native, non-reparenting decorations exist only for opted-in floating views.
+ * No helper process, timer or additional library runs in the window manager. */
+int
+titleheight(Client *c)
+{
+	if (!titlebarsenabled || !c || c->isfullscreen || c->iswindowedfullscreen
+	|| !(c->tags & c->mon->tagset[c->mon->seltags] & titlebartags)
+	|| (!c->isfloating && c->mon->lt[c->mon->sellt]->arrange))
+		return 0;
+	return MIN((int)drw->fonts->h + 8, MAX(1, c->mon->wh / 4));
+}
+
+Client *
+wintotitleclient(Window win)
+{
+	Monitor *m;
+	Client *c;
+
+	if (!win) return NULL;
+	for (m = mons; m; m = m->next)
+		for (c = m->clients; c; c = c->next)
+			if (c->titlewin == win) return c;
+	return NULL;
+}
+
+void
+updatetitlebar(Client *c)
+{
+	int height = titleheight(c), width = WIDTH(c);
+	XSetWindowAttributes attributes = { .override_redirect = True,
+		.event_mask = ButtonPressMask | ExposureMask | EnterWindowMask };
+	XWindowChanges stack = { .sibling = c->win, .stack_mode = Above };
+	XClassHint class = { "dwm-titlebar", "DwmTitlebar" };
+
+	if (!height || !ISVISIBLE(c)) {
+		if (c->titlemapped) XUnmapWindow(dpy, c->titlewin);
+		c->titlemapped = 0;
+		return;
+	}
+	if (!c->titlewin) {
+		c->titlewin = XCreateWindow(dpy, root, c->x, c->y - height, MAX(1, width), height,
+			0, CopyFromParent, InputOutput, CopyFromParent,
+			CWOverrideRedirect | CWEventMask, &attributes);
+		if (!c->titlewin) return;
+		XSetClassHint(dpy, c->titlewin, &class);
+		XDefineCursor(dpy, c->titlewin, cursor[CurMove]->cursor);
+	}
+	XChangeProperty(dpy, c->titlewin, titlebarforatom, XA_WINDOW, 32,
+		PropModeReplace, (unsigned char *)&c->win, 1);
+	XMoveResizeWindow(dpy, c->titlewin, c->x, c->y - height, MAX(1, width), height);
+	if (drw->w != (unsigned int)width || drw->h != (unsigned int)height)
+		drw_resize(drw, MAX(1, width), height);
+	drw_setscheme(drw, scheme[c == selmon->sel ? SchemeSel : SchemeNorm]);
+	drw_rect(drw, 0, 0, MAX(1, width), height, 1, 1);
+	if (width > height)
+		drw_text(drw, 0, 0, width - height, height, lrpad / 2, c->name, 0);
+	drw_text(drw, MAX(0, width - height), 0, MIN(width, height), height,
+		MAX(0, (height - (int)TEXTW("x") + lrpad) / 2), "x", 0);
+	drw_map(drw, c->titlewin, 0, 0, MAX(1, width), height);
+	if (!c->titlemapped) XMapWindow(dpy, c->titlewin);
+	c->titlemapped = 1;
+	XConfigureWindow(dpy, c->titlewin, CWSibling | CWStackMode, &stack);
+}
+
+void
+restacktitlebars(void)
+{
+	Monitor *m;
+	Client *c;
+	XWindowChanges stack = { .stack_mode = Above };
+
+	for (m = mons; m; m = m->next)
+		for (c = m->clients; c; c = c->next)
+			if (c->titlemapped) {
+				stack.sibling = c->win;
+				XConfigureWindow(dpy, c->titlewin, CWSibling | CWStackMode, &stack);
+			}
+}
+
 void
 buttonpress(XEvent *e)
 {
@@ -889,6 +984,18 @@ buttonpress(XEvent *e)
 	char *text, *s, ch;
 	click = ClkRootWin;
 
+	if ((c = wintotitleclient(ev->window))) {
+		if (ev->button != Button1) return;
+		if (selmon != c->mon) {
+			unfocus(selmon->sel, 1);
+			selmon = c->mon;
+		}
+		focus(c);
+		restack(c->mon);
+		if (ev->x >= WIDTH(c) - titleheight(c)) killclient(NULL);
+		else movemouse(NULL);
+		return;
+	}
 	/* focus monitor if necessary */
 	if ((m = wintomon(ev->window)) && m != selmon) {
 		unfocus(selmon->sel, 1);
@@ -1321,12 +1428,14 @@ configurerequest(XEvent *e)
 				c->x = m->mx + (m->mw / 2 - WIDTH(c) / 2);  /* center in x direction */
 			if ((c->y + c->h) > m->my + m->mh && c->isfloating)
 				c->y = m->my + (m->mh / 2 - HEIGHT(c) / 2); /* center in y direction */
+			if (titleheight(c)) c->y = MAX(c->y, m->wy + titleheight(c));
 			if ((ev->value_mask & (CWX|CWY)) && !(ev->value_mask & (CWWidth|CWHeight)))
 				configure(c);
 			if (ISVISIBLE(c))
 				XMoveResizeWindow(dpy, c->win, c->x, c->y, c->w, c->h);
 		} else
 			configure(c);
+		updatetitlebar(c);
 	} else {
 		wc.x = ev->x;
 		wc.y = ev->y;
@@ -1390,6 +1499,12 @@ destroynotify(XEvent *e)
 	Client *c;
 	Monitor *m;
 	XDestroyWindowEvent *ev = &e->xdestroywindow;
+	if ((c = wintotitleclient(ev->window))) {
+		c->titlewin = None;
+		c->titlemapped = 0;
+		updatetitlebar(c);
+		return;
+	}
 
 	untrackoverridewindow(ev->window);
 	if ((c = wintoclient(ev->window)))
@@ -1445,6 +1560,8 @@ dirtomon(int dir)
 void
 drawbar(Monitor *m)
 {
+	for (Client *c = m->clients; c; c = c->next)
+		updatetitlebar(c);
 	publishlayout();
 	/* The Quickshell panel handles drawing; the dwm bar is unused. */
 	return;
@@ -1533,7 +1650,8 @@ enternotify(XEvent *e)
 
 	if ((ev->mode != NotifyNormal || ev->detail == NotifyInferior) && ev->window != root)
 		return;
-	c = wintoclient(ev->window);
+	c = wintotitleclient(ev->window);
+	if (!c) c = wintoclient(ev->window);
 	m = c ? c->mon : wintomon(ev->window);
 	if (m != selmon) {
 		unfocus(selmon->sel, 1);
@@ -1548,6 +1666,11 @@ expose(XEvent *e)
 {
 	Monitor *m;
 	XExposeEvent *ev = &e->xexpose;
+	Client *client = wintotitleclient(ev->window);
+	if (client) {
+		if (!ev->count) updatetitlebar(client);
+		return;
+	}
 
 	if (ev->count == 0 && (m = wintomon(ev->window))) {
 		drawbar(m);
@@ -2271,6 +2394,7 @@ mapnotify(XEvent *e)
 {
 	XMapEvent *ev = &e->xmap;
 
+	if (wintotitleclient(ev->window)) return;
 	trackoverridewindow(ev->window);
 	restackprioritywindows();
 }
@@ -2731,6 +2855,7 @@ resizeclient(Client *c, int x, int y, int w, int h)
 	}
 	XConfigureWindow(dpy, c->win, CWX|CWY|CWWidth|CWHeight|CWBorderWidth, &wc);
 	configure(c);
+	updatetitlebar(c);
 	XSync(dpy, False);
 }
 
@@ -2980,6 +3105,7 @@ restackprioritywindows(void)
 	for (ow = overridewindows; ow; ow = ow->next)
 		if (ow->alwaysontop)
 			XRaiseWindow(dpy, ow->win);
+	restacktitlebars();
 	if (XGetInputFocus(dpy, &focused, &revert))
 		focusfullscreenforoverride(focused);
 }
@@ -3813,6 +3939,8 @@ setfullscreen(Client *c, int fullscreen)
 		c->y = c->oldy;
 		c->w = c->oldw;
 		c->h = c->oldh;
+		/* Restoration bypasses size hints; reserve space only on this path. */
+		if (titleheight(c)) c->y = MAX(c->y, c->mon->wy + titleheight(c));
 		resizeclient(c, c->x, c->y, c->w, c->h);
 		restack(c->mon);
 	} else
@@ -4384,6 +4512,17 @@ load_themes_toml(const char *user_path, const char *default_path)
 		}
 	}
 
+	const TomlValue *decorations = toml_get(&doc, "appearance", "titlebars");
+	const TomlValue *decorationtags = toml_get(&doc, "appearance", "titlebar_tags");
+	if ((decorations && (decorations->type != TOML_INT || decorations->i < 0 || decorations->i > 1))
+	|| (decorationtags && (decorationtags->type != TOML_INT || decorationtags->i < 0
+	    || (unsigned long)decorationtags->i > 0x7fffffffUL))) {
+		notify_bad_config(user_path, "invalid titlebar settings");
+		return;
+	}
+	titlebarsenabled = decorations && decorations->i == 1;
+	titlebartags = decorationtags ? (unsigned int)decorationtags->i & TAGMASK : TAGMASK;
+
 	/* Build color table with Nord fallback values */
 	static char c_normborder[8], c_normbg[8], c_normfg[8];
 	static char c_selborder[8],  c_selbg[8],  c_selfg[8];
@@ -4460,7 +4599,8 @@ load_themes_toml(const char *user_path, const char *default_path)
 
 	if (mons) {
 		drawbars();
-		arrange(mons);
+		arrange(NULL);
+		restackprioritywindows();
 	}
 	fprintf(stderr, "dwm: loaded theme from config\n");
 }
@@ -4780,6 +4920,7 @@ setup(void)
 	/* Reconcile monitor-specific tags after geometry is set up */
 	reconcilemonitortags();
 	/* init atoms */
+	titlebarforatom = XInternAtom(dpy, "_DWM_TITLEBAR_FOR", False);
 	layoutstateatom = XInternAtom(dpy, "_DWM_LAYOUT_STATE", False);
 	layoutrequestatom = XInternAtom(dpy, "_DWM_LAYOUT_REQUEST", False);
 	overviewversionatom = XInternAtom(dpy, "_DWM_WINDOW_OVERVIEW", False);
@@ -4956,6 +5097,9 @@ swallow(Client *p, Client *c)
 	if (!swallowfloating && c->isfloating)
 		return 0;
 
+	if (c->titlewin) XDestroyWindow(dpy, c->titlewin);
+	c->titlewin = None;
+	c->titlemapped = 0;
 	detach(c);
 	detachstack(c);
 
@@ -5408,6 +5552,9 @@ unmanage(Client *c, int destroyed)
 		return;
 	}
 
+	if (c->titlewin) XDestroyWindow(dpy, c->titlewin);
+	c->titlewin = None;
+	c->titlemapped = 0;
 	detach(c);
 	detachstack(c);
 	#if SHOWWINICON
@@ -5505,6 +5652,7 @@ trackoverridewindow(Window win)
 	OverrideWindow **tail;
 	XWindowAttributes wa;
 
+	if (wintotitleclient(win)) return;
 	if (!XGetWindowAttributes(dpy, win, &wa)
 	    || !wa.override_redirect || wa.map_state != IsViewable)
 		return;
@@ -6223,6 +6371,7 @@ updatetitle(Client *c)
 		gettextprop(c->win, XA_WM_NAME, c->name, sizeof c->name);
 	if (c->name[0] == '\0') /* hack to mark broken clients */
 		strcpy(c->name, broken);
+	if (c->titlewin) updatetitlebar(c);
 }
 
 void

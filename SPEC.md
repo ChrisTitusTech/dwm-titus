@@ -144,6 +144,12 @@ The installed session must provide:
   cycles the same way. Without XKB the properties are removed and requests are
   ignored.
 - Configured border suppression and cursor-warp behavior.
+- Optional native titlebars for floating windows and floating layouts, disabled
+  by default. The themes.toml appearance section controls enablement and an
+  allowed workspace mask. A titlebar provides mouse movement and the normal
+  dwm close action, reserves visible space above the client, follows its theme
+  and geometry, and hides on unselected tags and in fullscreen. Existing tiled
+  behavior, client ownership and window assignments are preserved.
 - Stable handling of applications that omit optional X properties.
 
 ### 5.2 Runtime Configuration

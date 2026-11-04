@@ -121,6 +121,14 @@ wttr.in. It displays Celsius or Fahrenheit, the fetch time and the last saved
 report when offline. Opening the popup makes no weather request; there is no
 automatic location lookup or background refresh. Escape and clicking outside
 close either popup.
+
+Optional floating-window titlebars are configured in the `[appearance]`
+section of your `~/.config/dwm-titus/themes.toml` (or the corresponding
+`XDG_CONFIG_HOME` path). Set `titlebars = 1` to enable drag and close controls;
+`titlebar_tags = 511` allows all nine workspaces, while `1` allows only workspace
+1 and `3` allows workspaces 1 and 2. Save to hot reload. Set `titlebars = 0` to
+disable them. Tiled and fullscreen windows remain undecorated. The close button
+uses the normal application close request; it does not target an application PID.
 In Appearance, **Window layout** offers Tile, Floating and Monocle choices,
 master-area sizing and tile gaps. These settings apply to the current monitor
 and tag for this dwm session; changing tags restores their own choices. Gaps

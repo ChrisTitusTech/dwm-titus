@@ -11,6 +11,10 @@ versions from `config.mk`.
 - Add optional Calendar and Weather panel widgets, off by default, with shared
   visibility controls. Weather fetches only an explicitly entered city on
   request and retains the last report through service failures (#358).
+- Add opt-in native floating-window titlebars with drag and close controls.
+  Configure `titlebars` and `titlebar_tags` in the existing hot-reloaded
+  themes.toml appearance section; tiled/fullscreen defaults remain unchanged
+  and no compositor or new dependency is required (#370).
 - Add mouse-accessible Tile, Floating and Monocle choices, master sizing and
   per-tag tile-gap controls in Settings > Appearance, alongside the existing
   previewable desktop text scale. Changes follow hotkeys without polling (#297).
