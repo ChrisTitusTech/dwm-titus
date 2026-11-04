@@ -6,10 +6,12 @@ import json
 import os
 from pathlib import Path
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
 import time
+from urllib.parse import unquote, urlparse
 
 sys.dont_write_bytecode = True
 repo = Path(__file__).resolve().parents[1]
@@ -66,9 +68,11 @@ ShellRoot {
     }
     IpcHandler {
         target: "overviewTest"
-        function state(): string { return JSON.stringify({windows:provider.rows, visible:provider.visible, busy:provider.busy, returnWindow:provider.returnWindow, message:provider.message, selected:provider.selectedIndex, snapshots:provider.snapshotCount}); }
+        function state(): string { return JSON.stringify({windows:provider.rows, stored:provider.windows.length, visible:provider.visible, busy:provider.busy, pending:provider.thumbnailsPending, returnWindow:provider.returnWindow, message:provider.message, selected:provider.selectedIndex, snapshots:provider.snapshotCount}); }
         function open(): void { provider.openOnScreen(Quickshell.screens[0]); }
         function close(): void { provider.close(); }
+        function lateSnapshot(): void { provider.parse(JSON.stringify({protocol:1, thumbnailsPending:true,
+            windows:[{id:"9000001",title:"Late capture",app:"Example",tags:1,monitor:0,thumbnail:"file:///removed.png"}]})); }
         function remember(windowId:string):void { harness.rememberedCard = provider.rows.find(row => row.id === windowId); }
         function activateRemembered():void { provider.rows = [harness.rememberedCard]; provider.activate(0); }
 
@@ -108,8 +112,15 @@ ShellRoot {
             x.XStoreName.argtypes = [C.c_void_p, C.c_ulong, C.c_char_p]
             x.XChangeProperty.argtypes = [C.c_void_p, C.c_ulong, C.c_ulong, C.c_ulong, C.c_int, C.c_int, C.c_void_p, C.c_int]
             x.XSync.argtypes = [C.c_void_p, C.c_int]
+            x.XSetWindowBackground.argtypes = [C.c_void_p, C.c_ulong, C.c_ulong]
+            x.XClearWindow.argtypes = [C.c_void_p, C.c_ulong]
+            # Xvfb's automatic Composite redirection supplies genuine backing
+            # pixmaps without depending on a GPU or a second window manager.
+            composite = C.CDLL(C.util.find_library("Xcomposite") or "libXcomposite.so.1")
+            composite.XCompositeRedirectWindow.argtypes = [C.c_void_p, C.c_ulong, C.c_int]
             windows = [x.XCreateSimpleWindow(d, root, 100, 100, 200, 100, 1, 0, 0x557799) for _ in range(3)]
             for index, window in enumerate(windows):
+                composite.XCompositeRedirectWindow(d, window, 0)
                 x.XStoreName(d, window, f"Example window {index}".encode())
                 app = b"example\0ExampleApplication\0"
                 x.XChangeProperty(d, window, connection.atom("WM_CLASS"), 31, 8, 0, app, len(app))
@@ -152,6 +163,24 @@ ShellRoot {
             wait(lambda: ipc("state").returncode == 0, "Overview failed to load: " + (work / "qml.log").read_text())
             ipc("open")
             wait(lambda: len(state().get("windows", [])) == 3, "Overview includes itself or omitted applications: " + (work / "qml.log").read_text())
+            snapshot = wait(lambda: state() if not state().get("pending", True) else None, "Thumbnail batch did not finish")
+            assert all(row.get("thumbnail") for row in snapshot["windows"]), snapshot
+            images = {row["id"]: Path(unquote(urlparse(row["thumbnail"]).path)) for row in snapshot["windows"]}
+            from PIL import Image
+            for path in images.values():
+                assert path.stat().st_mode & 0o777 == 0o600
+                assert path.parent.stat().st_mode & 0o777 == 0o700
+                with Image.open(path) as preview:
+                    assert preview.width <= 320 and preview.height <= 180
+                    assert preview.getpixel((preview.width // 2, preview.height // 2)) == (0x55, 0x77, 0x99), "Hidden-tag capture lost its window pixels"
+            original_pixels = {key: path.read_bytes() for key, path in images.items()}
+            with tempfile.TemporaryDirectory(dir=work) as race_cache:
+                sampler = module.Thumbnails(connection)
+                assert not sampler.capture(0xffffffff, Path(race_cache) / "closed.png")
+                assert sampler.capture(windows[0], Path(race_cache) / "valid.png"), "A closed client poisoned subsequent captures"
+            x.XSetWindowBackground(d, windows[0], 0x994455)
+            x.XClearWindow(d, windows[0])
+            x.XSync(d, False)
             # Moving up by more columns than matches must still select a valid card.
             run("xdotool", "key", "Up")
             assert 0 <= state()["selected"] < 3, "Up produced a negative card index"
@@ -170,6 +199,7 @@ ShellRoot {
             wait(lambda: len(state()["windows"]) == 1, "Search did not filter individual windows")
             ipc("query", "")
             wait(lambda: len(state()["windows"]) == 3, "Search reset failed")
+            assert all(path.read_bytes() == original_pixels[key] for key, path in images.items()), "Search, title or repaint recaptured static thumbnails"
             evidence = os.environ.get("DWM_FEATURE_EVIDENCE_DIR")
             if evidence:
                 from PIL import ImageGrab
@@ -197,13 +227,56 @@ ShellRoot {
             assert after - before <= 15, f"Overview idle CPU ticks/2s: {after - before}"
             run("xdotool", "key", "Escape")
             wait(lambda: not state().get("visible"), "Escape did not dismiss overview")
+            wait(lambda: all(not path.parent.exists() for path in images.values()), "Closing retained thumbnail files")
+            ipc("lateSnapshot")
+            assert state()["stored"] == 0 and not state()["pending"], "A late capture snapshot repopulated the closed model"
             wait(lambda: not state()["busy"] and connection.property(root, "_NET_ACTIVE_WINDOW", 33) == [windows[0]], "Escape did not restore focus")
             assert connection.property(root, "_NET_CURRENT_DESKTOP", 6) == [0], "Dismissal changed tags"
+            # Stop a real capture worker mid-opening. Terminating its watch
+            # owner must kill/reap that worker and remove the private cache.
+            watch = subprocess.Popen([str(repo / "scripts/dwm-window-overview"), "watch", "--thumbnails"],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            try:
+                assert json.loads(watch.stdout.readline())["thumbnailsPending"]
+                def capturing_child():
+                    for pid in Path(f"/proc/{watch.pid}/task/{watch.pid}/children").read_text().split():
+                        try:
+                            command = Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0")
+                            if b"--thumbnail-directory" in command:
+                                return int(pid), Path(os.fsdecode(command[command.index(b"--thumbnail-directory") + 1]))
+                        except FileNotFoundError:
+                            pass
+                    return None
+                captured_child = None
+                deadline = time.monotonic() + 5
+                while not captured_child and time.monotonic() < deadline:
+                    captured_child = capturing_child()
+                    if not captured_child:
+                        time.sleep(.002)
+                assert captured_child, "No disposable thumbnail worker was started"
+                child_pid, child_cache = captured_child
+                os.kill(child_pid, signal.SIGSTOP)
+                watch.terminate()
+                assert watch.wait(timeout=3) == 0
+                assert not Path(f"/proc/{child_pid}").exists(), "Cancelled capture child was not reaped"
+                assert not child_cache.exists(), "Cancelled capture retained its cache"
+            finally:
+                if watch.poll() is None:
+                    watch.terminate()
+                    watch.wait(timeout=5)
+                watch.stdout.close()
+                watch.stderr.close()
             # Cancel with a non-first tiled client focused on a shared tag.
             run("xdotool", "set_desktop_for_window", str(windows[1]), "0")
             connection.activate(windows[1])
             ipc("open")
             wait(lambda: state().get("visible") and len(state()["windows"]) == 3, "Shared-tag focus scenario did not open")
+            refreshed = wait(lambda: state() if not state().get("pending", True) else None, "Reopening did not finish thumbnails")
+            new_url = next(row["thumbnail"] for row in refreshed["windows"] if row["id"] == str(windows[0]))
+            new_path = Path(unquote(urlparse(new_url).path))
+            assert new_path != images[str(windows[0])], "Reopening reused an old image URL"
+            with Image.open(new_path) as preview:
+                assert preview.getpixel((preview.width // 2, preview.height // 2)) == (0x99, 0x44, 0x55), "Reopening did not refresh window pixels"
             ipc("open")  # Repeated explicit open must retain the original context.
             assert state()["returnWindow"] == str(windows[1]), f"Captured incorrect cancellation context: {state()}"
             run("xdotool", "key", "Escape")
@@ -323,7 +396,7 @@ x.XMapWindow(d,w);x.XFlush(d);time.sleep(30)
             wait(lambda: not connection.state()["windows"], "Restored terminal did not close")
             snapshots = state()["snapshots"]
             ipc("open")
-            wait(lambda: state()["snapshots"] > snapshots, "Overview did not receive its reopened empty snapshot")
+            wait(lambda: state()["snapshots"] > snapshots and not state()["pending"], "Overview did not receive its reopened empty snapshot")
             ipc("many")
             wait(lambda: len(state()["windows"]) == 80, "Large window list did not render")
             ipc("select", "79")

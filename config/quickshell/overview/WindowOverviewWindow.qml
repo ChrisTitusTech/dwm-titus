@@ -31,7 +31,7 @@ FloatingWindow {
                 Layout.fillWidth: true
                 eyebrow: "Windows across all tags"
                 title: "Window overview"
-                subtitle: "Type to filter / Arrow keys to select / Enter to focus / Esc to close"
+                subtitle: "Snapshots from opening / Type to filter / Enter to focus / Esc to close"
                 status: String(root.model.rows.length) + " windows"
                 statusColor: Theme.accent
                 ShellButton { label: "Close"; onActivated: root.model.close() }
@@ -92,7 +92,7 @@ FloatingWindow {
                 Layout.fillHeight: true
                 readonly property int columns: Math.max(1, Math.floor(width / Theme.scaledSize(260)))
                 cellWidth: width / columns
-                cellHeight: Theme.scaledSize(160)
+                cellHeight: Theme.scaledSize(280)
                 clip: true
                 model: root.model.rows
                 currentIndex: root.model.selectedIndex
@@ -127,9 +127,30 @@ FloatingWindow {
                                 elide: Text.ElideRight
                             }
                         }
-                        UiText {
+                        Item {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
+                            Image {
+                                id: thumbnail
+                                objectName: "windowThumbnail" + card.modelData.id
+                                anchors.fill: parent
+                                source: card.modelData.thumbnail || ""
+                                sourceSize.width: 320
+                                sourceSize.height: 180
+                                fillMode: Image.PreserveAspectFit
+                                asynchronous: true
+                                cache: false
+                            }
+                            IconImage {
+                                anchors.centerIn: parent
+                                implicitSize: Theme.scaledSize(48)
+                                source: Icons.launcherIcon(card.modelData.app)
+                                visible: thumbnail.status !== Image.Ready
+                            }
+                        }
+                        UiText {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: Theme.scaledSize(36)
                             text: card.modelData.title
                             textFormat: Text.PlainText
                             color: Theme.menuText

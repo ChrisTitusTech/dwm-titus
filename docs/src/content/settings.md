@@ -22,6 +22,8 @@ To find an existing application, press **Super+Tab** (the new default), or choos
 tags and monitor. Type to filter, use Tab or arrow keys to select and Enter to
 focus, or click a card. Escape and Close leave the previous tag and focus in
 place. Selection switches to the window's existing tag without moving it.
+Static thumbnails refresh only when the overview opens. They require a running
+X11 compositor such as Picom; unavailable captures keep an icon and title.
 You can also run `dwm-window-overview toggle` or bind that command in your own
 `hotkeys.toml`. Existing user hotkey files are preserved; see the
 [overview migration guide](https://github.com/ChrisTitusTech/dwm-titus/blob/main/docs/WINDOW-OVERVIEW.md)

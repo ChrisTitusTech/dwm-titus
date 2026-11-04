@@ -17,6 +17,7 @@ Scope {
     property string query: ""
     property string message: ""
     property int selectedIndex: 0
+    property bool thumbnailsPending: false
     readonly property bool busy: root.selectingWindow || root.restoringFocus || capture.running || root.pendingOpen
 
     function tagLabel(mask) {
@@ -36,10 +37,12 @@ Scope {
         root.selectedIndex = restored >= 0 ? restored : Math.max(0, Math.min(root.selectedIndex, root.rows.length - 1));
     }
     function parse(text) {
+        if (!root.visible) return;
         try {
             const state = JSON.parse(text);
             if (state.protocol !== 1 || !Array.isArray(state.windows)) throw new Error("Invalid window list");
             if (state.available === false) root.message = state.detail;
+            root.thumbnailsPending = state.thumbnailsPending === true;
             root.windows = state.windows;
             root.filter();
         } catch (error) { root.message = "Could not read the window list"; }
@@ -59,6 +62,7 @@ Scope {
         root.visible = false;
         root.windows = [];
         root.rows = [];
+        root.thumbnailsPending = false;
         if (restoreFocus !== false) root.returnWindow = "";
         if (restoreFocus !== false && previous) {
             root.restoringFocus = true;
@@ -82,7 +86,7 @@ Scope {
     onQueryChanged: root.filter()
 
     Process {
-        command: Commands.helperCommand("dwm-window-overview", "watch", ["--exclude-pid", String(Quickshell.processId)], true)
+        command: Commands.helperCommand("dwm-window-overview", "watch", ["--exclude-pid", String(Quickshell.processId), "--thumbnails"], true)
         running: root.visible
         stdout: SplitParser { onRead: data => root.parse(data) }
         stderr: StdioCollector { onStreamFinished: { if (text.trim()) root.message = text.trim(); } }
