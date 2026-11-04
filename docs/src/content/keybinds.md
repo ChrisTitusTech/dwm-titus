@@ -120,7 +120,7 @@ the dwm session after updating to activate this behavior.
 | `Super` + `Shift` + `1`–`9` | Move window to tag |
 | `Super` + `Ctrl` + `Shift` + `1`–`9` | Also show window on that tag |
 | `Super` + `0` | Show windows from all nine tags; `0` is not a tag |
-| `Super` + `Tab` | Previous tag |
+| `Super` + `Tab` | Toggle window overview across all tags |
 
 ## Multi-Monitor
 

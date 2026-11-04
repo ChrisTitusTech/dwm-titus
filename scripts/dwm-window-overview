@@ -1,0 +1,442 @@
+#!/usr/bin/env python3
+"""List and activate managed windows across tags using dwm and X11 events."""
+
+import argparse
+import ctypes as C
+import ctypes.util
+import json
+import os
+from pathlib import Path
+import select
+import signal
+import struct
+import subprocess
+import sys
+import tempfile
+import time
+import zlib
+
+
+class Data(C.Union):
+    _fields_ = [("b", C.c_char * 20), ("s", C.c_short * 10), ("l", C.c_long * 5)]
+
+
+class Message(C.Structure):
+    _fields_ = [("type", C.c_int), ("serial", C.c_ulong), ("send_event", C.c_int),
+                ("display", C.c_void_p), ("window", C.c_ulong),
+                ("message_type", C.c_ulong), ("format", C.c_int), ("data", Data)]
+
+
+class Event(C.Union):
+    _fields_ = [("message", Message), ("pad", C.c_long * 24)]
+
+
+class XError(C.Structure):
+    _fields_ = [("type", C.c_int), ("display", C.c_void_p), ("resource", C.c_ulong),
+                ("serial", C.c_ulong), ("code", C.c_ubyte),
+                ("request", C.c_ubyte), ("minor", C.c_ubyte)]
+
+
+class WindowAttributes(C.Structure):
+    _fields_ = [(name, kind) for name, kind in (
+        ("x", C.c_int), ("y", C.c_int), ("width", C.c_int), ("height", C.c_int),
+        ("border_width", C.c_int), ("depth", C.c_int), ("visual", C.c_void_p),
+        ("root", C.c_ulong), ("window_class", C.c_int), ("bit_gravity", C.c_int),
+        ("win_gravity", C.c_int), ("backing_store", C.c_int),
+        ("backing_planes", C.c_ulong), ("backing_pixel", C.c_ulong),
+        ("save_under", C.c_int), ("colormap", C.c_ulong), ("map_installed", C.c_int),
+        ("map_state", C.c_int), ("all_event_masks", C.c_long),
+        ("your_event_mask", C.c_long), ("do_not_propagate_mask", C.c_long),
+        ("override_redirect", C.c_int), ("screen", C.c_void_p))]
+
+
+class Image(C.Structure):
+    # Only the public prefix is read; XDestroyImage owns the whole structure.
+    _fields_ = [("width", C.c_int), ("height", C.c_int), ("xoffset", C.c_int),
+        ("format", C.c_int), ("data", C.c_void_p), ("byte_order", C.c_int),
+        ("bitmap_unit", C.c_int), ("bitmap_bit_order", C.c_int), ("bitmap_pad", C.c_int),
+        ("depth", C.c_int), ("bytes_per_line", C.c_int), ("bits_per_pixel", C.c_int),
+        ("red_mask", C.c_ulong), ("green_mask", C.c_ulong), ("blue_mask", C.c_ulong)]
+
+
+class Thumbnails:
+    """Read existing compositor pixmaps once, downscaling before CPU readback.
+
+    Never redirect windows, switch tags, raise clients, or retain full-size
+    pixmaps. Missing Composite/Render or unredirected windows are ordinary
+    per-card fallbacks. This runs in a disposable, time-bounded child process.
+    """
+    LIMIT = 64
+
+    def __init__(self, connection):
+        self.connection = connection
+        self.x, self.display = connection.x, connection.display
+        self.composite = C.CDLL(ctypes.util.find_library("Xcomposite") or "libXcomposite.so.1")
+        self.render = C.CDLL(ctypes.util.find_library("Xrender") or "libXrender.so.1")
+        signatures = {
+            self.x: {
+                "XSync": ([C.c_void_p, C.c_int], C.c_int),
+                "XGetWindowAttributes": ([C.c_void_p, C.c_ulong, C.POINTER(WindowAttributes)], C.c_int),
+                "XCreatePixmap": ([C.c_void_p, C.c_ulong, C.c_uint, C.c_uint, C.c_uint], C.c_ulong),
+                "XFreePixmap": ([C.c_void_p, C.c_ulong], C.c_int),
+                "XGetImage": ([C.c_void_p, C.c_ulong, C.c_int, C.c_int, C.c_uint, C.c_uint, C.c_ulong, C.c_int], C.POINTER(Image)),
+                "XDestroyImage": ([C.POINTER(Image)], C.c_int),
+            },
+            self.composite: {
+                "XCompositeQueryVersion": ([C.c_void_p, C.POINTER(C.c_int), C.POINTER(C.c_int)], C.c_int),
+                "XCompositeNameWindowPixmap": ([C.c_void_p, C.c_ulong], C.c_ulong),
+            },
+            self.render: {
+                "XRenderQueryExtension": ([C.c_void_p, C.POINTER(C.c_int), C.POINTER(C.c_int)], C.c_int),
+                "XRenderFindVisualFormat": ([C.c_void_p, C.c_void_p], C.c_void_p),
+                "XRenderFindStandardFormat": ([C.c_void_p, C.c_int], C.c_void_p),
+                "XRenderCreatePicture": ([C.c_void_p, C.c_ulong, C.c_void_p, C.c_ulong, C.c_void_p], C.c_ulong),
+                "XRenderFreePicture": ([C.c_void_p, C.c_ulong], None),
+                "XRenderSetPictureTransform": ([C.c_void_p, C.c_ulong, C.c_void_p], None),
+                "XRenderSetPictureFilter": ([C.c_void_p, C.c_ulong, C.c_char_p, C.c_void_p, C.c_int], None),
+                "XRenderComposite": ([C.c_void_p, C.c_int, C.c_ulong, C.c_ulong, C.c_ulong,
+                    C.c_int, C.c_int, C.c_int, C.c_int, C.c_int, C.c_int, C.c_uint, C.c_uint], None),
+            },
+        }
+        for library, functions in signatures.items():
+            for name, (args, result) in functions.items():
+                function = getattr(library, name)
+                function.argtypes, function.restype = args, result
+        major, minor = C.c_int(), C.c_int()
+        if (not self.composite.XCompositeQueryVersion(self.display, C.byref(major), C.byref(minor))
+                or (major.value, minor.value) < (0, 2)
+                or not self.render.XRenderQueryExtension(self.display, C.byref(major), C.byref(minor))):
+            raise RuntimeError("Window thumbnails need X11 Composite and Render")
+
+    def capture(self, window, path):
+        x, render, display = self.x, self.render, self.display
+        failed = []
+        handler = C.CFUNCTYPE(C.c_int, C.c_void_p, C.c_void_p)(lambda *_: failed.append(True) or 0)
+        x.XSync(display, False)
+        x.XSetErrorHandler(handler)
+        source = target = source_picture = target_picture = 0
+        image = None
+        try:
+            attributes = WindowAttributes()
+            if (not x.XGetWindowAttributes(display, window, C.byref(attributes))
+                    or attributes.map_state != 2 or failed
+                    or not 0 < attributes.width <= 32767 or not 0 < attributes.height <= 32767):
+                return False
+            width, height = attributes.width, attributes.height
+            scale = min(320 / width, 180 / height, 1)
+            out_width, out_height = max(1, int(width * scale)), max(1, int(height * scale))
+            source = self.composite.XCompositeNameWindowPixmap(display, window)
+            x.XSync(display, False)
+            if failed or not source:
+                source = 0  # A failed name request returns an unallocated XID.
+                return False
+            source_format = render.XRenderFindVisualFormat(display, attributes.visual)
+            target_format = render.XRenderFindStandardFormat(display, 1)  # RGB24
+            if not source_format or not target_format:
+                return False
+            target = x.XCreatePixmap(display, self.connection.root, out_width, out_height, 24)
+            source_picture = render.XRenderCreatePicture(display, source, source_format, 0, None)
+            target_picture = render.XRenderCreatePicture(display, target, target_format, 0, None)
+            x.XSync(display, False)
+            if failed or not target or not source_picture or not target_picture:
+                return False
+            transform = (C.c_int32 * 9)(int(width / out_width * 65536), 0, attributes.border_width * 65536,
+                0, int(height / out_height * 65536), attributes.border_width * 65536, 0, 0, 65536)
+            render.XRenderSetPictureTransform(display, source_picture, transform)
+            render.XRenderSetPictureFilter(display, source_picture, b"bilinear", None, 0)
+            # Src into RGB24 flattens any premultiplied alpha against black.
+            render.XRenderComposite(display, 1, source_picture, 0, target_picture,
+                0, 0, 0, 0, 0, 0, out_width, out_height)
+            image = x.XGetImage(display, target, 0, 0, out_width, out_height, C.c_ulong(-1), 2)
+            if not image or failed:
+                return False
+            data = image.contents
+            # XGetImage does not set visual masks for pixmaps. The format is
+            # known here because we created the destination as standard RGB24.
+            if data.bits_per_pixel != 32 or data.depth != 24 or data.byte_order not in (0, 1):
+                return False
+            pixels = C.string_at(data.data, data.bytes_per_line * out_height)
+            rgb = bytearray(out_width * out_height * 3)
+            # RGB24 XImages use four bytes per pixel on Xorg. Bulk slicing keeps
+            # conversion bounded and avoids Python work per source pixel.
+            pixels = b"".join(pixels[row * data.bytes_per_line:row * data.bytes_per_line + out_width * 4]
+                for row in range(out_height))
+            red, green, blue = (2, 1, 0) if data.byte_order == 0 else (1, 2, 3)
+            rgb[0::3], rgb[1::3], rgb[2::3] = pixels[red::4], pixels[green::4], pixels[blue::4]
+            scanlines = b"".join(b"\0" + rgb[row * out_width * 3:(row + 1) * out_width * 3]
+                for row in range(out_height))
+            def chunk(kind, content):
+                return struct.pack(">I", len(content)) + kind + content + struct.pack(">I", zlib.crc32(kind + content))
+            png = (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", out_width, out_height, 8, 2, 0, 0, 0))
+                + chunk(b"IDAT", zlib.compress(scanlines, 1)) + chunk(b"IEND", b""))
+            temporary = path.with_suffix(".partial")
+            with temporary.open("xb") as output:
+                os.fchmod(output.fileno(), 0o600)
+                output.write(png)
+            temporary.replace(path)
+            return True
+        finally:
+            if image:
+                x.XDestroyImage(image)
+            for picture in (source_picture, target_picture):
+                if picture:
+                    render.XRenderFreePicture(display, picture)
+            for pixmap in (source, target):
+                if pixmap:
+                    x.XFreePixmap(display, pixmap)
+            x.XSync(display, False)
+            x.XSetErrorHandler(self.connection.error_handler)
+
+
+def opening_thumbnails(windows, directory):
+    """One child per opening; cancellation kills it before removing its cache."""
+    if not windows:
+        return {}
+    command = [sys.executable, str(Path(__file__).resolve()), "thumbnails",
+        "--thumbnail-directory", str(directory), "--window-ids",
+        ",".join(row["id"] for row in windows[:Thumbnails.LIMIT])]
+    child = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+    try:
+        output, _ = child.communicate(timeout=3)
+        return json.loads(output) if child.returncode == 0 else {}
+    except (subprocess.TimeoutExpired, ValueError):
+        # Keep any completed files if a busy server exceeded the batch budget.
+        return {path.stem: path.as_uri() for path in directory.glob("*.png")}
+    finally:
+        if child.poll() is None:
+            child.kill()
+        child.wait()
+
+
+class Connection:
+    def __init__(self, exclude_pid=0):
+        self.exclude_pid = exclude_pid
+        self.x = C.CDLL(ctypes.util.find_library("X11") or "libX11.so.6")
+        signatures = {
+            "XOpenDisplay": ([C.c_char_p], C.c_void_p),
+            "XCreateSimpleWindow": ([C.c_void_p, C.c_ulong, C.c_int, C.c_int, C.c_uint, C.c_uint, C.c_uint, C.c_ulong, C.c_ulong], C.c_ulong),
+            "XDestroyWindow": ([C.c_void_p, C.c_ulong], C.c_int),
+            "XDefaultRootWindow": ([C.c_void_p], C.c_ulong),
+            "XInternAtom": ([C.c_void_p, C.c_char_p, C.c_int], C.c_ulong),
+            "XGetWindowProperty": ([C.c_void_p, C.c_ulong, C.c_ulong, C.c_long,
+                C.c_long, C.c_int, C.c_ulong, C.POINTER(C.c_ulong), C.POINTER(C.c_int),
+                C.POINTER(C.c_ulong), C.POINTER(C.c_ulong), C.POINTER(C.c_void_p)], C.c_int),
+            "XSelectInput": ([C.c_void_p, C.c_ulong, C.c_long], C.c_int),
+            "XNextEvent": ([C.c_void_p, C.POINTER(Event)], C.c_int),
+            "XPending": ([C.c_void_p], C.c_int),
+            "XConnectionNumber": ([C.c_void_p], C.c_int),
+            "XSendEvent": ([C.c_void_p, C.c_ulong, C.c_int, C.c_long, C.POINTER(Event)], C.c_int),
+            "XFlush": ([C.c_void_p], C.c_int),
+            "XFree": ([C.c_void_p], C.c_int),
+            "XCloseDisplay": ([C.c_void_p], C.c_int),
+        }
+        for name, (args, result) in signatures.items():
+            function = getattr(self.x, name)
+            function.argtypes, function.restype = args, result
+        # A client can close between enumeration and subscription/read. Xlib's
+        # default handler exits the process even for this ordinary race.
+        self.failure = ""
+        def handle_error(display, event):
+            error = C.cast(event, C.POINTER(XError)).contents
+            if error.code != 3:  # BadWindow is the ordinary close/read race.
+                self.failure = f"X11 window request failed (error {error.code}, request {error.request})"
+            return 0
+        self.error_handler = C.CFUNCTYPE(C.c_int, C.c_void_p, C.c_void_p)(handle_error)
+        self.x.XSetErrorHandler.argtypes = [C.c_void_p]
+        self.x.XSetErrorHandler(self.error_handler)
+        self.display = self.x.XOpenDisplay(None)
+        if not self.display:
+            raise RuntimeError("Cannot connect to the X11 session")
+        self.root = self.x.XDefaultRootWindow(self.display)
+        self.atoms = {}
+        self.watched = set()
+        self.x.XSelectInput(self.display, self.root, 1 << 22)
+
+    def atom(self, name):
+        if name not in self.atoms:
+            self.atoms[name] = self.x.XInternAtom(self.display, name.encode(), False)
+        return self.atoms[name]
+
+    def property(self, window, name, kind=0, limit=16384):
+        actual, count, after = C.c_ulong(), C.c_ulong(), C.c_ulong()
+        form, data = C.c_int(), C.c_void_p()
+        status = self.x.XGetWindowProperty(self.display, window, self.atom(name),
+            0, limit, False, kind, C.byref(actual), C.byref(form), C.byref(count),
+            C.byref(after), C.byref(data))
+        try:
+            if self.failure:
+                raise RuntimeError(self.failure)
+            if status or not actual.value or (kind and actual.value != kind) or after.value:
+                return None
+            if form.value == 32:
+                return list(C.cast(data, C.POINTER(C.c_ulong))[:count.value])
+            if form.value == 8:
+                return C.string_at(data, count.value)
+            return None
+        finally:
+            if data:
+                self.x.XFree(data)
+
+    def state(self):
+        if self.property(self.root, "_DWM_WINDOW_OVERVIEW", 6, 1) != [2]:
+            return {"protocol": 1, "available": False, "windows": [],
+                "detail": "Restart dwm to enable the window overview"}
+        ids = self.property(self.root, "_NET_CLIENT_LIST", 33, 4096) or []
+        ids = set(ids)
+        for window in ids - self.watched:
+            self.x.XSelectInput(self.display, window, (1 << 22) | (1 << 17))
+        self.watched = ids
+        rows = []
+        for window in sorted(ids):
+            info = self.property(window, "_DWM_CLIENT_INFO", 6, 16)
+            if not info or len(info) < 3 or info[0] != 1:
+                continue
+            title = self.property(window, "_NET_WM_NAME")
+            if not isinstance(title, bytes) or not title:
+                title = self.property(window, "WM_NAME")
+            if not isinstance(title, bytes) or not title:
+                title = b"Untitled window"
+            app = self.property(window, "WM_CLASS", 31) or b"Application"
+            if not isinstance(app, bytes):
+                app = b"Application"
+            if self.exclude_pid and self.property(window, "_NET_WM_PID", 6, 1) == [self.exclude_pid]:
+                continue
+            classes = [value for value in app.split(b"\0") if value]
+            rows.append({"id": str(window), "title": title.decode("utf-8", "replace")[:1024],
+                "app": (classes[-1] if classes else b"Application").decode("utf-8", "replace")[:256],
+                "tags": info[1], "monitor": info[2]})
+        active = self.property(self.root, "_NET_ACTIVE_WINDOW", 33, 1) or []
+        return {"protocol": 1, "available": True, "windows": rows,
+            "active": str(active[0]) if active and any(row["id"] == str(active[0]) for row in rows) else ""}
+
+    def activate(self, window, restore=False):
+        ids = self.property(self.root, "_NET_CLIENT_LIST", 33, 4096) or []
+        if window not in ids or not self.property(window, "_DWM_CLIENT_INFO", 6, 16):
+            raise RuntimeError("This window has closed; choose another window")
+        self.request(window, int(restore))
+
+    def context(self, excluded_pid):
+        return self.request(self.root, 2, excluded_pid)
+
+    def request(self, window, mode, excluded_pid=0):
+        if self.property(self.root, "_DWM_WINDOW_OVERVIEW", 6, 1) != [2]:
+            raise RuntimeError("Restart dwm to enable the current window overview interface")
+        reply = self.x.XCreateSimpleWindow(self.display, self.root, 0, 0, 1, 1, 0, 0, 0)
+        if not reply:
+            raise RuntimeError("Could not create the request acknowledgement window")
+        try:
+            self.x.XSelectInput(self.display, reply, 1 << 22)
+            event = Event()
+            event.message = Message(33, 0, True, self.display, window,
+                self.atom("_DWM_WINDOW_ACTIVATE"), 32, Data())
+            event.message.data.l[:] = (2, mode, reply, excluded_pid, 0)
+            if not self.x.XSendEvent(self.display, self.root, False, (1 << 20) | (1 << 19), C.byref(event)):
+                raise RuntimeError("Could not send the window request")
+            self.x.XFlush(self.display)
+            deadline = time.monotonic() + 2
+            while time.monotonic() < deadline:
+                result = self.property(reply, "_DWM_WINDOW_RESULT", 6, 4)
+                if result and len(result) == 4 and result[:2] == [2, mode]:
+                    if result[3] == 1 and (mode == 2 or result[2] == window):
+                        return result[2]
+                    raise RuntimeError("This window has closed or is no longer visible; choose another window")
+                if mode != 2 and window not in (self.property(self.root, "_NET_CLIENT_LIST", 33, 4096) or []):
+                    raise RuntimeError("This window has closed; choose another window")
+                self.wait(max(0, deadline - time.monotonic()))
+            raise RuntimeError("dwm did not acknowledge the window request")
+        finally:
+            self.x.XDestroyWindow(self.display, reply)
+            self.x.XFlush(self.display)
+
+    def wait(self, timeout=None):
+        if not self.x.XPending(self.display):
+            ready, _, _ = select.select([self.x.XConnectionNumber(self.display)], [], [], timeout)
+            if not ready:
+                return False
+        event = Event()
+        self.x.XNextEvent(self.display, C.byref(event))
+        return True
+
+    def close(self):
+        self.x.XCloseDisplay(self.display)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("action", choices=("list", "watch", "activate", "restore", "context", "open", "toggle", "close", "thumbnails"))
+    parser.add_argument("window", nargs="?", type=lambda value: int(value, 0))
+    parser.add_argument("--exclude-pid", type=int, default=0)
+    parser.add_argument("--thumbnails", action="store_true", help="capture static thumbnails once when watch starts")
+    parser.add_argument("--thumbnail-directory", type=Path)
+    parser.add_argument("--window-ids", default="")
+    args = parser.parse_args()
+    if args.action in ("open", "toggle", "close"):
+        config = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "quickshell/shell.qml"
+        return subprocess.call(["quickshell", "ipc", "--path", str(config), "call", "windowOverview", args.action])
+    if args.action in ("activate", "restore") and (args.window is None or not 0 < args.window <= 0xffffffff):
+        parser.error("activate requires a valid X11 window ID")
+    if args.action == "context" and (args.window is None or not 0 < args.window <= 0x7fffffff):
+        parser.error("context requires a process ID to exclude")
+    if not 0 <= args.exclude_pid <= 0x7fffffff:
+        parser.error("exclude-pid must be a nonnegative process ID")
+    if args.action == "thumbnails" and (args.thumbnail_directory is None or not args.thumbnail_directory.is_dir()):
+        parser.error("thumbnails requires a cache directory")
+    if args.thumbnails and args.action != "watch":
+        parser.error("--thumbnails is only supported by watch")
+    def terminate(_signal, _frame):
+        raise SystemExit(0)
+    signal.signal(signal.SIGTERM, terminate)
+    connection = Connection(args.exclude_pid)
+    try:
+        if args.action in ("activate", "restore"):
+            connection.activate(args.window, restore=args.action == "restore")
+        elif args.action == "context":
+            window = connection.context(args.window)
+            print(json.dumps({"active": str(window) if window else ""}), flush=True)
+        elif args.action == "thumbnails":
+            try:
+                ids = [int(value) for value in args.window_ids.split(",")[:Thumbnails.LIMIT] if value]
+            except ValueError:
+                parser.error("invalid thumbnail window ID")
+            if any(not 0 < value <= 0xffffffff for value in ids):
+                parser.error("invalid thumbnail window ID")
+            capture = Thumbnails(connection)
+            thumbnails = {}
+            for window in ids:
+                path = args.thumbnail_directory.resolve() / f"{window}.png"
+                if capture.capture(window, path):
+                    thumbnails[str(window)] = path.as_uri()
+            print(json.dumps(thumbnails), flush=True)
+        else:
+            # A unique directory per opening also prevents Qt reusing an image
+            # from the previous opening. Never persist pixels across openings.
+            with tempfile.TemporaryDirectory(prefix="dwm-overview-") as cache:
+                thumbnails, previous, first = {}, None, True
+                while True:
+                    state = connection.state()
+                    if args.thumbnails:
+                        state["thumbnailsPending"] = first
+                        for row in state["windows"]:
+                            row["thumbnail"] = thumbnails.get(row["id"], "")
+                    if state != previous:
+                        print(json.dumps(state), flush=True)
+                        previous = state
+                    if args.action == "list":
+                        break
+                    if first and args.thumbnails:
+                        thumbnails = opening_thumbnails(state["windows"], Path(cache))
+                        first = False
+                        continue
+                    first = False
+                    connection.wait()
+    finally:
+        connection.close()
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except (OSError, RuntimeError) as error:
+        print(str(error), file=sys.stderr)
+        sys.exit(1)

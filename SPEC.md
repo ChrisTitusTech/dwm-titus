@@ -79,7 +79,11 @@ are not included by implication.
 The installed session must provide:
 
 - Standard dwm tiling, floating, monocle, tagging, focus, and monitor behavior.
-- Per-tag layout state and sizing.
+- Per-tag layout state and sizing, including tile gaps (zero by default).
+  Settings > Appearance must offer layout selection and master sizing without
+  replacing existing hotkeys. State updates are event-driven; changes name the
+  edited monitor and view so stale requests cannot affect another tag. Layout
+  state is session-local; desktop font/text scale retains its preview workflow.
 - EWMH desktop and active-window integration for external bars and tools.
 - Xinerama multi-monitor support.
 - Window swallowing.
@@ -106,6 +110,20 @@ The installed session must provide:
   appear above real fullscreen clients without becoming managed or taking focus.
   Ordinary shell popups and EWMH above hints retain their existing priority.
 - Window icons from `_NET_WM_ICON`.
+- A searchable window overview with individual cards across all tags. The
+  default Super+Tab binding toggles it; upgrades preserve existing user hotkey
+  files and document the one-entry migration. Selecting
+  a card chooses its actual monitor, retains an already-visible assigned tag
+  or selects its lowest assigned tag, and focuses the existing window without
+  changing assignments. Keyboard selection and Escape dismissal are supported.
+  The overview tracks clients through X11 events only while open and releases
+  its window list and delegates when closed. Static window thumbnails are
+  captured once per opening in a bounded helper outside dwm's event loop, with
+  XRender scaling to at most 320x180 before readback. Capture uses existing
+  compositor pixmaps, never changes redirection, and falls back to icon/title
+  cards when unavailable. Search, metadata changes and repaints do not recapture.
+  Closing cancels capture and removes private temporary images. No capture
+  polling or thumbnail activity is allowed while closed.
 - Keyboard layout group state for the panel, when the X server has XKB. dwm
   selects `XkbStateNotify` for group changes (the group comes from the event)
   and new keyboard, map, names and controls notifications (a full re-read; map

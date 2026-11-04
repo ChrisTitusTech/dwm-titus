@@ -101,7 +101,7 @@ keys = [
   { mod="SUPER SHIFT",      key="j",       desc="Move window down",        func="movestack",   i=1 },
   { mod="SUPER SHIFT",      key="k",       desc="Move window up",          func="movestack",   i=-1 },
   { mod="SUPER",            key="Return",  desc="Promote to master",       func="zoom" },
-  { mod="SUPER",            key="Tab",     desc="Previous tag",            func="view" },
+  { mod="SUPER",            key="Tab",     desc="Window overview",         func="spawn", exec=["dwm-window-overview", "toggle"] },
   { mod="SUPER",            key="q",       desc="Close window",            func="killclient" },
 
   # ── Master / stack sizing ─────────────────────────────────────────────────────
