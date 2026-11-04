@@ -155,10 +155,16 @@
                 const panes = root.responsePaneItems();
                 if (!panes.some(item => String(item).startsWith("DisplaySettingsPane"))) return;
                 const initialPane = panes.find(item => String(item).startsWith("DisplaySettingsPane"));
+                // Recursive QObject traversal can see an incubating component
+                // before Loader publishes item and applies its visibility bindings.
+                if (initialPane.parent.item !== initialPane) return;
                 const viewport = initialPane.parent;
                 if (settingsModel.testInitialLoading) {
                     root.responseCheck(initialPane.opacity === 0 && !initialPane.enabled,
-                        "Initial controls stay hidden and disabled while data is delayed");
+                        "Initial controls stay hidden and disabled while data is delayed: "
+                            + JSON.stringify({opacity:initialPane.opacity, enabled:initialPane.enabled,
+                                status:initialPane.parent.status, assigned:initialPane.parent.item === initialPane,
+                                presented:initialPane.parent.presented, loading:initialPane.parent.dataLoading}));
                     const bounds = [viewport.x, viewport.y, viewport.width, viewport.height];
                     if (root.loadingFrames === 0) root.loadingBounds = bounds;
                     else root.responseCheck(JSON.stringify(bounds) === JSON.stringify(root.loadingBounds),
