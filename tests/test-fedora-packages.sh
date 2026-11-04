@@ -32,6 +32,7 @@ mapfile -t packages < <(
 		# Official image additions; brave-origin is resolved by factory repos.
 		dwm_packages fedora image-desktop | awk '$0 != "brave-origin"'
 		dwm_packages fedora desktop
+		dwm_packages fedora qml-validation
 		dwm_packages fedora wifi
 		DWM_IMAGE_FEDORA_RELEASE="$VERSION_ID" dwm_packages fedora theme-gtk
 		dwm_packages fedora system-management
