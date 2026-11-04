@@ -19,9 +19,11 @@ Cards are used instead of live pixel previews, including on hidden tags.
 
 `dwm-window-overview open`, `toggle` and `close` use the managed Quickshell IPC
 instance. Existing hotkeys are preserved. A custom binding can invoke
-`dwm-window-overview toggle`. `list` prints a JSON snapshot; `watch` streams
+`dwm-window-overview toggle`. `list` prints a JSON snapshot including active client; `watch` streams
 changed snapshots while subscribed; `activate XID` validates membership and
-waits up to two seconds for focus. The backend uses Python's standard library
+waits up to two seconds for focus. Internal `restore XID` restores focus on
+cancellation only while the client remains visible, without switching tags or
+exiting a fullscreen peer. The backend uses Python's standard library
 and libX11, with bounded property and client-list reads (4096 windows maximum).
 
 The C core only publishes versioned full-tag and monitor metadata and handles
@@ -37,7 +39,8 @@ restart is required.
   full tag mask and dwm monitor number. Docks and unmanaged overlays have no
   such metadata and are omitted. The overview excludes its own shell window.
 - `_DWM_WINDOW_ACTIVATE`: root-directed ClientMessage/32 naming the client in
-  `window` and version 1 in `data.l[0]`. dwm ignores unknown clients, formats
+  `window`, version 1 in `data.l[0]`, and mode 0 (select) or 1 (restore
+visible focus only) in `data.l[1]`. dwm ignores unknown clients, formats
   and versions. The ordinary `_NET_ACTIVE_WINDOW` policy is preserved.
 
 ## Validation

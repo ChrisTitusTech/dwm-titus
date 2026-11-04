@@ -1021,7 +1021,9 @@ clientmessage(XEvent *e)
 		unsigned int visible, target;
 		Arg arg;
 
-		if (!c || cme->format != 32 || cme->data.l[0] != 1)
+		if (!c || cme->format != 32 || cme->data.l[0] != 1
+		|| (cme->data.l[1] != 0 && cme->data.l[1] != 1)
+		|| (cme->data.l[1] == 1 && !ISVISIBLE(c)))
 			return;
 		if (selmon != c->mon) {
 			unfocus(selmon->sel, 0);
@@ -1036,7 +1038,7 @@ clientmessage(XEvent *e)
 		}
 		/* Explicit selection must reveal the target beneath fullscreen peers. */
 		for (other = selmon->clients; other; other = other->next)
-			if (other != c && ISVISIBLE(other) && other->isfullscreen
+			if (cme->data.l[1] == 0 && other != c && ISVISIBLE(other) && other->isfullscreen
 			&& other->fakefullscreen != 1)
 				setfullscreen(other, 0);
 		arrange(selmon);
@@ -2526,6 +2528,7 @@ placemouse(const Arg *arg)
 				}
 
 				attachstack(c);
+				setclientdesktop(c);
 				arrangemon(r->mon);
 				prevr = r;
 				prevattachmode = attachmode;
@@ -2543,6 +2546,7 @@ placemouse(const Arg *arg)
 		c->tags = m->tagset[m->seltags];
 		attach(c);
 		attachstack(c);
+		setclientdesktop(c);
 		selmon = m;
 	}
 

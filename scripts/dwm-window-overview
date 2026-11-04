@@ -124,9 +124,11 @@ class Connection:
             rows.append({"id": str(window), "title": title.decode("utf-8", "replace")[:1024],
                 "app": (classes[-1] if classes else b"Application").decode("utf-8", "replace")[:256],
                 "tags": info[1], "monitor": info[2]})
-        return {"protocol": 1, "available": True, "windows": rows}
+        active = self.property(self.root, "_NET_ACTIVE_WINDOW", 33, 1) or []
+        return {"protocol": 1, "available": True, "windows": rows,
+            "active": str(active[0]) if active and any(row["id"] == str(active[0]) for row in rows) else ""}
 
-    def activate(self, window):
+    def activate(self, window, restore=False):
         ids = self.property(self.root, "_NET_CLIENT_LIST", 33, 4096) or []
         if window not in ids or not self.property(window, "_DWM_CLIENT_INFO", 6, 16):
             raise RuntimeError("This window has closed; choose another window")
@@ -134,6 +136,7 @@ class Connection:
         event.message = Message(33, 0, True, self.display, window,
             self.atom("_DWM_WINDOW_ACTIVATE"), 32, Data())
         event.message.data.l[0] = 1
+        event.message.data.l[1] = int(restore)
         if not self.x.XSendEvent(self.display, self.root, False, (1 << 20) | (1 << 19), C.byref(event)):
             raise RuntimeError("Could not activate the window")
         self.x.XFlush(self.display)
@@ -161,7 +164,7 @@ class Connection:
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("list", "watch", "activate", "open", "toggle", "close"))
+    parser.add_argument("action", choices=("list", "watch", "activate", "restore", "open", "toggle", "close"))
     parser.add_argument("window", nargs="?", type=lambda value: int(value, 0))
     args = parser.parse_args()
     if args.action in ("open", "toggle", "close"):
@@ -170,12 +173,12 @@ def main():
         from pathlib import Path
         config = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "quickshell/shell.qml"
         return subprocess.call(["quickshell", "ipc", "--path", str(config), "call", "windowOverview", args.action])
-    if args.action == "activate" and (args.window is None or not 0 < args.window <= 0xffffffff):
+    if args.action in ("activate", "restore") and (args.window is None or not 0 < args.window <= 0xffffffff):
         parser.error("activate requires a valid X11 window ID")
     connection = Connection()
     try:
-        if args.action == "activate":
-            connection.activate(args.window)
+        if args.action in ("activate", "restore"):
+            connection.activate(args.window, restore=args.action == "restore")
         else:
             previous = None
             while True:

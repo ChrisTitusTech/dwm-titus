@@ -65,7 +65,7 @@ ShellRoot {
     }
     IpcHandler {
         target: "overviewTest"
-        function state(): string { return JSON.stringify({windows:provider.rows, visible:provider.visible, message:provider.message, selected:provider.selectedIndex, snapshots:provider.snapshotCount}); }
+        function state(): string { return JSON.stringify({windows:provider.rows, visible:provider.visible, busy:provider.busy, returnWindow:provider.returnWindow, message:provider.message, selected:provider.selectedIndex, snapshots:provider.snapshotCount}); }
         function open(): void { provider.openOnScreen(Quickshell.screens[0]); }
         function close(): void { provider.close(); }
         function query(value: string): void { provider.query = value; }
@@ -192,8 +192,24 @@ ShellRoot {
             assert after - before <= 15, f"Overview idle CPU ticks/2s: {after - before}"
             run("xdotool", "key", "Escape")
             wait(lambda: not state().get("visible"), "Escape did not dismiss overview")
-            wait(lambda: connection.property(root, "_NET_ACTIVE_WINDOW", 33) == [windows[0]], "Escape did not restore focus")
+            wait(lambda: not state()["busy"] and connection.property(root, "_NET_ACTIVE_WINDOW", 33) == [windows[0]], "Escape did not restore focus")
             assert connection.property(root, "_NET_CURRENT_DESKTOP", 6) == [0], "Dismissal changed tags"
+            # Cancel with a non-first tiled client focused on a shared tag.
+            run("xdotool", "set_desktop_for_window", str(windows[1]), "0")
+            connection.activate(windows[1])
+            ipc("open")
+            wait(lambda: state().get("visible") and len(state()["windows"]) == 3, "Shared-tag focus scenario did not open")
+            ipc("open")  # Repeated explicit open must retain the original context.
+            assert state()["returnWindow"] == str(windows[1]), f"Captured incorrect cancellation context: {state()}"
+            run("xdotool", "key", "Escape")
+            wait(lambda: not state()["visible"] and not state()["busy"] and connection.property(root, "_NET_ACTIVE_WINDOW", 33) == [windows[1]], "Escape changed the non-first tiled focus")
+            assert connection.property(root, "_NET_CURRENT_DESKTOP", 6) == [0]
+            ipc("open")
+            wait(lambda: state()["visible"] and len(state()["windows"]) == 3, "Close focus scenario did not open")
+            ipc("close")
+            wait(lambda: not state()["visible"] and not state()["busy"] and connection.property(root, "_NET_ACTIVE_WINDOW", 33) == [windows[1]], "Close changed the non-first tiled focus")
+            run("xdotool", "set_desktop_for_window", str(windows[1]), "2")
+            connection.activate(windows[0])
             ipc("open")
             wait(lambda: len(state().get("windows", [])) == 3, "Overview reopen failed")
             ipc("query", "Changed")
@@ -223,6 +239,25 @@ ShellRoot {
             connection.activate(windows[1])
             wait(lambda: connection.atom("_NET_WM_STATE_FULLSCREEN") not in (connection.property(windows[0], "_NET_WM_STATE") or []), "Fullscreen peer still covers selection")
             assert connection.property(root, "_NET_ACTIVE_WINDOW", 33) == [windows[1]]
+            monitor_rows = connection.property(root, "_DWM_MONITOR_DESKTOPS") or []
+            if len(monitor_rows) >= 10:
+                # Xvfb screens overlap; leave the destination's tag empty so
+                # another monitor's tiled clients cannot intercept the press.
+                run("xdotool", "key", "super+4")
+                wait(lambda: connection.property(root, "_NET_CURRENT_DESKTOP", 6) == [3], "Drag destination tag did not become visible")
+                # Existing Super+left drag routes tiled clients through placemouse.
+                connection.activate(windows[2])
+                run("xdotool", "windowraise", str(windows[2]))
+                run("xdotool", "mousemove", "400", "300", "keydown", "super", "mousedown", "1")
+                try:
+                    time.sleep(.2)
+                    run("xdotool", "mousemove", "1100", "400")
+                    time.sleep(.2)
+                finally:
+                    run("xdotool", "mouseup", "1", "keyup", "super")
+                wait(lambda: next(row for row in connection.state()["windows"] if row["id"] == str(windows[2]))["monitor"] == 0, "Tiled drag left stale monitor metadata")
+                moved = next(row for row in connection.state()["windows"] if row["id"] == str(windows[2]))
+                assert moved["tags"] & 31 and not moved["tags"] & ~31, "Tiled drag left stale tag metadata"
             connection.activate(windows[0])
             ipc("open")
             wait(lambda: len(state().get("windows", [])) == 3, "Closing-window scenario did not open")

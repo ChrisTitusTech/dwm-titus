@@ -6,6 +6,9 @@ import qs.core
 Scope {
     id: root
     property bool visible: false
+    property bool pendingOpen: false
+    property bool restoringFocus: false
+    property string returnWindow: ""
     property var targetScreen: null
     property var workspaceNames: []
     property var windows: []
@@ -13,7 +16,7 @@ Scope {
     property string query: ""
     property string message: ""
     property int selectedIndex: 0
-    readonly property bool busy: activation.running
+    readonly property bool busy: activation.running || root.restoringFocus || capture.running || root.pendingOpen
 
     function tagLabel(mask) {
         const names = [];
@@ -41,26 +44,35 @@ Scope {
         } catch (error) { root.message = "Could not read the window list"; }
     }
     function openOnScreen(screen) {
-        if (root.busy) return;
+        if (root.busy || root.visible) return;
         root.targetScreen = screen;
         root.query = "";
         root.message = "";
         root.selectedIndex = 0;
-        root.visible = true;
+        root.returnWindow = "";
+        root.pendingOpen = true;
     }
-    function close() {
+    function close(restoreFocus) {
+        const previous = root.visible ? root.returnWindow : "";
+        root.pendingOpen = false;
         root.visible = false;
         root.windows = [];
         root.rows = [];
+        root.returnWindow = "";
+        if (restoreFocus !== false && previous) {
+            root.restoringFocus = true;
+            restoration.command = Commands.helperCommand("dwm-window-overview", "restore", [previous], true);
+            Qt.callLater(function() { restoration.running = true; });
+        }
     }
-    function toggle(screen) { if (root.visible) root.close(); else root.openOnScreen(screen); }
+    function toggle(screen) { if (root.visible || root.pendingOpen) root.close(); else root.openOnScreen(screen); }
     function selectRelative(delta) {
         if (root.rows.length) root.selectedIndex = ((root.selectedIndex + delta) % root.rows.length + root.rows.length) % root.rows.length;
     }
     function activate(index) {
         if (root.busy || index < 0 || index >= root.rows.length) return;
         const window = root.rows[index];
-        root.close();
+        root.close(false);
         activation.command = Commands.helperCommand("dwm-window-overview", "activate", [window.id], true);
         // Let the overview unmap before dwm focuses the selected client.
         Qt.callLater(function() { activation.running = true; });
@@ -75,6 +87,32 @@ Scope {
         onExited: { // qmllint disable signal-handler-parameters
             if (root.visible) root.message = "Window tracking stopped; close and reopen to retry";
         }
+    }
+    Process {
+        id: capture
+        running: root.pendingOpen
+        command: Commands.helperCommand("dwm-window-overview", "list", [], true)
+        stdout: StdioCollector {
+            onStreamFinished: {
+                if (!root.pendingOpen) return;
+                try { root.returnWindow = JSON.parse(text).active || ""; }
+                catch (error) { root.returnWindow = ""; }
+                root.pendingOpen = false;
+                root.visible = true;
+            }
+        }
+        stderr: StdioCollector {}
+        onExited: (code, status) => { // qmllint disable signal-handler-parameters
+            if ((code !== 0 || status !== 0) && root.pendingOpen) {
+                root.pendingOpen = false; root.visible = true;
+            }
+        }
+    }
+    Process {
+        id: restoration
+        stdout: StdioCollector {}
+        stderr: StdioCollector {}
+        onExited: root.restoringFocus = false
     }
     Process {
         id: activation
