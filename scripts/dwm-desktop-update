@@ -667,47 +667,6 @@ def recover_status(state):
     return value
 
 
-def checkout_reason(path, runner=None):
-    runner = runner or run
-    if not os.path.lexists(path / ".git"):
-        return ""
-    if not (path / ".git").is_dir() or (path / ".git").is_symlink():
-        return "This installation uses a Git worktree. Update it with the source installer."
-    try:
-        branch = runner(["git", "-C", path, "branch", "--show-current"])
-    except CommandFailure:
-        return "Local source repository is invalid or unreadable. Update it with the source installer."
-    if branch != "main":
-        return "Local source is on a development branch. Switch to a clean main checkout before updating."
-    try:
-        if (runner(["git", "-C", path, "status", "--porcelain", "--untracked-files=all"])
-                or runner(["git", "-C", path, "ls-files", "--others", "--ignored", "--exclude-standard", "--", "config", "scripts"])):
-            return "Local source has changes. Save or resolve them before updating."
-    except CommandFailure:
-        return "Local source repository is invalid or unreadable. Update it with the source installer."
-    return ""
-
-
-def checkout_ancestry_reason(path, revision):
-    if not (path / ".git").exists():
-        return ""
-    with tempfile.TemporaryDirectory(prefix="desktop-ancestry-") as temporary:
-        repository = Path(temporary)
-        run(["git", "init", "--bare", repository])
-        try:
-            run(["git", "-C", repository, "fetch", "--no-tags", path, "HEAD:refs/heads/local"])
-        except CommandFailure:
-            return "Local source repository is invalid or unreadable. Update it with the source installer."
-        run(["git", "-C", repository, "fetch", "--no-tags", SOURCE, revision + ":refs/heads/upstream"], timeout=30)
-        try:
-            run(["git", "-C", repository, "merge-base", "--is-ancestor", "refs/heads/local", "refs/heads/upstream"])
-        except CommandFailure as error:
-            if error.returncode != 1:
-                raise
-            return "Local source has divergent history. Use the source installer."
-    return ""
-
-
 def root_owned(path):
     return path.lstat().st_uid == 0
 
@@ -817,17 +776,6 @@ def check_bounded(force=False):
             if len(upstream) != 2 or not re.fullmatch(r"[0-9a-f]{40}", upstream[0]):
                 raise RuntimeError("Upstream returned an invalid desktop revision")
             value["available"] = upstream[0]
-            reason = checkout_reason(data)
-            checkout = Path(user.get("checkout") or str(data))
-            if not reason and checkout != data and checkout.exists():
-                reason = checkout_reason(checkout)
-            if not reason:
-                for path in dict.fromkeys((data, checkout)):
-                    reason = checkout_ancestry_reason(path, value["available"])
-                    if reason:
-                        break
-            if reason:
-                return save_status(state, value, state="blocked", detail=reason, checkedAt=int(time.time()))
             available = upstream[0] != value["installed"]
             repair = bool(value["changes"] or value["packages"])
             if not available and not repair and value["restart"] == "session":
@@ -1074,14 +1022,10 @@ def prepare_user(source, operation):
             else:
                 staged.mkdir(mode=0o700)
             if kind == "data":
-                reason = checkout_reason(target, runner=lambda args: sandbox_run(args, readonly=(target,), cwd=target))
-                if reason:
-                    raise RuntimeError(reason)
-                if (staged / ".git").exists():
-                    for arguments in (("fetch", "--no-tags", source, "HEAD"),
-                                      ("merge-base", "--is-ancestor", "HEAD", "FETCH_HEAD"),
-                                      ("merge", "--ff-only", "FETCH_HEAD")):
-                        sandbox_run(["git", "-C", staged, *arguments], writable=(staged,), readonly=(source,), cwd=staged)
+                # Updating the installation is independent of local Git state.
+                # Keep metadata and unrelated files as-is; the atomic exchange
+                # retains the entire original tree for recovery, including local
+                # edits and ignored files in the managed subtrees we replace.
                 for name in ("config", "scripts"):
                     old = staged / name
                     if old.is_symlink():
@@ -1186,8 +1130,6 @@ def worker(operation):
                     raise RuntimeError("Installed files changed since preview; check again")
                 reason = unsupported_system_drift(installed)
                 user_receipt = read_json(state / "installed.json") if (state / "installed.json").exists() else {}
-                for path in dict.fromkeys((data, Path(user_receipt.get("checkout") or str(data)))):
-                    reason = reason or checkout_reason(path) or checkout_ancestry_reason(path, preview["available"])
                 if reason:
                     raise RuntimeError(reason)
                 if missing_packages(installed["packages"]):

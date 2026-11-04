@@ -644,9 +644,16 @@ files, install and verify them, and activate Quickshell through the managed
 control path. Personal TOML, application settings, `.xinitrc`, and `config.h`
 remain preserved. Mutable source commands run in a Bubblewrap/libseccomp build
 sandbox without host authorization services or socket access; sandbox setup
-failure stops the update instead of running an unconfined build. Git checkouts
-must be clean, on `main`, and fast-forwardable;
-linked worktrees require the documented source update procedure.
+failure stops the update instead of running an unconfined build.
+
+Desktop GUI updates must build a fixed official upstream revision independently
+of the local source checkout. Local Git branches, edits, ignored or generated
+files, worktree metadata, and divergent history must not block installation
+updates. Replace the managed data and shell trees transactionally, retaining the
+complete previous data tree for recovery. Preserve Git metadata and unrelated
+files in the data directory without advancing local Git HEAD, and leave external
+source checkouts untouched. Continue validating installation paths, ownership,
+authorization, and transaction integrity before replacement.
 
 A root-owned installed helper accepts existing managed destinations and additions
 within its desktop-owned namespaces: dwm-prefixed commands and helpers, Dwm

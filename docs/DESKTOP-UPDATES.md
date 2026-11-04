@@ -110,11 +110,17 @@ The GUI preserves personal TOML files, application configuration, `.xinitrc`,
 and compile-time `config.h`. It replaces the project-managed Quickshell tree and
 the managed `config` and `scripts` data trees. A symlinked `${XDG_CONFIG_HOME:-$HOME/.config}/quickshell`
 stops the update; it must be a real directory. If the data directory is also a
-Git checkout, the updater prepares and validates a fast-forwarded copy before
-replacing it. Unrelated files in that directory are retained. Development
-branches, tracked or untracked changes, ignored files inside `config` or
-`scripts`, linked worktrees, and divergent history are blocked
-with instructions to use the source workflow.
+Git checkout, updating the installation does not depend on its branch, history,
+working-tree changes, ignored files, or worktree metadata. The updater builds a
+fixed official revision in an isolated directory. It refreshes the managed
+`config` and `scripts` trees while retaining Git metadata and unrelated files.
+The entire previous data tree, including local edits, untracked and ignored
+files, remains in the transaction's recovery backup. Git HEAD is not advanced;
+use a separate checkout for ongoing development to avoid mixing source work
+with managed installed files. An external source checkout is left untouched.
+Generated caches cannot block an update. Unsafe installation paths, failed
+validation, and authorization failures still require attention before replacing
+files; expand Details to read the reason.
 
 The installed manifest fixes the installation roots. Updates can add files in
 the desktop-owned namespaces for dwm-prefixed commands/helpers, Dwm themes and
