@@ -2765,6 +2765,10 @@ void
 resizeclient(Client *c, int x, int y, int w, int h)
 {
 	XWindowChanges wc;
+	int decoration = titleheight(c);
+
+	/* Fullscreen restoration and monitor moves can bypass applysizehints. */
+	if (decoration) y = MAX(y, c->mon->wy + decoration);
 
 	c->oldx = c->x; c->x = wc.x = x;
 	c->oldy = c->y; c->y = wc.y = y;

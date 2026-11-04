@@ -159,8 +159,25 @@ int main(int argc, char **argv) {
 	title = wait_title(floating, 1);
 	configure_titlebars(0, 511);
 	wait_title(floating, 0);
+	/* Enabling decorations while fullscreen must reserve clearance on exit. */
+	XMoveWindow(display, floating, 0, 0);
+	XSync(display, False);
+	for (int attempt = 0; attempt < 100 && geometry(floating).y != 0; attempt++) pause_tick();
+	assert(geometry(floating).y == 0);
+	message(floating, "_NET_WM_STATE", 1, atom("_NET_WM_STATE_FULLSCREEN"));
+	for (int attempt = 0; attempt < 100 && geometry(floating).border_width != 0; attempt++) pause_tick();
+	assert(geometry(floating).border_width == 0);
 	configure_titlebars(1, 511);
+	/* Reload is asynchronous; confirm through a second opted-in floating client. */
+	Window witness = make_client("Fullscreen policy reload witness", 1);
+	wait_title(witness, 1);
+	XDestroyWindow(display, witness);
+	XSync(display, False);
+	message(floating, "_NET_WM_STATE", 0, atom("_NET_WM_STATE_FULLSCREEN"));
 	title = wait_title(floating, 1);
+	body = geometry(floating); bar = geometry(title);
+	assert(bar.y >= 0 && bar.y + bar.height == body.y);
+
 	/* The two-screen fixture also moves the client to the other actual
 	 * monitor, without giving the decoration its own client-list entry. */
 	Atom actual;
