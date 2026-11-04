@@ -10,6 +10,7 @@ ShellRoot {
     property string scenario: Quickshell.env("DWM_NATIVE_ACTION_SCENARIO")
     property bool manual: Quickshell.env("DWM_DELEGATE_UI_MANUAL") === "1"
     property int stage: 0
+    property int focusFrames: 0
     property int assertions: 0
     property bool done: false
     readonly property int accountCount: scenario === "large" ? 256 : 1
@@ -70,15 +71,18 @@ ShellRoot {
                 "Visible confirmation names the selected tool");
             click("discardDelegate");
             check(model.nativeConfirmation === null && model.operation.result === null, "Cancel does not launch");
+            focusFrames = 0;
             stage = 4;
-        } else if (stage === 4 && find("prepare-" + action).activeFocus) {
+        } else if (stage === 4 && focusFrames >= 2 && find("prepare-" + action).activeFocus) {
             check(model.nativeConfirmation === null, "Cancel restores focus to the originating control");
             const card = find("delegate-card-" + action);
             const position = card.mapToItem(pane, 0, 0);
-            check(position.y >= 0 && position.y + card.height <= pane.height + 1, "Originating card remains fully revealed");
+            check(position.y >= 0 && position.y + card.height <= pane.height + 1, "Originating card remains fully revealed: y=" + position.y
+                + ", card=" + card.height + ", viewport=" + pane.height + ", scroll=" + pane.contentY);
             click("prepare-" + action);
+            focusFrames = 0;
             stage = 2;
-        } else if (stage === 2 && find("discardDelegate").activeFocus) {
+        } else if (stage === 2 && focusFrames >= 2 && find("discardDelegate").activeFocus) {
             const card = find("delegateConfirmationCard");
             const position = card.mapToItem(pane, 0, 0);
             check(position.y >= 0 && position.y + card.height <= pane.height + 1,
@@ -114,6 +118,12 @@ ShellRoot {
         width: Number(Quickshell.env("DWM_DELEGATE_UI_WIDTH") || "780")
         height: Number(Quickshell.env("DWM_DELEGATE_UI_HEIGHT") || "580")
         color: Theme.menuBackground
+        // Focus restoration schedules reveal after layout publication. Observe
+        // settled frames before checking geometry, retaining the same bounds.
+        FrameAnimation {
+            running: root.stage === 4 || root.stage === 2
+            onTriggered: root.focusFrames++
+        }
         SystemSettingsPane { id: pane; anchors.fill: parent; anchors.margins: 12; systemManagementModel: model; capabilities: [] }
     }
     Timer { interval: 25; running: true; repeat: true; onTriggered: root.advance() }

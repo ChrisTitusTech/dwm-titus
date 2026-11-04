@@ -4,7 +4,8 @@
 
 The four desktop features are implemented in PRs #424, #425, #422 and #423.
 On 2026-11-04, the user verified PR #425's static thumbnails and authorized
-merging all four PRs, addressing #368, and preparing the 0.8 release.
+merging all four PRs, addressing #368, and preparing the 0.8 release. Fedora 45 is the primary ISO base for 0.8; retain
+Fedora 44 compatibility, as the user explicitly selected.
 
 ## Integration and release sequence
 
@@ -17,7 +18,8 @@ merging all four PRs, addressing #368, and preparing the 0.8 release.
    including NetworkManager's Wi-Fi plugin, supplicant and regulatory database.
    Source fixes do not repair the published v0.7.2 ISO.
 4. Prepare v0.8.0 source, changelog, release notes, checksummed artifacts and
-   Fedora image qualification evidence under the existing SPEC.md contract.
+   Fedora 45 image qualification evidence, with Fedora 44 compatibility checks
+   and the intentionally updated SPEC.md platform contract.
 
 Record exact tested commits, reused unchanged evidence and hardware limitations.
 Do not describe an unbuilt or unqualified image as fixed or released. Preparing
