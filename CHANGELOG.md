@@ -118,6 +118,11 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Show the correct panel icon for running applications whose window class is
+  not an icon name, such as Firefox (`org.mozilla.firefox`). The panel now
+  falls back to the matching desktop entry's icon, and unknown applications
+  use the generic executable icon instead of a blank button.
+
 - Decouple desktop installation updates from local Git branches, changes,
   generated caches, worktrees, and divergent history. Preserve the previous
   managed data tree for recovery and leave external source checkouts untouched.

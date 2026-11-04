@@ -1,11 +1,44 @@
 pragma Singleton
 
+import QtQml
 import Quickshell
 
 Singleton {
+    id: root
+
+    // Desktop entries are indexed asynchronously. Bump this revision when the
+    // index is ready so icon bindings that fall back through a desktop entry
+    // resolve again instead of keeping the generic fallback.
+    property int desktopEntryRevision: 0
+
+    Connections {
+        target: DesktopEntries
+        function onApplicationsChanged() {
+            root.desktopEntryRevision += 1;
+        }
+    }
+
     function launcherIcon(iconName) {
+        // Read the revision so the caller's binding re-evaluates when the
+        // asynchronous desktop entry scan completes.
+        root.desktopEntryRevision;
+
         if (iconName.length > 0) {
-            return Quickshell.iconPath(iconName, true);
+            const direct = Quickshell.iconPath(iconName, true);
+            if (direct.length > 0) {
+                return direct;
+            }
+
+            // Running windows report their WM class, which is not always an
+            // icon name (e.g. org.mozilla.firefox). Fall back to the icon of
+            // the matching desktop entry before using the generic icon.
+            const entry = DesktopEntries.heuristicLookup(iconName);
+            if (entry) {
+                const entryIcon = Quickshell.iconPath(entry.icon, true);
+                if (entryIcon.length > 0) {
+                    return entryIcon;
+                }
+            }
         }
 
         return Quickshell.iconPath("application-x-executable", true);
