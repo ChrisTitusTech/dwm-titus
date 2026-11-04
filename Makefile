@@ -502,6 +502,10 @@ check-clipboard: dwm-clipboard-observer
 	python3 tests/test-clipboard-migration.py
 	python3 tests/test-clipboard-runtime.py
 	python3 tests/test-clipboard-end-to-end.py
+check-titlebars: all
+	$(call run_managed_test,dbus-run-session -- xvfb-run -a -s "-screen 0 1280x800x24" python3 tests/test-titlebars.py)
+	$(call run_managed_test,dbus-run-session -- xvfb-run -a -s "-screen 0 1280x800x24 -screen 1 800x600x24 +xinerama" python3 tests/test-titlebars.py)
+	$(call run_managed_test,dbus-run-session -- xvfb-run -a -s "-screen 0 1280x1600x24" python3 tests/test-titlebars-vertical.py)
 check-layout-settings: all
 	$(call run_managed_test,dbus-run-session -- xvfb-run -a -s "-screen 0 1280x800x24" python3 tests/test-layout-settings.py)
 	$(call run_managed_test,dbus-run-session -- xvfb-run -a -s "-screen 0 1280x800x24 -screen 1 800x600x24 +xinerama" python3 tests/test-layout-settings.py)
@@ -839,6 +843,7 @@ check: check-picom check-picom-xvfb
 	$(MAKE) check-clipboard
 	$(MAKE) check-clipboard-observer
 	$(MAKE) check-keyboard-layout
+	$(MAKE) check-titlebars
 	$(MAKE) check-layout-settings
 	$(MAKE) check-window-overview
 	$(MAKE) check-quickshell-launcher
@@ -915,5 +920,6 @@ check: check-picom check-picom-xvfb
 
 .PHONY: check-ai-assist check-ai-assist-xvfb check-notification-actions-xvfb
 
+.PHONY: check-titlebars
 .PHONY: check-layout-settings
 .PHONY: check-window-overview

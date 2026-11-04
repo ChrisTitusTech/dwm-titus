@@ -8,6 +8,10 @@ versions from `config.mk`.
 
 ### Added
 
+- Add opt-in native floating-window titlebars with drag and close controls.
+  Configure `titlebars` and `titlebar_tags` in the existing hot-reloaded
+  themes.toml appearance section; tiled/fullscreen defaults remain unchanged
+  and no compositor or new dependency is required (#370).
 - Add mouse-accessible Tile, Floating and Monocle choices, master sizing and
   per-tag tile-gap controls in Settings > Appearance, alongside the existing
   previewable desktop text scale. Changes follow hotkeys without polling (#297).

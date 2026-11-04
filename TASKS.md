@@ -16,7 +16,7 @@ Fedora 45 becomes the main ISO base; retain Fedora 44 compatibility.
 - [x] Implement all four features and publish reviewed PRs with runtime evidence.
 - [x] Complete thumbnail dev sync and receive user acceptance for #425.
 - [x] Merge #425 at 7474120d915a9a80d77082d8f763e6b829f80fc0.
-- [ ] Integrate updated main, validate, review and merge #424.
+- [x] Integrate updated main, validate, review and merge #424 at f66298f9ef06f563df3e56ae6cceac3e17243afb.
 - [ ] Integrate updated main, validate, review and merge #423.
 - [ ] Integrate updated main, validate, review and merge #422.
 - [ ] Address #368's published-image Wi-Fi omission and validate new artifacts.
