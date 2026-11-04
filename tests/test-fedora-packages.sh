@@ -33,6 +33,7 @@ mapfile -t packages < <(
 		dwm_packages fedora image-desktop | awk '$0 != "brave-origin"'
 		dwm_packages fedora desktop
 		dwm_packages fedora wifi
+		DWM_IMAGE_FEDORA_RELEASE="$VERSION_ID" dwm_packages fedora theme-gtk
 		dwm_packages fedora system-management
 		dwm_packages fedora system-management-optional
 	} | awk 'NF' | sort -u

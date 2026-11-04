@@ -118,6 +118,9 @@ versions from `config.mk`.
   do not enable that broken repository in the images. Preserve Fedora 44 Path
   support and existing user file-manager preferences.
 
+- Retain optional Numix/Deepin GTK theme RPMs on Fedora 44; omit those
+  unavailable packages from Fedora 45 images instead of ignoring install errors.
+
 - Use Fedora 45 Server netinst 1.4 for the primary 0.8 standard and NVIDIA
   images, retaining Fedora 44 installation and desktop compatibility.
   Validate both releases and support Python 3.15 in native test fixtures.

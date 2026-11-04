@@ -36,6 +36,8 @@ services --enabled=NetworkManager,systemd-timesyncd
 gaming_repo=/tmp/dwm-titus-gaming-repo
 gaming_packages=/tmp/dwm-titus-gaming-packages
 path_packages=/tmp/dwm-titus-path-packages
+legacy_themes=/tmp/dwm-titus-legacy-theme-packages
+: >"$legacy_themes"
 : >"$gaming_repo"
 : >"$path_packages"
 . /etc/os-release
@@ -47,6 +49,7 @@ x86_64)
 repo --name="christitustech-copr-fedora" --baseurl="https://download.copr.fedorainfracloud.org/results/christitustech/copr-fedora/fedora-$releasever-$basearch/" --install
 EOF
 	printf '%s\n' path >"$path_packages"
+	printf '%s\n' numix-gtk-theme deepin-gtk-theme >"$legacy_themes"
 	fi
 	cat >"$gaming_packages" <<'EOF'
 steam
@@ -157,10 +160,9 @@ adwaita-icon-theme
 papirus-icon-theme
 arc-theme
 adw-gtk3-theme
-numix-gtk-theme
+%include /tmp/dwm-titus-legacy-theme-packages
 yaru-gtk3-theme
 yaru-gtk4-theme
-deepin-gtk-theme
 bluebird-gtk3-theme
 qt6ct
 qt5ct

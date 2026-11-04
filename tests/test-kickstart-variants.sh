@@ -62,10 +62,8 @@ required_packages=(
 	papirus-icon-theme
 	arc-theme
 	adw-gtk3-theme
-	numix-gtk-theme
 	yaru-gtk3-theme
 	yaru-gtk4-theme
-	deepin-gtk-theme
 	bluebird-gtk3-theme
 	PackageKit
 	PackageKit-glib
@@ -166,8 +164,11 @@ PYPRE
 		if [[ $release == 44 ]]; then
 			grep -Fq 'christitustech-copr-fedora' "$work/pre-$release/gaming-repo"
 			grep -Fxq path "$work/pre-$release/path-packages"
+			grep -Fxq numix-gtk-theme "$work/pre-$release/legacy-theme-packages"
+			grep -Fxq deepin-gtk-theme "$work/pre-$release/legacy-theme-packages"
 		else
-			[[ ! -s $work/pre-$release/gaming-repo && ! -s $work/pre-$release/path-packages ]]
+			[[ ! -s $work/pre-$release/gaming-repo && ! -s $work/pre-$release/path-packages &&
+				! -s $work/pre-$release/legacy-theme-packages ]]
 		fi
 		grep -Fxq gamescope "$work/pre-$release/gaming-packages"
 	done

@@ -27,6 +27,8 @@ Fedora 45 COPR endpoint returned 404. That unavailable repository is omitted;
 gaming packages use distribution/RPM Fusion sources. Fedora 44 retains its
 COPR/Path availability. Thunar is the fresh-account default on both versions,
 even with Path installed; existing user-selected MIME preferences are preserved.
+Fedora 45 also omits the unavailable optional Numix and Deepin GTK theme RPMs;
+Fedora 44 retains them. The shipped desktop theme palettes remain available.
 
 Verified upstream source SHA-256:
 `a1e916f139a05955b943cf183b020780cca9c399b02b8f5ec4354c9e5c1dff1a`.

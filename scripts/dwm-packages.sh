@@ -105,9 +105,11 @@ dwm_packages() {
 		;;
 	fedora:theme-gtk)
 		printf '%s\n' \
-			arc-theme adw-gtk3-theme numix-gtk-theme \
-			yaru-gtk3-theme yaru-gtk4-theme deepin-gtk-theme \
-			bluebird-gtk3-theme
+			arc-theme adw-gtk3-theme yaru-gtk3-theme yaru-gtk4-theme bluebird-gtk3-theme
+		# Retired Fedora 45 RPMs remain available to Fedora 44 images/installers.
+		if [[ ${DWM_IMAGE_FEDORA_RELEASE:-} != 45 ]]; then
+			printf '%s\n' numix-gtk-theme deepin-gtk-theme
+		fi
 		;;
 	fedora:theme-optional)
 		printf '%s\n' qt6ct qt5ct
