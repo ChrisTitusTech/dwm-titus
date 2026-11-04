@@ -20,7 +20,7 @@ dwm_packages() {
 		dwm_packages "$family" build
 		printf '%s\n' quickshell python3 dbus-daemon util-linux procps-ng \
 			xorg-x11-server-Xvfb xdotool xprop xrandr xset xsettingsd \
-			jq inotify-tools gawk google-noto-sans-fonts setxkbmap xkbcomp xmodmap xinput
+			jq inotify-tools gawk google-noto-sans-fonts setxkbmap xkbcomp xmodmap xinput xwininfo
 		;;
 	fedora:image-build)
 		printf '%s\n' xorriso mtools rsync squashfs-tools-ng isomd5sum diffutils python3-pillow fontconfig google-noto-sans-fonts
@@ -121,7 +121,7 @@ dwm_packages() {
 		printf '%s\n' qt6-qtdeclarative-devel
 		;;
 	fedora:qml-validation)
-		printf '%s\n' quickshell xsettingsd xwininfo
+		printf '%s\n' quickshell xsettingsd
 		dwm_packages "$family" qml-development
 		;;
 	fedora:lightdm)
