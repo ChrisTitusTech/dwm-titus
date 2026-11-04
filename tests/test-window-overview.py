@@ -56,6 +56,7 @@ import qs.core
 ShellRoot {
     id: harness
     property var overviewWindow: null
+    property var rememberedCard: null
     WindowOverviewModel { id: provider; property int snapshotCount: 0; onWindowsChanged: snapshotCount++ }
     LazyLoader { active: provider.visible; component: WindowOverviewWindow { id: view; model: provider; Component.onCompleted: harness.overviewWindow = view; Component.onDestruction: harness.overviewWindow = null } }
     function findItem(item: var, name: string): var {
@@ -68,6 +69,9 @@ ShellRoot {
         function state(): string { return JSON.stringify({windows:provider.rows, visible:provider.visible, busy:provider.busy, returnWindow:provider.returnWindow, message:provider.message, selected:provider.selectedIndex, snapshots:provider.snapshotCount}); }
         function open(): void { provider.openOnScreen(Quickshell.screens[0]); }
         function close(): void { provider.close(); }
+        function remember(windowId:string):void { harness.rememberedCard = provider.rows.find(row => row.id === windowId); }
+        function activateRemembered():void { provider.rows = [harness.rememberedCard]; provider.activate(0); }
+
         function query(value: string): void { provider.query = value; }
         function colors(value: string, dark: bool): void { Theme.applyAppearanceColors(JSON.parse(value), dark); }
         function many(): void {
@@ -258,18 +262,27 @@ ShellRoot {
                 wait(lambda: next(row for row in connection.state()["windows"] if row["id"] == str(windows[2]))["monitor"] == 0, "Tiled drag left stale monitor metadata")
                 moved = next(row for row in connection.state()["windows"] if row["id"] == str(windows[2]))
                 assert moved["tags"] & 31 and not moved["tags"] & ~31, "Tiled drag left stale tag metadata"
-            connection.activate(windows[0])
+            run("xdotool", "set_desktop_for_window", str(windows[2]), "0")
+            wait(lambda: next(row for row in connection.state()["windows"] if row["id"] == str(windows[2]))["tags"] == 1, "Race cancellation target did not retag")
+            connection.activate(windows[2])
             ipc("open")
             wait(lambda: len(state().get("windows", [])) == 3, "Closing-window scenario did not open")
+            ipc("remember", str(windows[1]))
             x.XDestroyWindow(d, windows[1])
             x.XSync(d, False)
             wait(lambda: len(state()["windows"]) == 2, "Closed client remained in overview")
             failed = run(str(repo / "scripts/dwm-window-overview"), "activate", str(windows[1]), check=False)
             assert failed.returncode != 0
+            ipc("activateRemembered")
+            wait(lambda: state()["visible"] and not state()["busy"] and "closed" in state()["message"], "Closed-card failure did not reopen the overview")
+            assert state()["returnWindow"] == str(windows[2]), "Activation failure lost cancellation context"
+            ipc("close")
+            wait(lambda: not state()["visible"] and not state()["busy"] and connection.property(root, "_NET_ACTIVE_WINDOW", 33) == [windows[2]], "Cancellation after failed activation lost the non-first tiled focus")
             for window in (windows[0], windows[2]):
                 x.XDestroyWindow(d, window)
             x.XSync(d, False)
-            wait(lambda: len(state()["windows"]) == 0, "Empty state did not update")
+            ipc("open")
+            wait(lambda: state()["visible"] and len(state()["windows"]) == 0 and not connection.state()["windows"], "Empty state did not update")
             ipc("close")
             # A GUI child inherits its terminal's actual tags through swallowing.
             parent = x.XCreateSimpleWindow(d, root, 0, 0, 300, 200, 0, 0, 0x557799)

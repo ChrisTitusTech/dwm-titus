@@ -8,6 +8,7 @@ Scope {
     property bool visible: false
     property bool pendingOpen: false
     property bool restoringFocus: false
+    property bool selectingWindow: false
     property string returnWindow: ""
     property var targetScreen: null
     property var workspaceNames: []
@@ -16,7 +17,7 @@ Scope {
     property string query: ""
     property string message: ""
     property int selectedIndex: 0
-    readonly property bool busy: activation.running || root.restoringFocus || capture.running || root.pendingOpen
+    readonly property bool busy: root.selectingWindow || root.restoringFocus || capture.running || root.pendingOpen
 
     function tagLabel(mask) {
         const names = [];
@@ -58,7 +59,7 @@ Scope {
         root.visible = false;
         root.windows = [];
         root.rows = [];
-        root.returnWindow = "";
+        if (restoreFocus !== false) root.returnWindow = "";
         if (restoreFocus !== false && previous) {
             root.restoringFocus = true;
             restoration.command = Commands.helperCommand("dwm-window-overview", "restore", [previous], true);
@@ -73,6 +74,7 @@ Scope {
         if (root.busy || index < 0 || index >= root.rows.length) return;
         const window = root.rows[index];
         root.close(false);
+        root.selectingWindow = true;
         activation.command = Commands.helperCommand("dwm-window-overview", "activate", [window.id], true);
         // Let the overview unmap before dwm focuses the selected client.
         Qt.callLater(function() { activation.running = true; });
@@ -112,13 +114,17 @@ Scope {
         id: restoration
         stdout: StdioCollector {}
         stderr: StdioCollector {}
-        onExited: root.restoringFocus = false
+        onExited: { // qmllint disable signal-handler-parameters
+            root.restoringFocus = false;
+        }
     }
     Process {
         id: activation
         stderr: StdioCollector { onStreamFinished: { if (text.trim()) root.message = text.trim(); } }
         onExited: (code, status) => { // qmllint disable signal-handler-parameters
+            root.selectingWindow = false;
             if (code !== 0 || status !== 0) root.visible = true;
+            else root.returnWindow = "";
         }
     }
 }

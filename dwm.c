@@ -5972,6 +5972,7 @@ updategeom(void)
 				c->mon = mons;
 				attach(c);
 				attachstack(c);
+				setclientdesktop(c);
 			}
 			if (m == selmon)
 				selmon = mons;
