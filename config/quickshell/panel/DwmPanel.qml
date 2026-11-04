@@ -216,6 +216,25 @@ PanelWindow {
             }
 
             ShellButton {
+                objectName: "calendarIndicator"
+                visible: root.panelSettingsModel.widgetEnabled("calendar")
+                label: ""
+                leadingLabel: "\uF073"
+                Accessible.name: "Calendar"
+                accessibleDescription: "Open month calendar"
+                onActivated: root.popupRequested(root, "calendar")
+            }
+            ShellButton {
+                objectName: "weatherIndicator"
+                visible: root.panelSettingsModel.widgetEnabled("weather")
+                label: ""
+                leadingLabel: "\uF0C2"
+                Accessible.name: "Weather"
+                accessibleDescription: "Open weather"
+                onActivated: root.popupRequested(root, "weather")
+            }
+
+            ShellButton {
                 id: updateCenterIndicator
                 objectName: "updateCenterIndicator"
                 visible: root.updateCenterModel.shouldShow()

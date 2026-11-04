@@ -47,6 +47,8 @@ ShellRoot {
         clipboardModel.close();
         notificationModel.closeHistory();
         controlCenterModel.closeUtility();
+        if (popupId !== "calendar") calendarModel.close();
+        if (popupId !== "weather") weatherModel.close();
         if (popupId !== "bluetooth") bluetoothModel.close();
         if (popupId !== "controlcenter") controlCenterModel.close();
         if (popupId !== "controls") controlsModel.close();
@@ -60,7 +62,14 @@ ShellRoot {
         const samePanel = root.activePanelWindow === panel;
         const updateCenterWasVisible = updateCenterModel.visible;
         root.selectPanelPopup(panel, popupId);
-        if (popupId === "updatecenter") {
+        if (popupId === "calendar") {
+            if (!samePanel) calendarModel.close();
+            calendarModel.toggle();
+        } else if (popupId === "weather") {
+            if (!samePanel) weatherModel.close();
+            weatherModel.toggle();
+        }
+        else if (popupId === "updatecenter") {
             root.updateCenterAnchorX = panel.updateCenterAnchorX();
             if (updateCenterWasVisible && samePanel) updateCenterModel.close();
             else updateCenterModel.open();
@@ -68,6 +77,8 @@ ShellRoot {
     }
 
     function openCommandMenu(screen) {
+        calendarModel.close();
+        weatherModel.close();
         networkModel.close();
         bluetoothModel.close();
         controlCenterModel.close();
@@ -130,6 +141,9 @@ ShellRoot {
         id: dwmState
     }
 
+    CalendarModel { id: calendarModel; timestamp: clock.timestamp }
+    WeatherModel { id: weatherModel }
+
     ClockModel {
         id: clock
         timezoneState: systemManagementModel.nativeStates.timezone || null
@@ -141,6 +155,8 @@ ShellRoot {
 
         onVisibleChanged: {
             if (visible) {
+                calendarModel.close();
+                weatherModel.close();
                 commandMenuModel.close();
                 clipboardModel.close();
                 updateCenterModel.close();
@@ -235,6 +251,10 @@ ShellRoot {
 
     PanelSettingsModel {
         id: panelSettingsModel
+        onValuesChanged: {
+            if (!widgetEnabled("calendar")) calendarModel.close();
+            if (!widgetEnabled("weather")) weatherModel.close();
+        }
     }
 
     NetworkModel {
@@ -1273,6 +1293,9 @@ ShellRoot {
             onSettingsSectionRequested: (panel, section) => root.runCommandMenuAction("settings", "select", section, panel.screen)
         }
     }
+
+    CalendarWindow { model: calendarModel; panelWindow: root.activePanelWindow }
+    WeatherWindow { model: weatherModel; panelWindow: root.activePanelWindow }
 
     NetworkWindow {
         networkModel: networkModel

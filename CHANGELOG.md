@@ -8,6 +8,10 @@ versions from `config.mk`.
 
 ### Added
 
+- Add optional Calendar and Weather panel widgets, off by default, with shared
+  visibility controls. Weather fetches only an explicitly entered city on
+  request and retains the last report through service failures (#358).
+
 - Ship titstack customization and diagnosis skills, an AI assistant Settings
   page, an optional skills RPM, actionable crash notifications, and opt-in X11 hang
   detection. Diagnosis

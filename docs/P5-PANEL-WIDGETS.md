@@ -70,3 +70,17 @@ The workstation exposed one active 1920x1080 monitor during this acceptance
 check, so real multi-monitor persistence was not exercised. Shared model and
 persistence behavior across panel consumers remains covered by the passing
 nested-X11 validation.
+
+## Optional calendar and weather (protocol 1.2)
+
+Status now includes eight widget records: the original six plus `calendar` and
+`weather`, both off by default. The reader retains 1.0 and 1.1 files and treats
+absent optional records as disabled. Enabled optional widgets are persisted in
+a 1.2 file, including the clock-seconds option record. When both optional widgets
+are off, writes retain the existing 1.0/1.1 representation. Existing visibility
+and seconds choices survive an independent calendar/weather change. Show all
+widgets explicitly enables all eight and keeps the seconds option. An older
+helper cannot consume an enabled optional widget; preserve the file and upgrade
+again, or turn both optional widgets off before downgrading.
+
+See [Calendar and weather](CALENDAR-WEATHER.md) for network behavior and validation.

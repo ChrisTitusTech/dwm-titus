@@ -36,6 +36,7 @@ INSTALL_COMMANDS = dwm-clipboard-observer \
 	scripts/dwm-display-setup \
 	scripts/dwm-initial-update \
 	scripts/dwm-keybinds \
+	scripts/dwm-weather \
 	scripts/dwm-lock \
 	scripts/dwm-lock-watch \
 	scripts/dwm-migrate-clipboard-surface \
@@ -500,6 +501,10 @@ check-clipboard: dwm-clipboard-observer
 	python3 tests/test-clipboard-migration.py
 	python3 tests/test-clipboard-runtime.py
 	python3 tests/test-clipboard-end-to-end.py
+check-calendar-weather: all
+	python3 tests/test-weather.py
+	dbus-run-session -- xvfb-run -a -s "-screen 0 1280x800x24" python3 tests/test-calendar-weather.py
+
 check-keyboard-layout: all
 	python3 tests/test-keyboard-refresh.py
 	tests/test-keyboard-layout-xvfb.sh
@@ -848,6 +853,7 @@ check: check-picom check-picom-xvfb
 	$(MAKE) check-quickshell-large-surfaces-xvfb
 	$(MAKE) check-quickshell-panel-menus
 	$(MAKE) check-quickshell-panel-settings
+	$(MAKE) check-calendar-weather
 	$(MAKE) check-update-center-settings
 	$(MAKE) check-update-center
 	$(MAKE) check-update-center-terminal
@@ -901,3 +907,5 @@ check: check-picom check-picom-xvfb
 .PHONY: check-clipboard-observer
 
 .PHONY: check-ai-assist check-ai-assist-xvfb check-notification-actions-xvfb
+
+.PHONY: check-calendar-weather
