@@ -94,7 +94,9 @@ manifest; other ignored local artifacts and host Git metadata are excluded.
 Tests run as an unprivileged container user after staging. Only the container's
 `/proc/*` masks are removed so nested Bubblewrap can create its own proc mount;
 this neither shares the host PID namespace nor adds writable host mounts.
-The container remains rootless and does not receive added capabilities.
+The container remains rootless and does not receive added capabilities. A tiny
+private Xvfb reserves display `:0` so nested servers use higher numbers and the
+native tests retain their unconditional refusal to operate on `:0`.
 Tests use private container networking for Fedora repository checks and
 receive no host D-Bus or display sockets. Source
 mount paths containing commas are rejected because of Podman's mount syntax.

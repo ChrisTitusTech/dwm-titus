@@ -117,6 +117,17 @@ if ((EUID == 0)); then
     useradd --create-home --uid 1000 dwm-test
     chown -hR dwm-test:dwm-test /workspace
     test_command=(runuser -u dwm-test -- scripts/run-tests)
+    # Preserve native tests that categorically reject display :0. A private
+    # placeholder keeps Xvfb -displayfd on higher numbers in an empty container.
+    Xvfb :0 -screen 0 1x1x24 -nolisten tcp -extension GLX >/workspace/reserved-x11.log 2>&1 &
+    display_reservation=$!
+    trap "kill $display_reservation 2>/dev/null || true" EXIT
+    for attempt in {1..40}; do
+        [[ ! -S /tmp/.X11-unix/X0 ]] || break
+        kill -0 "$display_reservation" || { cat /workspace/reserved-x11.log >&2; exit 1; }
+        sleep 0.05
+    done
+    [[ -S /tmp/.X11-unix/X0 ]] || { cat /workspace/reserved-x11.log >&2; exit 1; }
 fi
 printf "==> Running scripts/run-tests in Fedora\n"
 if "${test_command[@]}" "$@"; then
