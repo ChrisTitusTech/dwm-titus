@@ -22,9 +22,9 @@ def main():
         if not shutil.which(command):
             raise RuntimeError(f"Missing required smoke-test command: {command}")
     # Quickshell's IPC socket must fit Linux's 108-byte Unix socket path limit.
-    # Keep runtime files out of the deeply nested managed test workspace.
-    runtime_parent = os.environ["XDG_RUNTIME_DIR"]
-    with tempfile.TemporaryDirectory(prefix="qs-", dir=runtime_parent) as runtime, \
+    # Only this private IPC runtime uses /tmp; fixtures stay in the managed
+    # workspace, whose path can be too long even before the socket suffix.
+    with tempfile.TemporaryDirectory(prefix="qs-", dir="/tmp") as runtime, \
             tempfile.TemporaryDirectory(prefix="desktop-smoke-") as directory:
         work = Path(directory)
         config = work / "config"

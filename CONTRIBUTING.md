@@ -34,6 +34,10 @@ The runtime directory is mode `0700` and is set before private D-Bus sessions
 start, including for their activated services. A fixture that drops privileges
 must also supply a runtime directory owned by that fixture's user. Tests that
 use session services must still create a private D-Bus session.
+The desktop smoke test uses a separate private `/tmp/qs-*` runtime to keep
+Quickshell IPC sockets below Linux's 108-byte path limit, even with a long test
+root. Its fixture workspace remains under the managed root; the runtime is
+removed on success, failure, and handled interruption.
 
 Use `./install.sh --dry-run --non-interactive --profile core` to inspect the
 dependency plan without changing the system.
