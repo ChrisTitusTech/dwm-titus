@@ -149,7 +149,11 @@ def main():
     parser.add_argument("action", choices=("status", "fetch"))
     parser.add_argument("location", nargs="?")
     parser.add_argument("unit", nargs="?", choices=("c", "f"), default="c")
-    args = parser.parse_args()
+    argv = sys.argv[1:]
+    if argv[:1] == ["fetch"] and len(argv) > 1 and argv[1] not in ("--", "-h", "--help"):
+        # Locations are positional data, including negative latitude pairs.
+        argv.insert(1, "--")
+    args = parser.parse_args(argv)
     if args.action == "fetch" and args.location is None:
         parser.error("fetch requires an explicit city")
     try:

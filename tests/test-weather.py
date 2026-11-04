@@ -1,4 +1,5 @@
 """Weather provider parsing, explicit requests and safe failure/persistence."""
+from contextlib import redirect_stdout, redirect_stderr
 import importlib.machinery
 import io
 import json
@@ -31,6 +32,17 @@ class WeatherTests(unittest.TestCase):
             value = weather.fetch(location, unit)
             url = request.call_args.args[0].full_url
         return value, url
+
+    def test_cli_preserves_negative_coordinates_and_validation(self):
+        with patch.object(sys, "argv", ["dwm-weather", "fetch", "-33.86,151.21", "f"]), patch.object(weather, "fetch", return_value={}) as fetch, redirect_stdout(io.StringIO()):
+            self.assertEqual(weather.main(), 0)
+            fetch.assert_called_once_with("-33.86,151.21", "f")
+        for arguments in (["fetch"], ["fetch", "Paris", "kelvin"]):
+            with self.subTest(arguments=arguments), patch.object(sys, "argv", ["dwm-weather", *arguments]), patch.object(weather, "fetch") as fetch, redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as error:
+                    weather.main()
+                self.assertEqual(error.exception.code, 2)
+                fetch.assert_not_called()
 
     def test_read_does_not_contact_service(self):
         with patch.object(weather.urllib.request.OpenerDirector, "open", side_effect=AssertionError("unexpected network")):
