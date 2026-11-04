@@ -56,6 +56,8 @@ import "settings"
 import qs.core
 ShellRoot {
     id: harness
+    property bool paneSelected: true
+    readonly property var pane: deferred.item
     function findItem(item: var, name: string): var {
         if (item.objectName === name) return item;
         for (const child of item.children || []) { const found = findItem(child, name); if (found) return found; }
@@ -64,13 +66,16 @@ ShellRoot {
     FloatingWindow {
         visible: true; title: "Layout settings test"
         implicitWidth: 520; implicitHeight: 480; color: Theme.bg
-        LayoutSettingsPane { id: pane; anchors.fill: parent; anchors.margins: 20 }
+        DeferredSettingsPane { id: deferred; anchors.fill: parent; anchors.margins: 20
+            selected: harness.paneSelected; windowVisible: true
+            sourceComponent: LayoutSettingsPane { active: harness.paneSelected }
+        }
     }
     IpcHandler {
         target: "layoutTest"
-        function state(): string { return JSON.stringify(pane.snapshot); }
+        function state(): string { return JSON.stringify(pane ? pane.snapshot : {available:false}); }
         function setValue(key: string, value: int): void { pane.setValue(key, value); }
-        function active(value: bool): void { pane.active = value; }
+        function active(value: bool): void { harness.paneSelected = value; }
         function rect(name:string): string {
             const item = harness.findItem(pane, name);
             const point = item.mapToGlobal(0, 0);

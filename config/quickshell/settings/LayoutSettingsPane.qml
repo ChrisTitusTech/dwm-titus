@@ -79,6 +79,7 @@ ColumnLayout {
                 required property int index
                 objectName: "windowLayout" + index
                 label: modelData
+                visible: ((root.snapshot.choices || 0) & (1 << index)) !== 0
                 primary: root.snapshot.layout === index
                 enabled: root.editable
                 onActivated: root.setValue("layout", index)

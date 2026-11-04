@@ -18,15 +18,18 @@ window corner rounding; dwm does not require a compositor.
 
 ## X11 interface
 
-`_DWM_LAYOUT_STATE` is an INTEGER/32 root property with eight values: monitor
-number, visible tag mask, layout index, master percent, master count, tile gaps,
-protocol version (2) and per-tag settings owner (0 means the all-tag state). dwm publishes only changed values.
+`_DWM_LAYOUT_STATE` is an INTEGER/32 root property with nine values: monitor
+number, visible tag mask, semantic layout ID, master percent, master count, tile gaps,
+protocol version (3), per-tag settings owner (0 means the all-tag state),
+and a supported-layout bit mask (bits 0/1/2: Tile/Floating/Monocle). dwm publishes only changed values.
 
 `_DWM_LAYOUT_REQUEST` is a 32-bit root ClientMessage containing operation,
-integer value, monitor number, visible tag mask and a final word containing version 2 in the low 16 bits
+integer value, monitor number, visible tag mask and a final word containing version 3 in the low 16 bits
 and settings owner in the high 16 bits. Operations are
-layout (0), master percent (1), master count (2) and gap (3). Ranges are 0-2 for
+semantic layout choice (0), master percent (1), master count (2) and gap (3). Ranges are 0-2 for
 the shipped layouts, 5-95 percent, 0-20 master windows and 0-64 pixels. dwm
+maps choices to their arrange functions regardless of custom config.h ordering or
+array size; unknown custom layouts have ID -1 and unavailable choices are hidden. It
 rejects invalid values and requests for a different current monitor or view.
 
 The unprivileged `dwm-layout-settings status` command emits one JSON snapshot;
