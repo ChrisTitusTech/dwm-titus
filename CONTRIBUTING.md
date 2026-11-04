@@ -91,6 +91,10 @@ independent disposable clone with a synthetic commit. An unreferenced detached
 HEAD and its history are transferred through a read-only object stream.
 Host-staged ignored files are force-staged from the filtered NUL-delimited
 manifest; other ignored local artifacts and host Git metadata are excluded.
+Tests run as an unprivileged container user after staging. Only the container's
+`/proc/*` masks are removed so nested Bubblewrap can create its own proc mount;
+this neither shares the host PID namespace nor adds writable host mounts.
+The container remains rootless and does not receive added capabilities.
 Tests use private container networking for Fedora repository checks and
 receive no host D-Bus or display sockets. Source
 mount paths containing commas are rejected because of Podman's mount syntax.

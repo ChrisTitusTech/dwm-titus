@@ -77,7 +77,7 @@ reject_nested_mounts
 printf '==> Staging current worktree in a disposable container\n'
 set +e
 git -C "$source_tree" ls-files -z --cached --others --exclude-standard |
-	podman run --rm --interactive --network=private --security-opt=label=disable \
+	podman run --rm --interactive --network=private --security-opt=label=disable "--security-opt=unmask=/proc/*" \
 		--mount "type=bind,src=$repository,dst=/source/repository,ro=true,bind-nonrecursive" \
 		--mount "type=bind,src=$source_tree,dst=/source/worktree,ro=true,bind-nonrecursive" \
 		"$image" bash -c '
@@ -110,8 +110,16 @@ git --literal-pathspecs add --force --pathspec-from-file="$available" --pathspec
 git -c user.name="Disposable test runner" -c user.email=tests@example.invalid \
     -c commit.gpgsign=false commit --allow-empty -m "Disposable test snapshot"
 trap - ERR
+# Desktop updater tests require a real unprivileged desktop UID. The image
+# build/staging remains root only inside the rootless container.
+test_command=(scripts/run-tests)
+if ((EUID == 0)); then
+    useradd --create-home --uid 1000 dwm-test
+    chown -hR dwm-test:dwm-test /workspace
+    test_command=(runuser -u dwm-test -- scripts/run-tests)
+fi
 printf "==> Running scripts/run-tests in Fedora\n"
-if scripts/run-tests "$@"; then
+if "${test_command[@]}" "$@"; then
     exit 0
 else
     status=$?
