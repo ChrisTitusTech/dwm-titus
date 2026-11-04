@@ -113,6 +113,15 @@ first layout, right-click to open this section. The pill reads the layout from
 the running keymap, so layouts set with `setxkbmap` by hand show up too. It can
 be hidden like the other panel widgets.
 
+Enable **Calendar** or **Weather** in Control Center > Bar Widgets or
+Appearance > Panel widgets to add their panel icons. Both start off. Calendar
+opens a month view with previous/next, Today and arrow-key navigation. Weather
+asks for a city and an explicit Fetch action before sending that city to
+wttr.in. It displays Celsius or Fahrenheit, the fetch time and the last saved
+report when offline. Opening the popup makes no weather request; there is no
+automatic location lookup or background refresh. Escape and clicking outside
+close either popup.
+
 Optional floating-window titlebars are configured in the `[appearance]`
 section of your `~/.config/dwm-titus/themes.toml` (or the corresponding
 `XDG_CONFIG_HOME` path). Set `titlebars = 1` to enable drag and close controls;

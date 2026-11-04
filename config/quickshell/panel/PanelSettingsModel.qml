@@ -24,7 +24,9 @@ Scope {
         "bluetooth": true,
         "network": true,
         "power": true,
-        "keyboard-layout": true
+        "keyboard-layout": true,
+        "calendar": false,
+        "weather": false
     })
     property var optionValues: ({
         "clock-seconds": false
@@ -41,7 +43,9 @@ Scope {
         { "id": "bluetooth", "label": "Bluetooth" },
         { "id": "network", "label": "Network" },
         { "id": "power", "label": "Power" },
-        { "id": "keyboard-layout", "label": "Keyboard layout" }
+        { "id": "keyboard-layout", "label": "Keyboard layout" },
+        { "id": "calendar", "label": "Calendar" },
+        { "id": "weather", "label": "Weather" }
     ]
     readonly property var options: [
         { "id": "clock-seconds", "label": "Clock: show seconds" }
@@ -49,7 +53,7 @@ Scope {
 
     function validWidget(id) {
         return id === "workspaces" || id === "volume" || id === "bluetooth"
-            || id === "network" || id === "power" || id === "keyboard-layout";
+            || id === "network" || id === "power" || id === "keyboard-layout" || id === "calendar" || id === "weather";
     }
 
     function widgetEnabled(id) {
@@ -71,7 +75,9 @@ Scope {
             "bluetooth": true,
             "network": true,
             "power": true,
-            "keyboard-layout": true
+            "keyboard-layout": true,
+            "calendar": false,
+            "weather": false
         });
         root.optionValues = ({
             "clock-seconds": false
@@ -91,7 +97,7 @@ Scope {
     function parseStatus(text) {
         const lines = text.trim().split("\n");
         // 1.1 adds one option line before "complete"; 1.0 has none.
-        const optionCount = lines[0] === "panel-settings-protocol\t1\t1" ? root.options.length
+        const optionCount = ["panel-settings-protocol\t1\t1", "panel-settings-protocol\t1\t2"].indexOf(lines[0]) >= 0 ? root.options.length
             : lines[0] === "panel-settings-protocol\t1\t0" ? 0 : -1;
         if (optionCount < 0 || lines.length < 8 + optionCount
                 || lines[lines.length - 1] !== "complete\tstatus") return;
@@ -111,6 +117,8 @@ Scope {
             parsed[fields[1]] = fields[2] === "enabled";
         }
         if (parsed["keyboard-layout"] === undefined) parsed["keyboard-layout"] = true;
+        if (parsed.calendar === undefined) parsed.calendar = false;
+        if (parsed.weather === undefined) parsed.weather = false;
         for (const widget of root.widgets) {
             if (parsed[widget.id] === undefined) return;
         }

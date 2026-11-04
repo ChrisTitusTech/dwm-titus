@@ -25,11 +25,11 @@ run_helper() {
 }
 
 status=$(run_helper status)
-printf '%s\n' "$status" | grep -Fqx 'panel-settings-protocol	1	1'
+printf '%s\n' "$status" | grep -Fqx 'panel-settings-protocol	1	2'
 printf '%s\n' "$status" | grep -Fqx 'option	clock-seconds	disabled'
-test "$(printf '%s\n' "$status" | wc -l)" -eq 10
+test "$(printf '%s\n' "$status" | wc -l)" -eq 12
 printf '%s\n' "$status" | grep -Fqx \
-	'state	defaults	Using safe all-on defaults; the first change creates persistent state'
+	'state	defaults	Using safe defaults; the first change creates persistent state'
 for widget in workspaces volume bluetooth network power keyboard-layout; do
 	printf '%s\n' "$status" | grep -Fqx "widget	$widget	enabled"
 done
@@ -137,6 +137,9 @@ printf '%s\n' "$kbd_off" | grep -Fqx \
 	'state	available	Persistent panel visibility is active for every monitor'
 # Reset turns it back on and keeps the seconds option.
 run_helper reset >/dev/null
+# Continue the old-format compatibility case with the two new optional widgets off.
+run_helper set calendar disabled >/dev/null
+run_helper set weather disabled >/dev/null
 if grep -Fq 'keyboard-layout' "$state_file"; then
 	printf 'An enabled keyboard-layout was written to the file\n' >&2
 	exit 1
@@ -154,6 +157,18 @@ if grep -Fq 'keyboard-layout' "$state_file"; then
 	printf 'An enabled keyboard-layout was written to the file\n' >&2
 	exit 1
 fi
+# Optional widgets survive independent changes and use the 1.2 persisted format.
+run_helper set calendar enabled >/dev/null
+run_helper set weather enabled >/dev/null
+grep -Fqx 'panel-settings-protocol	1	2' "$state_file"
+run_helper set volume disabled >/dev/null
+new_status=$(run_helper status)
+printf '%s\n' "$new_status" | grep -Fqx 'widget	calendar	enabled'
+printf '%s\n' "$new_status" | grep -Fqx 'widget	weather	enabled'
+printf '%s\n' "$new_status" | grep -Fqx 'widget	volume	disabled'
+run_helper set calendar disabled >/dev/null
+run_helper set weather disabled >/dev/null
+grep -Fqx 'panel-settings-protocol	1	0' "$state_file"
 # Exactly the five legacy widgets are required; keyboard-layout cannot stand
 # in for a missing one, and duplicates are rejected.
 for broken_widgets in \
@@ -176,26 +191,26 @@ fi
 
 # A truncated 1.1 file must not silently reset its missing seconds option.
 printf 'panel-settings-protocol\t1\t1\nworkspaces\tenabled\nvolume\tenabled\nbluetooth\tenabled\nnetwork\tenabled\npower\tenabled\n' >"$state_file"
-run_helper status | grep -Fqx 'state	partial	Incomplete panel settings were preserved; using all-on defaults'
+run_helper status | grep -Fqx 'state	partial	Incomplete panel settings were preserved; using defaults'
 
 # Option lines are only valid in 1.1 files; malformed option lines fall back.
 printf 'panel-settings-protocol\t1\t0\nworkspaces\tenabled\nvolume\tdisabled\nbluetooth\tenabled\nnetwork\tenabled\npower\tenabled\noption\tclock-seconds\tenabled\n' \
 	>"$state_file"
 run_helper status | grep -Fqx \
-	'state	partial	Malformed panel settings were preserved; using all-on defaults'
+	'state	partial	Malformed panel settings were preserved; using defaults'
 for bad_option in "option	clock-seconds	on" "option	clock-minutes	enabled" "option	clock-seconds" \
 	"option	clock-seconds	enabled	x"; do
 	printf 'panel-settings-protocol\t1\t1\nworkspaces\tenabled\nvolume\tdisabled\nbluetooth\tenabled\nnetwork\tenabled\npower\tenabled\n%s\n' \
 		"$bad_option" >"$state_file"
 	bad=$(run_helper status)
 	printf '%s\n' "$bad" | grep -Fqx \
-		'state	partial	Malformed panel settings were preserved; using all-on defaults'
+		'state	partial	Malformed panel settings were preserved; using defaults'
 	printf '%s\n' "$bad" | grep -Fqx 'option	clock-seconds	disabled'
 done
 printf 'panel-settings-protocol\t1\t1\nworkspaces\tenabled\nvolume\tdisabled\nbluetooth\tenabled\nnetwork\tenabled\npower\tenabled\noption\tclock-seconds\tenabled\noption\tclock-seconds\tenabled\n' \
 	>"$state_file"
 run_helper status | grep -Fqx \
-	'state	partial	Malformed panel settings were preserved; using all-on defaults'
+	'state	partial	Malformed panel settings were preserved; using defaults'
 printf 'panel-settings-protocol\t1\t1\nworkspaces\tenabled\nvolume\tdisabled\nbluetooth\tenabled\nnetwork\tenabled\npower\tenabled\noption\tclock-seconds\tdisabled\n' \
 	>"$state_file"
 run_helper status | grep -Fqx 'widget	volume	disabled'
@@ -209,7 +224,7 @@ grep -Fqx 'network	disabled' "$state_file"
 chmod 666 "$state_file"
 unsafe_mode=$(run_helper status)
 printf '%s\n' "$unsafe_mode" | grep -Fqx \
-	'state	unavailable	Persistent panel state is unsafe; using all-on defaults'
+	'state	unavailable	Persistent panel state is unsafe; using defaults'
 if run_helper set network enabled >"$work/unsafe-mode.out" 2>"$work/unsafe-mode.err"; then
 	printf 'Panel settings accepted a writable-by-others state file\n' >&2
 	exit 1
@@ -220,7 +235,7 @@ chmod 640 "$state_file"
 printf 'panel-settings-protocol\t2\t0\nvolume\tdisabled\n' >"$state_file"
 future=$(run_helper status)
 printf '%s\n' "$future" | grep -Fqx \
-	'state	partial	Unsupported panel settings version was preserved; using all-on defaults'
+	'state	partial	Unsupported panel settings version was preserved; using defaults'
 for widget in workspaces volume bluetooth network power keyboard-layout; do
 	printf '%s\n' "$future" | grep -Fqx "widget	$widget	enabled"
 done
@@ -229,7 +244,7 @@ grep -Fqx 'panel-settings-protocol	2	0' "$state_file"
 printf 'broken\n' >"$state_file"
 malformed=$(run_helper status)
 printf '%s\n' "$malformed" | grep -Fqx \
-	'state	partial	Malformed panel settings were preserved; using all-on defaults'
+	'state	partial	Malformed panel settings were preserved; using defaults'
 grep -Fqx broken "$state_file"
 
 for malformed_record in "volume		disabled" "	volume	disabled" "volume	disabled	"; do
@@ -240,7 +255,7 @@ for malformed_record in "volume		disabled" "	volume	disabled" "volume	disabled	"
 	} >"$state_file"
 	malformed=$(run_helper status)
 	printf '%s\n' "$malformed" | grep -Fqx \
-		'state	partial	Malformed panel settings were preserved; using all-on defaults'
+		'state	partial	Malformed panel settings were preserved; using defaults'
 	for widget in workspaces volume bluetooth network power; do
 		printf '%s\n' "$malformed" | grep -Fqx "widget	$widget	enabled"
 	done
@@ -390,7 +405,7 @@ mv "$state_file" "$work/real-state"
 ln -s "$work/real-state" "$state_file"
 unsafe=$(run_helper status)
 printf '%s\n' "$unsafe" | grep -Fqx \
-	'state	unavailable	Persistent panel state is unsafe; using all-on defaults'
+	'state	unavailable	Persistent panel state is unsafe; using defaults'
 if run_helper set volume disabled >"$work/unsafe.out" 2>"$work/unsafe.err"; then
 	printf 'Panel settings accepted an unsafe state file\n' >&2
 	exit 1
@@ -403,14 +418,14 @@ mkdir -p "$unsafe_config" "$unsafe_target"
 ln -s "$unsafe_target" "$unsafe_config/dwm-titus"
 unsafe_dir=$(HOME=$home XDG_CONFIG_HOME=$unsafe_config XDG_RUNTIME_DIR=$runtime "$helper" status)
 printf '%s\n' "$unsafe_dir" | grep -Fqx \
-	'state	unavailable	Persistent panel state directory is unsafe; using all-on defaults'
+	'state	unavailable	Persistent panel state directory is unsafe; using defaults'
 
 writable_config=$work/writable-config
 mkdir -p "$writable_config/dwm-titus"
 chmod 777 "$writable_config/dwm-titus"
 writable_dir=$(HOME=$home XDG_CONFIG_HOME=$writable_config XDG_RUNTIME_DIR=$runtime "$helper" status)
 printf '%s\n' "$writable_dir" | grep -Fqx \
-	'state	unavailable	Persistent panel state directory is unsafe; using all-on defaults'
+	'state	unavailable	Persistent panel state directory is unsafe; using defaults'
 if HOME=$home XDG_CONFIG_HOME=$writable_config XDG_RUNTIME_DIR=$runtime \
 	"$helper" set volume disabled >"$work/writable-dir.out" 2>"$work/writable-dir.err"; then
 	printf 'Panel settings accepted a writable-by-others state directory\n' >&2
@@ -481,6 +496,6 @@ grep -Fq 'onToggled: root.panelSettingsModel.toggleWidget(panelWidgetRow.modelDa
 
 printf 'Quickshell panel settings persistence: PASS\n'
 grep -Fq '"Keyboard layout": "keyboard-layout"' "$control_model"
-grep -Fq 'model: ["Volume", "Bluetooth", "Network", "Power", "Keyboard layout", "Workspaces"]' "$control_window"
+grep -Fq 'model: ["Volume", "Bluetooth", "Network", "Power", "Keyboard layout", "Workspaces", "Calendar", "Weather"]' "$control_window"
 grep -Fq '{ "id": "keyboard-layout", "label": "Keyboard layout" }' "$model"
 grep -Fq 'onSettingsSectionRequested: (panel, section) => root.runCommandMenuAction("settings", "select", section, panel.screen)' "$shell"

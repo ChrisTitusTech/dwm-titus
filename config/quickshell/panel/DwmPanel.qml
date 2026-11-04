@@ -215,6 +215,21 @@ PanelWindow {
                 }
             }
 
+            UtilityWidgetButton {
+                objectName: "calendarIndicator"
+                visible: root.panelSettingsModel.widgetEnabled("calendar")
+                kind: "calendar"
+                label: "Calendar"
+                onActivated: root.popupRequested(root, "calendar")
+            }
+            UtilityWidgetButton {
+                objectName: "weatherIndicator"
+                visible: root.panelSettingsModel.widgetEnabled("weather")
+                kind: "weather"
+                label: "Weather"
+                onActivated: root.popupRequested(root, "weather")
+            }
+
             ShellButton {
                 id: updateCenterIndicator
                 objectName: "updateCenterIndicator"

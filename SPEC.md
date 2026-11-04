@@ -199,6 +199,13 @@ Settings tab offers a persistent Float update terminal toggle that applies to
 the next update or recovery terminal; those terminals default to tiled.
 Update Center and the other anchored control popups must close on Escape and
 on a click outside their visible card under X11.
+Calendar and Weather are optional panel widgets, disabled by default. Their
+visibility uses the shared panel-settings protocol, preserving older files.
+Calendar uses the shared clock, supports month navigation and highlights today.
+Weather requires an explicit city and Fetch action, uses a bounded HTTPS JSON
+request, never automatically geolocates or polls, and preserves the last report
+on failure. Both popups use normal Escape and click-away dismissal.
+
 Visible shell surfaces must be opaque and follow the active theme selected in
 the user `themes.toml` file.
 

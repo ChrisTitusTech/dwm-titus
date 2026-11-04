@@ -1,0 +1,168 @@
+#!/usr/bin/env python3
+"""Fetch explicitly requested city weather from wttr.in; never geolocate or poll."""
+import argparse
+import contextlib
+import fcntl
+import json
+import math
+import os
+from pathlib import Path
+import signal
+import stat
+import sys
+import tempfile
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+
+MAX_RESPONSE = 256 * 1024
+MAX_STATE = 8192
+MAX_FIELD = 200
+PROVIDER = "https://wttr.in/"
+
+
+def location_name(value):
+    if not isinstance(value, str):
+        raise ValueError("Weather location must be text")
+    value = value.strip()
+    if not 1 <= len(value) <= 120 or any(not (char.isalnum() or char in " -',.()") for char in value):
+        raise ValueError("Enter a city or coordinates, using letters, numbers, spaces and commas")
+    return value
+
+
+def state_path():
+    value = os.environ.get("XDG_CONFIG_HOME", "")
+    home = Path(value) if value.startswith("/") else Path.home() / ".config"
+    return home / "dwm-titus/weather-state.json"
+
+
+def safe_entry(path, directory=False):
+    info = path.lstat()
+    kind = stat.S_ISDIR(info.st_mode) if directory else stat.S_ISREG(info.st_mode) and info.st_nlink == 1
+    if not kind or info.st_uid != os.getuid() or info.st_mode & 0o022:
+        raise ValueError("Weather state has unsafe ownership or permissions")
+    if not directory and info.st_size > MAX_STATE:
+        raise ValueError("Weather state is too large")
+
+
+def load():
+    path = state_path()
+    if path.parent.exists() or path.parent.is_symlink():
+        safe_entry(path.parent, True)
+    if not path.exists() and not path.is_symlink():
+        return {"protocol": 1, "location": "", "unit": "c", "weather": None, "fetched": 0}
+    safe_entry(path)
+    with path.open(encoding="utf-8") as stream:
+        value = json.load(stream)
+    if not isinstance(value, dict) or value.get("protocol") != 1 or value.get("unit") not in ("c", "f"):
+        raise ValueError("Weather state is invalid; preserve it and move it aside before retrying")
+    location_name(value.get("location", ""))
+    fetched = value.get("fetched")
+    if (type(fetched) not in (float, int) or not math.isfinite(fetched)
+            or fetched < 0 or not isinstance(value.get("weather"), dict)):
+        raise ValueError("Weather state is invalid")
+    weather = value["weather"]
+    for key in ("temperature", "feels", "humidity", "wind", "description"):
+        if not isinstance(weather.get(key), str) or len(weather[key]) > MAX_FIELD:
+            raise ValueError("Weather state is invalid")
+    return value
+
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise ValueError("Weather service redirected the request; try again later")
+
+
+def parse_weather(value, unit):
+    try:
+        current = value["current_condition"][0]
+        suffix = "C" if unit == "c" else "F"
+        result = {
+            "temperature": str(current["temp_" + suffix]),
+            "feels": str(current["FeelsLike" + suffix]),
+            "humidity": str(current["humidity"]),
+            "wind": str(current["windspeedKmph" if unit == "c" else "windspeedMiles"]),
+            "description": current["weatherDesc"][0]["value"],
+        }
+        for key in ("temperature", "feels", "humidity", "wind"):
+            if len(result[key]) > MAX_FIELD:
+                raise ValueError("Weather reading is too long")
+            number = float(result[key])
+            if not -1000 < number < 1000:
+                raise ValueError("Invalid weather reading")
+        if not isinstance(result["description"], str) or len(result["description"]) > MAX_FIELD:
+            raise ValueError("Invalid weather description")
+        return result
+    except (KeyError, IndexError, TypeError) as error:
+        raise ValueError("Weather service returned an incomplete response") from error
+
+
+def fetch(location, unit):
+    location = location_name(location)
+    load()  # Never replace malformed or unsafe existing state.
+    url = PROVIDER + urllib.parse.quote(location, safe="") + "?format=j1"
+
+    def timed_out(*_):
+        raise TimeoutError("Weather request timed out; try again")
+
+    old_handler = signal.signal(signal.SIGALRM, timed_out)
+    signal.alarm(12)
+    try:
+        request = urllib.request.Request(url, headers={"User-Agent": "dwm-titus-weather/1", "Accept": "application/json"})
+        with urllib.request.build_opener(NoRedirect).open(request, timeout=6) as response:
+            raw = response.read(MAX_RESPONSE + 1)
+        if len(raw) > MAX_RESPONSE:
+            raise ValueError("Weather service response is too large")
+        weather = parse_weather(json.loads(raw), unit)
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old_handler)
+    value = {"protocol": 1, "location": location, "unit": unit, "weather": weather, "fetched": int(time.time())}
+    encoded = (json.dumps(value) + "\n").encode("utf-8")
+    if len(encoded) > MAX_STATE:
+        raise ValueError("Weather report is too large to save")
+    path = state_path()
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    safe_entry(path.parent, True)
+    lock_path = path.parent / ".weather.lock"
+    fd = os.open(lock_path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
+    with os.fdopen(fd, "r+") as lock:
+        safe_entry(lock_path)
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        load()
+        fd, temporary = tempfile.mkstemp(prefix=".weather-", dir=path.parent)
+        try:
+            with os.fdopen(fd, "wb") as stream:
+                stream.write(encoded)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, path)
+        finally:
+            with contextlib.suppress(FileNotFoundError):
+                os.unlink(temporary)
+    return value
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("action", choices=("status", "fetch"))
+    parser.add_argument("location", nargs="?")
+    parser.add_argument("unit", nargs="?", choices=("c", "f"), default="c")
+    argv = sys.argv[1:]
+    if argv[:1] == ["fetch"] and len(argv) > 1 and argv[1] not in ("--", "-h", "--help"):
+        # Locations are positional data, including negative latitude pairs.
+        argv.insert(1, "--")
+    args = parser.parse_args(argv)
+    if args.action == "fetch" and args.location is None:
+        parser.error("fetch requires an explicit city")
+    try:
+        print(json.dumps(load() if args.action == "status" else fetch(args.location, args.unit)))
+    except (OSError, ValueError, urllib.error.URLError, TimeoutError) as error:
+        print(f"Weather unavailable: {error}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
