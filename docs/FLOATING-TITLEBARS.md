@@ -44,7 +44,10 @@ supplies its colors; the strip uses dwm's configured Xft font. Decorations are d
 Xinerama servers. The native fixture checks disabled defaults, floating versus
 tiled behavior, title/body geometry, application-driven movement, actual mouse
 dragging, workspace policy changes, fullscreen entry/exit, layout changes,
-WM_DELETE_WINDOW delivery and decoration cleanup. It samples idle dwm CPU.
+WM_DELETE_WINDOW delivery and decoration cleanup. A tall Xvfb root with a
+test-only Xinerama shim checks an actual drag from a lower virtual monitor to
+an upper one. Fullscreen restoration reserves titlebar clearance without
+constraining interactive monitor changes. The fixture samples idle dwm CPU.
 `DWM_FEATURE_EVIDENCE_DIR` saves a screenshot. The existing native runtime,
 monitor/tag, keyboard and aggregate gates cover integration. Physical monitor
 hotplug, Wine applications and GPU hardware still need separate qualification.
