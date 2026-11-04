@@ -215,22 +215,18 @@ PanelWindow {
                 }
             }
 
-            ShellButton {
+            UtilityWidgetButton {
                 objectName: "calendarIndicator"
                 visible: root.panelSettingsModel.widgetEnabled("calendar")
-                label: ""
-                leadingLabel: "\uF073"
-                Accessible.name: "Calendar"
-                accessibleDescription: "Open month calendar"
+                kind: "calendar"
+                label: "Calendar"
                 onActivated: root.popupRequested(root, "calendar")
             }
-            ShellButton {
+            UtilityWidgetButton {
                 objectName: "weatherIndicator"
                 visible: root.panelSettingsModel.widgetEnabled("weather")
-                label: ""
-                leadingLabel: "\uF0C2"
-                Accessible.name: "Weather"
-                accessibleDescription: "Open weather"
+                kind: "weather"
+                label: "Weather"
                 onActivated: root.popupRequested(root, "weather")
             }
 

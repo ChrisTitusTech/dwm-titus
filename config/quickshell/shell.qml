@@ -37,6 +37,11 @@ ShellRoot {
         ? activePanelWindow.screen
         : (Quickshell.screens.length > 0 ? Quickshell.screens[0] : null)
 
+    function closePanelWidgets() {
+        calendarModel.close();
+        weatherModel.close();
+    }
+
     function selectPanelPopup(panel, popupId) {
         if (!panel || !panel.screen) {
             return;
@@ -155,8 +160,7 @@ ShellRoot {
 
         onVisibleChanged: {
             if (visible) {
-                calendarModel.close();
-                weatherModel.close();
+                root.closePanelWidgets();
                 commandMenuModel.close();
                 clipboardModel.close();
                 updateCenterModel.close();
@@ -167,7 +171,7 @@ ShellRoot {
     CommandMenuModel {
         id: commandMenuModel
         launcherModel: launcherModel
-        onVisibleChanged: if (visible) { updateCenterModel.close(); clipboardModel.close(); }
+        onVisibleChanged: if (visible) { root.closePanelWidgets(); updateCenterModel.close(); clipboardModel.close(); }
         currentEntryIds: {
             const ids = [];
 
@@ -205,6 +209,7 @@ ShellRoot {
 
         onVisibleChanged: {
             if (visible) {
+                root.closePanelWidgets();
                 launcherModel.close();
                 commandMenuModel.close();
                 updateCenterModel.close();
@@ -220,7 +225,7 @@ ShellRoot {
     PowerMenuModel {
         id: powerMenuModel
         powerModel: powerModel
-        onVisibleChanged: if (visible) { updateCenterModel.close(); clipboardModel.close(); }
+        onVisibleChanged: if (visible) { root.closePanelWidgets(); updateCenterModel.close(); clipboardModel.close(); }
     }
 
     PowerModel {
@@ -259,24 +264,24 @@ ShellRoot {
 
     NetworkModel {
         id: networkModel
-        onVisibleChanged: if (visible) { updateCenterModel.close(); clipboardModel.close(); }
+        onVisibleChanged: if (visible) { root.closePanelWidgets(); updateCenterModel.close(); clipboardModel.close(); }
     }
 
     ControlsModel {
         id: controlsModel
-        onVisibleChanged: if (visible) { updateCenterModel.close(); clipboardModel.close(); }
+        onVisibleChanged: if (visible) { root.closePanelWidgets(); updateCenterModel.close(); clipboardModel.close(); }
     }
 
     BluetoothModel {
         id: bluetoothModel
-        onVisibleChanged: if (visible) { updateCenterModel.close(); clipboardModel.close(); }
+        onVisibleChanged: if (visible) { root.closePanelWidgets(); updateCenterModel.close(); clipboardModel.close(); }
     }
 
     ControlCenterModel {
         id: controlCenterModel
         powerModel: powerModel
         panelSettingsModel: panelSettingsModel
-        onVisibleChanged: if (visible) { updateCenterModel.close(); clipboardModel.close(); }
+        onVisibleChanged: if (visible) { root.closePanelWidgets(); updateCenterModel.close(); clipboardModel.close(); }
         onUtilityVisibleChanged: if (utilityVisible) { updateCenterModel.close(); clipboardModel.close(); }
     }
 
@@ -304,11 +309,13 @@ ShellRoot {
 
     UpdateCenterModel {
         id: updateCenterModel
+        onVisibleChanged: if (visible) root.closePanelWidgets();
         desktopUpdateModel: desktopUpdateModel
     }
 
     SettingsModel {
         id: settingsModel
+        onVisibleChanged: if (visible) root.closePanelWidgets();
         networkModel: networkModel
         bluetoothModel: bluetoothModel
         controlsModel: controlsModel
@@ -336,7 +343,7 @@ ShellRoot {
 
     NotificationModel {
         id: notificationModel
-        onHistoryVisibleChanged: if (historyVisible) { updateCenterModel.close(); clipboardModel.close(); }
+        onHistoryVisibleChanged: if (historyVisible) { root.closePanelWidgets(); updateCenterModel.close(); clipboardModel.close(); }
     }
 
     IpcHandler {

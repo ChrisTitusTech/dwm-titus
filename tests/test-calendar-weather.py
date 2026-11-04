@@ -70,42 +70,28 @@ with tempfile.TemporaryDirectory(dir=os.environ["TMPDIR"]) as directory:
             + "module=importlib.machinery.SourceFileLoader('weather'," + repr(str(repo / "scripts/dwm-weather")) + ").load_module()\n"
             + "module.PROVIDER=" + repr(f"http://127.0.0.1:{server.server_port}/") + "\nsys.exit(module.main())\n")
         wrapper.chmod(0o755)
-        qml = work / "qml"
-        qml.mkdir()
-        for name in ("core", "panel", "assets"):
-            (qml / name).symlink_to(repo / "config/quickshell" / name)
-        (qml / "shell.qml").write_text('''import QtQuick
-import Quickshell
-import Quickshell.Io
-import "panel"
-import qs.core
-ShellRoot {
-    CalendarModel { id: calendarProvider; timestamp: new Date(2024, 1, 29, 12).getTime() }
-    WeatherModel { id: weatherProvider }
-    PanelSettingsModel {
-        id: settingsProvider
-        onValuesChanged: {
-            if (!widgetEnabled("calendar")) calendarProvider.close();
-            if (!widgetEnabled("weather")) weatherProvider.close();
-        }
-    }
-    PanelWindow { id: panel; anchors { top:true; left:true; right:true } implicitHeight:32; color:Theme.barBackground }
-    CalendarWindow { model:calendarProvider; panelWindow:panel }
-    WeatherWindow { model:weatherProvider; panelWindow:panel }
+        qml = work / "config/quickshell"
+        shutil.copytree(repo / "config/quickshell", qml)
+        shell_source = (qml / "shell.qml").read_text()
+        integration = """
     IpcHandler {
         target: "widgetTest"
-        function state(): string { return JSON.stringify({weather:weatherProvider.weather, fetched:weatherProvider.fetched,
-            location:weatherProvider.location, unit:weatherProvider.unit, busy:weatherProvider.busy, message:weatherProvider.message,
-            weatherVisible:weatherProvider.visible, calendarVisible:calendarProvider.visible, month:calendarProvider.month,
-            year:calendarProvider.year, days:calendarProvider.days, widgets:settingsProvider.values, provider:settingsProvider.providerState}); }
-        function calendar(): void { weatherProvider.close(); calendarProvider.toggle(); }
-        function weather(): void { calendarProvider.close(); weatherProvider.toggle(); }
-        function month(delta:int): void { calendarProvider.changeMonth(delta); }
-        function widget(id:string, enabled:bool): void { settingsProvider.setWidget(id, enabled); }
-        function fetch(city:string, unit:string): void { weatherProvider.fetch(city, unit); }
+        function state(): string { return JSON.stringify({weather:weatherModel.weather, fetched:weatherModel.fetched,
+            location:weatherModel.location, unit:weatherModel.unit, busy:weatherModel.busy, message:weatherModel.message,
+            weatherVisible:weatherModel.visible, calendarVisible:calendarModel.visible, month:calendarModel.month,
+            year:calendarModel.year, days:calendarModel.days, widgets:panelSettingsModel.values,
+            provider:panelSettingsModel.providerState, clipboardVisible:clipboardModel.visible}); }
+        function calendar(): void {
+            calendarModel.timestamp = new Date(2024, 1, 29, 12).getTime();
+            root.requestPanelPopup(root.defaultPanelWindow, "calendar");
+        }
+        function weather(): void { root.requestPanelPopup(root.defaultPanelWindow, "weather"); }
+        function month(delta:int): void { calendarModel.changeMonth(delta); }
+        function widget(id:string, enabled:bool): void { panelSettingsModel.setWidget(id, enabled); }
+        function fetch(city:string, unit:string): void { weatherModel.fetch(city, unit); }
     }
-}
-''')
+"""
+        (qml / "shell.qml").write_text(shell_source.rsplit("}", 1)[0] + integration + "}\n")
         processes = []
         try:
             log = open(work / "dwm.log", "w")
@@ -144,6 +130,11 @@ ShellRoot {
                 ImageGrab.grab(xdisplay=os.environ["DISPLAY"]).save(Path(evidence) / "calendar-widget.png")
             run("xdotool", "key", "Escape")
             wait(lambda: not state()["calendarVisible"], "Calendar Escape failed")
+            # Exercise the actual production root, IPC and default shortcut.
+            ipc("calendar")
+            run("xdotool", "key", "super+v")
+            wait(lambda: state()["clipboardVisible"] and not state()["calendarVisible"], "Clipboard shortcut left Calendar above the clipboard")
+            run("quickshell", "ipc", "--path", str(qml / "shell.qml"), "call", "clipboard", "close")
             ipc("widget", "weather", "true")
             wait(lambda: state()["widgets"]["weather"], "Weather toggle did not persist")
             ipc("weather")
@@ -156,6 +147,10 @@ ShellRoot {
             assert state()["weather"]["temperature"] == "22"
             if evidence:
                 ImageGrab.grab(xdisplay=os.environ["DISPLAY"]).save(Path(evidence) / "weather-widget.png")
+            run("xdotool", "key", "super+v")
+            wait(lambda: state()["clipboardVisible"] and not state()["weatherVisible"], "Clipboard shortcut left Weather above the clipboard")
+            run("quickshell", "ipc", "--path", str(qml / "shell.qml"), "call", "clipboard", "close")
+            ipc("weather")
             Handler.code = 503
             ipc("fetch", "London", "f")
             wait(lambda: state()["message"].startswith("Weather unavailable") and not state()["busy"], "Offline failure was not reported")
@@ -174,7 +169,7 @@ ShellRoot {
             time.sleep(2)
             after = sum(map(int, Path(f"/proc/{shell.pid}/stat").read_text().rsplit(")", 1)[1].split()[11:13]))
             assert after - before <= 15
-            print(f"Calendar leap year/navigation, popup Escape/click-away, persisted toggles, no automatic weather requests, explicit fetch/failure cache: PASS; closed idle ticks/2s={after-before}")
+            print(f"Calendar leap year/navigation, popup Escape/click-away/clipboard hotkey, persisted toggles, no automatic weather requests, explicit fetch/failure cache: PASS; closed idle ticks/2s={after-before}")
         finally:
             if sys.exc_info()[0]:
                 print((work / "qml.log").read_text() if (work / "qml.log").exists() else "No QML log", file=sys.stderr)

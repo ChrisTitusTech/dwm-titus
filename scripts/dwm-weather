@@ -17,6 +17,8 @@ import urllib.parse
 import urllib.request
 
 MAX_RESPONSE = 256 * 1024
+MAX_STATE = 8192
+MAX_FIELD = 200
 PROVIDER = "https://wttr.in/"
 
 
@@ -40,7 +42,7 @@ def safe_entry(path, directory=False):
     kind = stat.S_ISDIR(info.st_mode) if directory else stat.S_ISREG(info.st_mode) and info.st_nlink == 1
     if not kind or info.st_uid != os.getuid() or info.st_mode & 0o022:
         raise ValueError("Weather state has unsafe ownership or permissions")
-    if not directory and info.st_size > 8192:
+    if not directory and info.st_size > MAX_STATE:
         raise ValueError("Weather state is too large")
 
 
@@ -62,7 +64,7 @@ def load():
         raise ValueError("Weather state is invalid")
     weather = value["weather"]
     for key in ("temperature", "feels", "humidity", "wind", "description"):
-        if not isinstance(weather.get(key), str) or len(weather[key]) > 200:
+        if not isinstance(weather.get(key), str) or len(weather[key]) > MAX_FIELD:
             raise ValueError("Weather state is invalid")
     return value
 
@@ -84,10 +86,12 @@ def parse_weather(value, unit):
             "description": current["weatherDesc"][0]["value"],
         }
         for key in ("temperature", "feels", "humidity", "wind"):
+            if len(result[key]) > MAX_FIELD:
+                raise ValueError("Weather reading is too long")
             number = float(result[key])
             if not -1000 < number < 1000:
                 raise ValueError("Invalid weather reading")
-        if not isinstance(result["description"], str) or len(result["description"]) > 200:
+        if not isinstance(result["description"], str) or len(result["description"]) > MAX_FIELD:
             raise ValueError("Invalid weather description")
         return result
     except (KeyError, IndexError, TypeError) as error:
@@ -115,6 +119,9 @@ def fetch(location, unit):
         signal.alarm(0)
         signal.signal(signal.SIGALRM, old_handler)
     value = {"protocol": 1, "location": location, "unit": unit, "weather": weather, "fetched": int(time.time())}
+    encoded = (json.dumps(value) + "\n").encode("utf-8")
+    if len(encoded) > MAX_STATE:
+        raise ValueError("Weather report is too large to save")
     path = state_path()
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     safe_entry(path.parent, True)
@@ -126,9 +133,8 @@ def fetch(location, unit):
         load()
         fd, temporary = tempfile.mkstemp(prefix=".weather-", dir=path.parent)
         try:
-            with os.fdopen(fd, "w") as stream:
-                json.dump(value, stream)
-                stream.write("\n")
+            with os.fdopen(fd, "wb") as stream:
+                stream.write(encoded)
                 stream.flush()
                 os.fsync(stream.fileno())
             os.replace(temporary, path)

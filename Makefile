@@ -502,8 +502,8 @@ check-clipboard: dwm-clipboard-observer
 	python3 tests/test-clipboard-runtime.py
 	python3 tests/test-clipboard-end-to-end.py
 check-calendar-weather: all
-	python3 tests/test-weather.py
-	dbus-run-session -- xvfb-run -a -s "-screen 0 1280x800x24" python3 tests/test-calendar-weather.py
+	$(call run_managed_test,python3 tests/test-weather.py)
+	$(call run_managed_test,dbus-run-session -- xvfb-run -a -s "-screen 0 1280x800x24" python3 tests/test-calendar-weather.py)
 
 check-keyboard-layout: all
 	python3 tests/test-keyboard-refresh.py

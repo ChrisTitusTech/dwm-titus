@@ -63,6 +63,16 @@ class WeatherTests(unittest.TestCase):
                 weather.fetch("London", "c")
         self.assertEqual(weather.load(), previous)
 
+    def test_overlong_numeric_fields_cannot_replace_a_saved_report(self):
+        self.fetch()
+        original = weather.state_path().read_bytes()
+        for key in ("temp_C", "FeelsLikeC", "humidity", "windspeedKmph"):
+            response = json.loads(json.dumps(sample))
+            response["current_condition"][0][key] = "0." + "0" * 200
+            with self.subTest(field=key), self.assertRaises(ValueError):
+                self.fetch(body=json.dumps(response).encode())
+            self.assertEqual(weather.state_path().read_bytes(), original)
+
     def test_invalid_state_is_preserved_without_network(self):
         path = weather.state_path()
         path.parent.mkdir()
@@ -71,6 +81,16 @@ class WeatherTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 weather.fetch("London", "c")
         self.assertIn('"location":42', path.read_text())
+
+    def test_encoded_report_limit_cannot_poison_the_cache(self):
+        self.fetch()
+        original = weather.state_path().read_bytes()
+        response = json.loads(json.dumps(sample))
+        for key in ("temp_C", "FeelsLikeC", "humidity", "windspeedKmph"):
+            response["current_condition"][0][key] = "0." + "\U0001d7ce" * 190
+        with self.assertRaises(ValueError):
+            self.fetch(body=json.dumps(response).encode())
+        self.assertEqual(weather.state_path().read_bytes(), original)
 
     def test_symlink_state_cannot_overwrite_target(self):
         path = weather.state_path()
