@@ -101,6 +101,14 @@ first layout, right-click to open this section. The pill reads the layout from
 the running keymap, so layouts set with `setxkbmap` by hand show up too. It can
 be hidden like the other panel widgets.
 
+Optional floating-window titlebars are configured in the `[appearance]`
+section of your `~/.config/dwm-titus/themes.toml` (or the corresponding
+`XDG_CONFIG_HOME` path). Set `titlebars = 1` to enable drag and close controls;
+`titlebar_tags = 511` allows all nine workspaces, while `1` allows only workspace
+1 and `3` allows workspaces 1 and 2. Save to hot reload. Set `titlebars = 0` to
+disable them. Tiled and fullscreen windows remain undecorated. The close button
+uses the normal application close request; it does not target an application PID.
+
 The Appearance section also manages notification behavior. **Do Not Disturb**
 suppresses low and normal urgency popups without discarding their history;
 critical notifications remain visible. Choose a four-, six-, or ten-second

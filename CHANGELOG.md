@@ -8,6 +8,11 @@ versions from `config.mk`.
 
 ### Added
 
+- Add opt-in native floating-window titlebars with drag and close controls.
+  Configure `titlebars` and `titlebar_tags` in the existing hot-reloaded
+  themes.toml appearance section; tiled/fullscreen defaults remain unchanged
+  and no compositor or new dependency is required (#370).
+
 - Ship titstack customization and diagnosis skills, an AI assistant Settings
   page, an optional skills RPM, actionable crash notifications, and opt-in X11 hang
   detection. Diagnosis
