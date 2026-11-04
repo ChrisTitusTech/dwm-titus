@@ -37,6 +37,8 @@ INSTALL_COMMANDS = dwm-clipboard-observer \
 	scripts/dwm-initial-update \
 	scripts/dwm-keybinds \
 	scripts/dwm-weather \
+	scripts/dwm-layout-settings \
+	scripts/dwm-window-overview \
 	scripts/dwm-lock \
 	scripts/dwm-lock-watch \
 	scripts/dwm-migrate-clipboard-surface \
@@ -504,6 +506,14 @@ check-clipboard: dwm-clipboard-observer
 check-calendar-weather: all
 	$(call run_managed_test,python3 tests/test-weather.py)
 	$(call run_managed_test,dbus-run-session -- xvfb-run -a -s "-screen 0 1280x800x24" python3 tests/test-calendar-weather.py)
+check-layout-settings: all
+	$(call run_managed_test,dbus-run-session -- xvfb-run -a -s "-screen 0 1280x800x24" python3 tests/test-layout-settings.py)
+	$(call run_managed_test,dbus-run-session -- xvfb-run -a -s "-screen 0 1280x800x24 -screen 1 800x600x24 +xinerama" python3 tests/test-layout-settings.py)
+	$(call run_managed_test,dbus-run-session -- xvfb-run -a -s "-screen 0 1280x800x24" python3 tests/test-layout-capabilities.py)
+check-window-overview: all
+	$(call run_managed_test,dbus-run-session -- xvfb-run -a -s "-screen 0 1280x800x24" python3 tests/test-window-overview.py)
+	$(call run_managed_test,dbus-run-session -- xvfb-run -a -s "-screen 0 1280x800x24 -screen 1 800x600x24 +xinerama" python3 tests/test-window-overview.py)
+	$(call run_managed_test,dbus-run-session -- xvfb-run -a -s "-screen 0 1280x800x24" python3 tests/test-window-overview-feedback.py)
 
 check-keyboard-layout: all
 	python3 tests/test-keyboard-refresh.py
@@ -833,6 +843,8 @@ check: check-picom check-picom-xvfb
 	$(MAKE) check-clipboard
 	$(MAKE) check-clipboard-observer
 	$(MAKE) check-keyboard-layout
+	$(MAKE) check-layout-settings
+	$(MAKE) check-window-overview
 	$(MAKE) check-quickshell-launcher
 	$(MAKE) check-quickshell-controls
 	$(MAKE) check-quickshell-audio
@@ -909,3 +921,5 @@ check: check-picom check-picom-xvfb
 .PHONY: check-ai-assist check-ai-assist-xvfb check-notification-actions-xvfb
 
 .PHONY: check-calendar-weather
+.PHONY: check-layout-settings
+.PHONY: check-window-overview

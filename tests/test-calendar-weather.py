@@ -64,7 +64,9 @@ with tempfile.TemporaryDirectory(dir=os.environ["TMPDIR"]) as directory:
             shutil.copy(repo / "config" / name, config / name)
         helpers = work / "data/dwm-titus/scripts"
         helpers.mkdir(parents=True)
-        (helpers / "dwm-panel-settings").symlink_to(repo / "scripts/dwm-panel-settings")
+        for helper in ("dwm-panel-settings", "dwm-window-overview", "dwm-layout-settings"):
+            (helpers / helper).symlink_to(repo / "scripts" / helper)
+        os.environ["PATH"] = str(helpers) + os.pathsep + os.environ["PATH"]
         server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         threading.Thread(target=server.serve_forever, daemon=True).start()
         wrapper = helpers / "dwm-weather"
@@ -82,7 +84,8 @@ with tempfile.TemporaryDirectory(dir=os.environ["TMPDIR"]) as directory:
             location:weatherModel.location, unit:weatherModel.unit, busy:weatherModel.busy, message:weatherModel.message,
             weatherVisible:weatherModel.visible, calendarVisible:calendarModel.visible, month:calendarModel.month,
             year:calendarModel.year, days:calendarModel.days, widgets:panelSettingsModel.values,
-            provider:panelSettingsModel.providerState, utilityVisible:controlCenterModel.utilityVisible, clipboardVisible:clipboardModel.visible}); }
+            provider:panelSettingsModel.providerState, utilityVisible:controlCenterModel.utilityVisible, clipboardVisible:clipboardModel.visible,
+            overviewVisible:windowOverviewModel.visible, overviewBusy:windowOverviewModel.busy}); }
         function calendar(): void {
             calendarModel.timestamp = new Date(2024, 1, 29, 12).getTime();
             root.requestPanelPopup(root.defaultPanelWindow, "calendar");
@@ -163,6 +166,16 @@ with tempfile.TemporaryDirectory(dir=os.environ["TMPDIR"]) as directory:
             wait(lambda: state()["utilityVisible"] and not state()["weatherVisible"], "Keybinds shortcut left Weather above its utility")
             run("xdotool", "key", "Escape")
             wait(lambda: not state()["utilityVisible"], "Weather keybinds Escape failed")
+            request_count = len(Handler.requests)
+            for widget in ("calendar", "weather"):
+                ipc(widget)
+                wait(lambda: state()[widget + "Visible"], f"{widget} did not reopen for overview")
+                run("xdotool", "key", "super+Tab")
+                wait(lambda: state()["overviewVisible"] and not state()["overviewBusy"], "Super+Tab did not open overview over a panel popup")
+                assert not state()["calendarVisible"] and not state()["weatherVisible"], "Panel widget remained visible over the overview"
+                run("xdotool", "key", "Escape")
+                wait(lambda: not state()["overviewVisible"] and not state()["overviewBusy"], "Overview Escape did not dismiss")
+            assert len(Handler.requests) == request_count, "Opening overview fetched weather"
             ipc("weather")
             Handler.code = 503
             ipc("fetch", "London", "f")
@@ -192,7 +205,7 @@ with tempfile.TemporaryDirectory(dir=os.environ["TMPDIR"]) as directory:
             time.sleep(2)
             after = sum(map(int, Path(f"/proc/{shell.pid}/stat").read_text().rsplit(")", 1)[1].split()[11:13]))
             assert after - before <= 15
-            print(f"Calendar leap year/navigation, popup Escape (including fetch)/click-away/clipboard/keybinds hotkeys, persisted toggles, no automatic weather requests, explicit fetch/failure cache: PASS; closed idle ticks/2s={after-before}")
+            print(f"Calendar leap year/navigation, popup Escape (including fetch)/click-away/clipboard/keybinds/overview hotkeys, persisted toggles, no automatic weather requests, explicit fetch/failure cache: PASS; closed idle ticks/2s={after-before}")
         finally:
             if sys.exc_info()[0]:
                 print((work / "qml.log").read_text() if (work / "qml.log").exists() else "No QML log", file=sys.stderr)

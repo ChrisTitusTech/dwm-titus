@@ -1,28 +1,24 @@
-# Fedora 0.7.2 Roadmap
+# Fedora 0.8 Roadmap
 
 ## Current scope
 
-Address issues #347, #344, #346 and #345 in one ready-for-review PR, as requested
-on 2026-09-24. Version 0.7.2 covers the initial Fedora image update workflow,
-DNF defaults and mirror measurement, and offline fastfetch provisioning.
-Merge, tag publication, release assets and live deployment are outside this PR.
+The four desktop features are implemented in PRs #424, #425, #422 and #423.
+On 2026-11-04, the user verified PR #425's static thumbnails and authorized
+merging all four PRs, addressing #368, and preparing the 0.8 release.
 
-## Implementation and qualification
+## Integration and release sequence
 
-1. Audit effective Fedora 44 DNF5 configuration and provision conservative,
-   interactive defaults without replacing administrator overrides.
-2. Include fastfetch and mirror-measurement runtime dependencies in both images.
-3. Offer the initial update after repository access, measure trusted mirrors,
-   authorize a visible transaction, preserve retry, and persist only success.
-4. Validate ordering, mirror fallback and security, actual DNF prompts, clean
-   Fedora build/staged installation, image invariants and desktop behavior.
-5. Run repository gates and independent review, document exact image-validation
-   limits, and publish a ready-for-review PR against main.
+1. Merge #425 after recorded local review, tests and user acceptance.
+2. Integrate updated main into each remaining feature PR; resolve conflicts,
+   validate their combined native/QML behavior, complete independent review,
+   and merge #424 (layout controls), #423 (floating titlebars), and #422
+   (calendar/weather).
+3. Address #368 by checking the Wi-Fi package contract in newly built images,
+   including NetworkManager's Wi-Fi plugin, supplicant and regulatory database.
+   Source fixes do not repair the published v0.7.2 ISO.
+4. Prepare v0.8.0 source, changelog, release notes, checksummed artifacts and
+   Fedora image qualification evidence under the existing SPEC.md contract.
 
-Prior desktop-update work is documented in [DESKTOP-UPDATES.md](docs/DESKTOP-UPDATES.md)
-and PR #318. Preserve earlier qualification in
-[P8-QUALIFICATION.md](docs/P8-QUALIFICATION.md).
-
-Exit: all four issue behaviors are implemented; validation evidence distinguishes
-focused/container/runtime checks from full offline image qualification. Do not
-claim a released or hardware-qualified image from static checks alone.
+Record exact tested commits, reused unchanged evidence and hardware limitations.
+Do not describe an unbuilt or unqualified image as fixed or released. Preparing
+release artifacts does not replace publishing and verifying the new downloads.

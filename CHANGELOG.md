@@ -11,6 +11,16 @@ versions from `config.mk`.
 - Add optional Calendar and Weather panel widgets, off by default, with shared
   visibility controls. Weather fetches only an explicitly entered city on
   request and retains the last report through service failures (#358).
+- Add mouse-accessible Tile, Floating and Monocle choices, master sizing and
+  per-tag tile-gap controls in Settings > Appearance, alongside the existing
+  previewable desktop text scale. Changes follow hotkeys without polling (#297).
+- Add a searchable window overview in Control Center and the command menu.
+  Super+Tab toggles it by default; existing user hotkey files are preserved,
+  with one-entry migration instructions in the overview guide.
+  Individual cards show titles, applications, tags and monitors; click or use
+  the keyboard to focus existing windows without moving them (#350).
+  Capture static window thumbnails once when the overview opens, including
+  hidden tags, with icon fallback and cleanup on close.
 
 - Ship titstack customization and diagnosis skills, an AI assistant Settings
   page, an optional skills RPM, actionable crash notifications, and opt-in X11 hang

@@ -13,6 +13,8 @@ ClickAwayPopup {
     required property var panelWindow
     required property var powerMenuModel
     required property var powerModel
+    signal windowOverviewRequested(var screen)
+
     required property var settingsModel
 
     readonly property int cardWidth: Theme.controlCenterWidth
@@ -242,6 +244,16 @@ ClickAwayPopup {
                         implicitHeight: root.compactRowHeight
                         label: "Applications"
                         onActivated: root.openApplications()
+                    }
+                    MenuRow {
+                        Layout.fillWidth: true
+                        implicitHeight: root.compactRowHeight
+                        label: "Window overview"
+                        onActivated: {
+                            const screen = root.panelWindow ? root.panelWindow.screen : null;
+                            root.controlCenterModel.close();
+                            Qt.callLater(function() { root.windowOverviewRequested(screen); });
+                        }
                     }
                     MenuRow {
                         Layout.fillWidth: true
