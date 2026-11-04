@@ -457,6 +457,7 @@ static int selectedmonitorcachevalid;
 static Atom dwmfullscreenmonitorsatom, dwmtagupdateatom;
 /* XKB keyboard group state published on the root window (see SPEC.md 5.1) */
 static Atom hangrequestatom, hanggenerationatom;
+static Atom overviewinfoatom, overviewactivateatom, overviewversionatom, overviewresultatom;
 static int hangtogglecached = -1;
 static long long hangtogglechecked;
 static Atom kbgroupatom, kbnamesatom, kbsymbolsatom, kbrequestatom, kbutf8atom;
@@ -981,6 +982,7 @@ cleanup(void)
 	XSync(dpy, False);
 	XSetInputFocus(dpy, PointerRoot, RevertToPointerRoot, CurrentTime);
 	ewmh_clear_active_window();
+	XDeleteProperty(dpy, root, overviewversionatom);
 }
 
 void
@@ -1012,6 +1014,66 @@ clientmessage(XEvent *e)
 	if (cme->window == root && cme->message_type == wmatom[WMProtocols]
 	&& cme->format == 32 && (Atom)cme->data.l[0] == netatom[NetWMPing]) {
 		hangpong((Window)cme->data.l[2], (unsigned long)cme->data.l[1] & 0xffffffffUL);
+		return;
+	}
+	if (cme->message_type == overviewactivateatom) {
+		Client *other;
+		unsigned int visible, target;
+		Window reply = (unsigned long)cme->data.l[2] & 0xffffffffUL;
+		long mode = cme->data.l[1], result[] = { 2, mode, cme->window, 0 };
+		Arg arg;
+
+		if (cme->format != 32 || cme->data.l[0] != 2 || !reply || mode < 0 || mode > 2)
+			return;
+		if (mode == 2) {
+			/* Visible MRU context outside the caller's process, including swallowed clients. */
+			long excluded = cme->data.l[3];
+			unsigned int scanned = 0;
+			if (cme->window != root || excluded <= 0 || excluded > INT_MAX) return;
+			result[2] = None;
+			for (other = selmon->stack; other && scanned++ < 4096; other = other->snext)
+				if (ISVISIBLE(other) && other->pid != excluded
+				&& (!other->swallowing || other->swallowing->pid != excluded)) {
+					result[2] = other->win;
+					break;
+				}
+			result[3] = 1;
+			XChangeProperty(dpy, reply, overviewresultatom, XA_CARDINAL, 32,
+				PropModeReplace, (unsigned char *)result, LENGTH(result));
+			return;
+		}
+		if (!c || (mode == 1 && !ISVISIBLE(c))) {
+			XChangeProperty(dpy, reply, overviewresultatom, XA_CARDINAL, 32,
+				PropModeReplace, (unsigned char *)result, LENGTH(result));
+			return;
+		}
+		if (selmon != c->mon) {
+			unfocus(selmon->sel, 0);
+			selmon = c->mon;
+		}
+		visible = c->tags & selmon->tagset[selmon->seltags];
+		if (!visible) {
+			target = c->tags & getmontagmask(selmon->num);
+			if (!target) return;
+			arg.ui = target & (~target + 1U);
+			view(&arg);
+		}
+		/* Explicit selection must reveal the target beneath fullscreen peers. */
+		for (other = selmon->clients; other; other = other->next)
+			if (mode == 0 && other != c && ISVISIBLE(other) && other->isfullscreen
+			&& other->fakefullscreen != 1)
+				setfullscreen(other, 0);
+		arrange(selmon);
+		focus(c);
+		/* Finish view()'s warp on the selected client, then drain stale enters. */
+		if (mode == 0 && cursorwarp)
+			XWarpPointer(dpy, None, c->win, 0, 0, 0, 0, c->w / 2, c->h / 2);
+		restack(c->mon);
+		updatecurrentdesktop();
+		/* Each caller owns its reply window; completion is independent of input focus. */
+		result[3] = 1;
+		XChangeProperty(dpy, reply, overviewresultatom, XA_CARDINAL, 32,
+			PropModeReplace, (unsigned char *)result, LENGTH(result));
 		return;
 	}
 	if (cme->message_type == netatom[NetCurrentDesktop]) {
@@ -2495,6 +2557,7 @@ placemouse(const Arg *arg)
 				}
 
 				attachstack(c);
+				setclientdesktop(c);
 				arrangemon(r->mon);
 				prevr = r;
 				prevattachmode = attachmode;
@@ -2512,6 +2575,7 @@ placemouse(const Arg *arg)
 		c->tags = m->tagset[m->seltags];
 		attach(c);
 		attachstack(c);
+		setclientdesktop(c);
 		selmon = m;
 	}
 
@@ -3624,6 +3688,11 @@ setclientdesktop(Client *c)
         data[0] = 0xFFFFFFFF;
     }
     
+	/* Versioned shell metadata preserves the full tag mask and actual monitor,
+	 * unlike _NET_WM_DESKTOP which represents only the first assigned tag. */
+	long info[] = { 1, c->tags, c->mon->num };
+	XChangeProperty(dpy, c->win, overviewinfoatom, XA_CARDINAL, 32,
+		PropModeReplace, (unsigned char *)info, LENGTH(info));
 	ewmh_replace_window_cardinal(c->win, netatom[NetWMDesktop], data, 1);
 	updatefullscreenmonitors();
 	data[0] = ++tagupdatesequence;
@@ -4618,6 +4687,13 @@ setup(void)
 	/* Reconcile monitor-specific tags after geometry is set up */
 	reconcilemonitortags();
 	/* init atoms */
+	overviewversionatom = XInternAtom(dpy, "_DWM_WINDOW_OVERVIEW", False);
+	long overviewversion[] = {2};
+	XChangeProperty(dpy, root, overviewversionatom, XA_CARDINAL, 32,
+		PropModeReplace, (unsigned char *)overviewversion, 1);
+	overviewinfoatom = XInternAtom(dpy, "_DWM_CLIENT_INFO", False);
+	overviewactivateatom = XInternAtom(dpy, "_DWM_WINDOW_ACTIVATE", False);
+	overviewresultatom = XInternAtom(dpy, "_DWM_WINDOW_RESULT", False);
 	utf8string = XInternAtom(dpy, "UTF8_STRING", False);
 	hangrequestatom = XInternAtom(dpy, "_DWM_TITUS_HANG_KILL", False);
 	hanggenerationatom = XInternAtom(dpy, "_DWM_TITUS_HANG_GENERATION", False);
@@ -4802,6 +4878,7 @@ swallow(Client *p, Client *c)
 	Window w = p->win;
 	p->win = c->win;
 	c->win = w;
+	setclientdesktop(p);
 	updatepingprotocol(p);
 	int ewmhabove = p->ewmhabove;
 	p->ewmhabove = c->ewmhabove;
@@ -5379,6 +5456,7 @@ unswallow(Client *c)
 {
 	c->hung = c->pingpending = 0;
 	c->win = c->swallowing->win;
+	setclientdesktop(c);
 	updatepingprotocol(c);
 	c->ewmhabove = c->swallowing->ewmhabove;
 	c->iswindowedfullscreen = c->swallowing->iswindowedfullscreen;
@@ -5924,6 +6002,7 @@ updategeom(void)
 				c->mon = mons;
 				attach(c);
 				attachstack(c);
+				setclientdesktop(c);
 			}
 			if (m == selmon)
 				selmon = mons;

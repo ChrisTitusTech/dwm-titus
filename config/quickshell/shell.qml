@@ -14,6 +14,7 @@ import qs.defaults
 import qs.health
 import qs.launcher
 import qs.network
+import qs.overview
 import qs.notifications
 import qs.panel
 import qs.power
@@ -105,6 +106,8 @@ ShellRoot {
         if (target === "settings" && (action === "open" || action === "select")) {
             settingsModel.openOnScreen(screen);
             if (action === "select") settingsModel.selectSection(argument);
+        } else if (target === "windowOverview" && action === "open") {
+            windowOverviewModel.openOnScreen(screen || dwmState.focusedScreen());
         } else if (target === "network" && action === "open") {
             if (panel) root.selectPanelPopup(panel, "network");
             networkModel.open();
@@ -128,6 +131,31 @@ ShellRoot {
 
     DwmState {
         id: dwmState
+    }
+
+    WindowOverviewModel {
+        id: windowOverviewModel
+        workspaceNames: dwmState.workspaceNames
+        onVisibleChanged: if (visible) {
+            launcherModel.close();
+            commandMenuModel.close();
+            clipboardModel.close();
+            controlCenterModel.close();
+            updateCenterModel.close();
+            settingsModel.close();
+            systemHealthModel.close();
+        }
+    }
+    LazyLoader {
+        active: windowOverviewModel.visible
+        component: WindowOverviewWindow { model: windowOverviewModel }
+    }
+    IpcHandler {
+        target: "windowOverview"
+        function open(): void { windowOverviewModel.openOnScreen(dwmState.focusedScreen()); }
+        function close(): void { windowOverviewModel.close(); }
+        function toggle(): void { windowOverviewModel.toggle(dwmState.focusedScreen()); }
+        function visible(): bool { return windowOverviewModel.visible; }
     }
 
     ClockModel {
@@ -1313,6 +1341,7 @@ ShellRoot {
         powerModel: powerModel
         healthModel: systemHealthModel
         settingsModel: settingsModel
+        onWindowOverviewRequested: screen => windowOverviewModel.openOnScreen(screen)
     }
 
     UtilityDetailWindow {
