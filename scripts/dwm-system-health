@@ -166,7 +166,7 @@ quickshell_compatible() {
 	version_at_least "$version" 0.3.0 && return 0
 	[[ $version == 0.2.1 ]] || return 1
 	case $detail in
-	*"0.2.1^git20260209.dacfa9d-"*.fc44) return 0 ;;
+	*"0.2.1^git20260209.dacfa9d-"*.fc4[45]) return 0 ;;
 	*) return 1 ;;
 	esac
 }
@@ -498,12 +498,12 @@ scan_desktop() {
 		if quickshell_compatible "$version" "$detail"; then
 			emit_check desktop ok quickshell-version "Quickshell" "Available" "$detail" restart-quickshell "Restart Quickshell" user
 		elif [[ -n $version ]]; then
-			emit_check desktop error quickshell-version "Quickshell" "Outdated" "$detail; version 0.3.0 or the supported Fedora 44 snapshot is required" "" "" none
+			emit_check desktop error quickshell-version "Quickshell" "Outdated" "$detail; version 0.3.0 or the supported Fedora 44/45 snapshot is required" "" "" none
 		else
-			emit_check desktop error quickshell-version "Quickshell" "Version unavailable" "Could not verify Quickshell 0.3.0 or the supported Fedora 44 snapshot" "" "" none
+			emit_check desktop error quickshell-version "Quickshell" "Version unavailable" "Could not verify Quickshell 0.3.0 or the supported Fedora 44/45 snapshot" "" "" none
 		fi
 	else
-		emit_check desktop error quickshell-version "Quickshell" "Missing" "The managed shell requires Quickshell 0.3.0 or the supported Fedora 44 snapshot" install-dependencies "Open dependency installer" user
+		emit_check desktop error quickshell-version "Quickshell" "Missing" "The managed shell requires Quickshell 0.3.0 or the supported Fedora 44/45 snapshot" install-dependencies "Open dependency installer" user
 	fi
 
 	if command -v picom >/dev/null 2>&1; then

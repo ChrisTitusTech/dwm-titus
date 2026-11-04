@@ -160,6 +160,8 @@ google-noto-color-emoji-fonts
 google-noto-sans-mono-fonts
 NetworkManager
 NetworkManager-wifi
+wpa_supplicant
+wireless-regdb
 nm-connection-editor
 rsync
 path

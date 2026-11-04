@@ -32,6 +32,7 @@ mapfile -t packages < <(
 		# Official image additions; brave-origin is resolved by factory repos.
 		dwm_packages fedora image-desktop | awk '$0 != "brave-origin"'
 		dwm_packages fedora desktop
+		dwm_packages fedora wifi
 		dwm_packages fedora system-management
 		dwm_packages fedora system-management-optional
 	} | awk 'NF' | sort -u
@@ -83,7 +84,7 @@ for package in lxqt-admin dnfdragora; do
 	dwm_packages fedora system-management-optional | grep -Fx "$package" >/dev/null
 	dwm_packages fedora optional | grep -Fx "$package" >/dev/null
 done
-for package in xsettingsd xkbset bubblewrap libseccomp NetworkManager-wifi; do
+for package in xsettingsd xkbset bubblewrap libseccomp NetworkManager-wifi wpa_supplicant wireless-regdb; do
 	dwm_packages fedora source-update | grep -Fx "$package" >/dev/null
 done
 for profile in runtime-required required full source-update; do

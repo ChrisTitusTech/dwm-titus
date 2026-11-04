@@ -49,7 +49,7 @@ The primary release target is the Fedora desktop image:
 
 | Target | Current contract |
 | --- | --- |
-| Base media | Fedora 44 Server Network Install ISO as the Anaconda runtime |
+| Base media | Fedora 45 Server Network Install ISO as the Anaconda runtime |
 | Installation payload | Prebuilt compressed Fedora root filesystem, installed offline |
 | Session | Xorg with dwm and the managed Quickshell shell |
 | Variants | Standard and explicitly selected NVIDIA image |
@@ -65,6 +65,11 @@ selected drive without the Fedora Server autopart root-size cap. Anaconda create
 for BIOS or UEFI. Drive selection and confirmation of destructive storage
 changes remain explicit in Anaconda; the public Kickstarts must not preselect
 or erase disks. Custom partitioning remains available.
+
+Fedora 45 is the primary 0.8 image target. Fedora 44 remains supported for
+existing-system installs, source updates and desktop runtime compatibility.
+Legacy Fedora 44 compressed payloads may be repacked only with a matching
+Fedora 44 installer; cross-release installer/payload pairs must fail clearly.
 
 The existing-system installer supports Fedora and uses `dnf`/RPM. It must
 report the detected distribution and accept only `ID=fedora` before package
@@ -190,7 +195,7 @@ managed shell must create one `PanelWindow` for every active screen so each
 monitor has a bar. The per-screen Quickshell `Variants` design must share its
 state providers and be explicitly profiled to show that it remains near idle.
 
-The managed shell requires Quickshell 0.3.0 or Fedora 44's compatible
+The managed shell requires Quickshell 0.3.0 or Fedora 44/45's compatible
 `0.2.1^git20260209.dacfa9d` snapshot. That Fedora snapshot contains the
 `PopupWindow.grabFocus` API used by the shell; an unpatched upstream 0.2.1 is
 not sufficient. Update Center opens as a popup anchored beneath its panel icon,
@@ -988,6 +993,10 @@ In a real or nested X11 session:
 - Compressed-image installation completes without Internet access or package
   selection. Required desktop packages, screenshot/clipboard tools, fonts,
   themes and Gear Lever runtimes are present in the captured filesystem.
+- Both variants explicitly require NetworkManager-wifi, wpa_supplicant and
+  wireless-regdb. Capture verifies their RPMs, usable Wi-Fi plugin and regulatory
+  database and records package versions. Installed-VM qualification repeats
+  these checks; physical radio association remains a separate hardware claim.
 - Capture removes factory accounts, temporary authorization, machine identity
   and storage state, and retains the boot files needed by both firmware paths.
 - At least the standard image completes Anaconda installation in a VM, reboots,
@@ -1023,7 +1032,9 @@ Brave Origin and Herdr provisioning, image-viewer defaults, and the PackageKit
 backport identity error that blocks update actions despite readable discovery.
 It also measures and reduces offline installer media-check/startup/extraction
 cost. Requirements marked Phase 8 are planned acceptance targets, not claims
-about the already published ISO. Fedora 44 and X11 remain the supported scope.
+about the already published ISO. Fedora 45 is the 0.8 image target, with Fedora 44 compatibility retained; X11
+remains required. Qualification results are recorded separately and must not be
+inferred from this target declaration.
 
 ## 11. Definition of Done
 

@@ -1598,7 +1598,7 @@ restart_quickshell() {
 		version_check=$(command -v dwm-quickshell-version-check 2>/dev/null || true)
 	fi
 	if [ -z "$version_check" ] || ! "$version_check"; then
-		printf 'compatible Quickshell 0.3.0 or Fedora 44 snapshot is required\n' >&2
+		printf 'compatible Quickshell 0.3.0 or Fedora 44/45 snapshot is required\n' >&2
 		return 1
 	fi
 

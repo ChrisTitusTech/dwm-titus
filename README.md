@@ -19,11 +19,10 @@ part themselves.
 **dwm-titus is a Fedora-only distribution.** Fedora Linux is the sole supported
 platform for installation, runtime behavior, package resolution, testing, and
 release qualification. Use either the Fedora desktop image or the
-existing-system installer on Fedora Linux. The published images and release
-qualification target Fedora 44 x86_64. Newer releases, including Fedora 45, are
-accepted by the existing-system installer but are not yet release-qualified;
-run `dwm-diagnostics` and report release-specific problems on the issue
-tracker.
+existing-system installer on Fedora Linux. The 0.8 release images target Fedora 45 x86_64, with Fedora 44 compatibility
+retained for existing-system installs and updates. See the
+[0.8 qualification record](docs/RELEASE-0.8.0.md) for tested paths and remaining
+gates. Existing published 0.7.2 downloads remain Fedora 44 until replaced.
 
 ## What You Get
 

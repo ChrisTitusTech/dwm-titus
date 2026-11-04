@@ -376,6 +376,21 @@ fi
 grep -Fq -- '--out-dir requires --series' "$work/bad.err"
 [[ ! -e $work/ignored.png && ! -e $work/ignored && ! -e $work/branding && ! -e $work/sidebar-logo-v0.7.1.png ]]
 
+# Minimal ISO9660 PVD fixture: platform checks read bytes, not the input name.
+set_iso_release() {
+	python3 - "$input_iso" "$1" <<'PYPVD'
+from pathlib import Path
+import sys
+pvd = bytearray(2048)
+pvd[:7] = b'\x01CD001\x01'
+pvd[40:72] = f'Fedora-S-dvd-x86_64-{sys.argv[2]}'.encode().ljust(32)
+with Path(sys.argv[1]).open('wb') as stream:
+    stream.seek(16 * 2048)
+    stream.write(pvd)
+PYPVD
+}
+set_iso_release 44
+
 # Offline payloads must match the variant and verified bytes before ISO creation.
 image="$work/root filesystem.tar.xz"
 mkdir "$work/rootfs"
@@ -416,10 +431,11 @@ p = pathlib.Path(sys.argv[1]); m = json.loads(p.read_text())
 m['variant'] = 'standard'; p.write_text(json.dumps(m))
 PYTHON
 mkdir "$work/invalid-temp"
-for failure in variant checksum manifest; do
+for failure in variant platform checksum manifest; do
 	selected=standard
 	case $failure in
 	variant) selected=nvidia ;;
+	platform) set_iso_release 45 ;;
 	checksum) printf 'tampered\n' >>"$image" ;;
 	manifest) rm "$image.json" ;;
 	esac
@@ -433,7 +449,22 @@ for failure in variant checksum manifest; do
 	fi
 	[[ $(cat "$standard_iso") == 'previous image' ]]
 	[[ -z $(find "$work/invalid-temp" -mindepth 1 -print -quit) ]]
+	set_iso_release 44
 done
+
+# Fedora 45 is the new primary; reject cross-release payloads above, while
+# retaining Fedora 44 and legacy xz/protocol-1 pairing compatibility.
+set_iso_release 45
+tar -cJf "$image" -C "$work/rootfs" .
+python3 - "$image" <<'PY45'
+import hashlib, json, pathlib, sys
+p = pathlib.Path(sys.argv[1])
+m = dict(protocol=1, variant='standard', fedora='45', architecture='x86_64',
+         size=p.stat().st_size, sha256=hashlib.sha256(p.read_bytes()).hexdigest())
+pathlib.Path(str(p) + '.json').write_text(json.dumps(m))
+PY45
+run_builder standard "$standard_iso" --system-image "$image"
+set_iso_release 44
 
 # Zstd uses the same Anaconda-compatible neutral archive path. Verify both
 # firmware defaults, then reject a correctly hashed but damaged stream.

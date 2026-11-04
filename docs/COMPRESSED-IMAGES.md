@@ -1,7 +1,7 @@
 # Compressed system image builds
 
 The compressed-image path prepares the complete desktop once in a disposable
-Fedora 44 virtual machine. Anaconda installs its local filesystem archive,
+Fedora 45 virtual machine. Anaconda installs its local filesystem archive,
 then creates configuration for the account selected by the user. Package
 selection and repository downloads happen at image-build time. Disk selection,
 partitioning, locale and account creation remain interactive. The default layout
@@ -43,12 +43,12 @@ export TMPDIR="$HOME/tmp/dwm-compressed/staging"
 export DWM_TEST_TMP_ROOT="$HOME/tmp/dwm-compressed"
 
 scripts/build-dwm-fedora-system-image.py \
-  --input "$HOME/tmp/dwm-compressed/Fedora-Server-netinst-x86_64-44-1.7.iso" \
+  --input "$HOME/tmp/dwm-compressed/Fedora-Server-netinst-x86_64-45-1.4.iso" \
   --output "$HOME/tmp/dwm-compressed/artifacts/standard.tar.zst" \
   --variant standard
 
 scripts/build-dwm-fedora-installer-iso.sh \
-  --input "$HOME/tmp/dwm-compressed/Fedora-Server-netinst-x86_64-44-1.7.iso" \
+  --input "$HOME/tmp/dwm-compressed/Fedora-Server-netinst-x86_64-45-1.4.iso" \
   --system-image "$HOME/tmp/dwm-compressed/artifacts/standard.tar.zst" \
   --output "$HOME/tmp/dwm-compressed/artifacts/dwm-titus.iso" \
   --variant standard
@@ -58,6 +58,9 @@ Repeat both commands with `--variant nvidia` and distinct `nvidia.tar.zst` and
 `dwm-titus-nvidia.iso` outputs. Standard and NVIDIA archives are not
 interchangeable. Keep each archive's `.json` manifest beside it: the ISO builder
 checks the platform, variant, size and SHA-256 before embedding the payload.
+The ISO9660 volume ID must identify the same Fedora release as the payload.
+Fedora 45 is primary; legacy Fedora 44 payloads still require matching Fedora
+44 installer media. Cross-release pairs fail before output replacement.
 A checksum detects changed bytes; it does not authenticate an untrusted archive.
 
 Zstd captures use `zstd -T0 -19`. Compression wall time and peak memory are
@@ -105,6 +108,12 @@ in `tool-sha256.txt`; bundled tool licenses and Herdr source are available under
 `/usr/local/share/doc/` on the installed system.
 
 ## Desktop dependency gate
+
+Both variants explicitly include `NetworkManager-wifi`, `wpa_supplicant` and
+`wireless-regdb` for #368. Capture verifies the plugin and shared libraries,
+supplicant and regulatory database, and records `wifi-packages.txt`. Repeat
+the RPM and plugin checks on the installed VM; physical radio association must
+be recorded separately.
 
 Image capture fails if the shared full Fedora package contract is incomplete.
 It also checks the executables used by the shipped desktop. Screenshot support

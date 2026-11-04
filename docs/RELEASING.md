@@ -9,7 +9,7 @@ use `make native` for published binaries.
    version mismatches, and commits that are unavailable on GitHub.
 3. Run `scripts/run-tests`.
 4. Run `scripts/run-tests make check-xvfb-runtime check-monitor-tags` in isolated X11.
-5. Run `scripts/run-tests make check-fedora-packages` on Fedora 44.
+5. Run `scripts/run-tests make check-fedora-packages` on Fedora 45 and repeat compatibility checks on Fedora 44.
 6. Run `scripts/run-tests make check-quickshell-qml check-quickshell-health-xvfb
    check-quickshell-settings-xvfb` when QML changed.
 7. Run `npm --prefix docs ci` and `npm --prefix docs run build` when published
@@ -85,17 +85,17 @@ the signature before using the checksum. For the current x86_64 base:
 
 ```sh
 curl -fLO https://fedoraproject.org/fedora.gpg
-curl -fLO https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Server/x86_64/iso/Fedora-Server-44-1.7-x86_64-CHECKSUM
-curl -fLO https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Server/x86_64/iso/Fedora-Server-netinst-x86_64-44-1.7.iso
+curl -fLO https://dl.fedoraproject.org/pub/fedora/linux/releases/45/Server/x86_64/iso/Fedora-Server-45-1.4-x86_64-CHECKSUM
+curl -fLO https://dl.fedoraproject.org/pub/fedora/linux/releases/45/Server/x86_64/iso/Fedora-Server-netinst-x86_64-45-1.4.iso
 gpg --show-keys --with-fingerprint ./fedora.gpg
-gpgv --keyring ./fedora.gpg --output Fedora-Server-44.verified-checksums Fedora-Server-44-1.7-x86_64-CHECKSUM
-# Continue only after gpgv succeeds and its signer matches Fedora 44.
-sha256sum -c --ignore-missing Fedora-Server-44.verified-checksums
+gpgv --keyring ./fedora.gpg --output Fedora-Server-45.verified-checksums Fedora-Server-45-1.4-x86_64-CHECKSUM
+# Continue only after gpgv succeeds and its signer matches Fedora 45.
+sha256sum -c --ignore-missing Fedora-Server-45.verified-checksums
 ```
 
-The Fedora 44 fingerprint is
-`36F612DCF27F7D1A48A835E4DBFCF71C6D9F90A6`; the current netinst SHA-256 is
-`ae20c06bea746913cadea7d80463e13f4bf55bee4df2918111c921c674b70283`.
+The Fedora 45 fingerprint is
+`4F50A6114CD5C6976A7F1179655A4B02F577861E`; the current netinst SHA-256 is
+`a1e916f139a05955b943cf183b020780cca9c399b02b8f5ec4354c9e5c1dff1a`.
 Run downloads and builds in a dedicated directory under `$HOME/tmp`, and set
 `TMPDIR` to a staging subdirectory there when invoking the builder.
 
@@ -142,7 +142,7 @@ Build the regular Fedora installer ISO from a Fedora netinst ISO:
 
 ```sh
 scripts/build-dwm-fedora-installer-iso.sh \
-  --input ~/Downloads/Fedora-Server-netinst-x86_64-44-1.7.iso \
+  --input ~/Downloads/Fedora-Server-netinst-x86_64-45-1.4.iso \
   --output release/dwm-titus.iso
 ```
 
@@ -150,7 +150,7 @@ Build the NVIDIA installer ISO:
 
 ```sh
 scripts/build-dwm-fedora-installer-iso.sh \
-  --input ~/Downloads/Fedora-Server-netinst-x86_64-44-1.7.iso \
+  --input ~/Downloads/Fedora-Server-netinst-x86_64-45-1.4.iso \
   --output release/dwm-titus-nvidia.iso \
   --variant nvidia
 ```
@@ -195,3 +195,19 @@ Verify complete public downloads against SHA-256 and test byte-range requests
 before deleting superseded ISOs. Refresh or purge cached canonical objects so
 clients receive matching images and metadata. Use short cache lifetimes for
 these mutable URLs; users must restart partial downloads after a build changes.
+
+## 0.8 Wi-Fi release gate (#368)
+
+Both Fedora 45 variants must be rebuilt from the 0.8 source. Keep the factory
+`wifi-packages.txt` inventory with the qualification evidence and verify
+`rpm -q NetworkManager-wifi wpa_supplicant wireless-regdb` in each installed
+VM. Check the NetworkManager Wi-Fi plugin, its shared libraries and
+`/usr/lib/firmware/regulatory.db`; where a physical or simulated Wi-Fi interface
+is available, verify NetworkManager identifies it as Wi-Fi with no missing
+plugin. A virtual Ethernet DHCP test does not prove radio association.
+
+Keep #368 open until both replacement public downloads match their new
+checksums and qualification record. Source-only fixes or locally prepared ISOs
+do not update v0.7.2 downloads. Fedora 44 compatibility uses the retained test
+runner (`DWM_TEST_FEDORA_RELEASE=44 scripts/run-tests-podman`); separate new
+Fedora 44 release ISOs are not required.

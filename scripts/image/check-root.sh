@@ -44,6 +44,18 @@ mapfile -t packages < <({
 	dwm_packages fedora image-desktop
 } | sort -u)
 rpm -q "${packages[@]}" >/dev/null
+# Issue #368: reject incomplete Wi-Fi support before publishing either capture.
+mapfile -t wifi_packages < <(dwm_packages fedora wifi)
+rpm -q "${wifi_packages[@]}" | tee /usr/share/dwm-titus-image/wifi-packages.txt
+[[ -s /usr/lib/firmware/regulatory.db ]]
+command -v wpa_supplicant >/dev/null
+wifi_plugin=$(find /usr/lib /usr/lib64 -path '*/NetworkManager/*/libnm-device-plugin-wifi.so' -print -quit 2>/dev/null || true)
+[[ -n $wifi_plugin && -s $wifi_plugin ]]
+wifi_libraries=$(ldd "$wifi_plugin")
+if [[ $wifi_libraries == *'not found'* ]]; then
+	printf 'NetworkManager Wi-Fi plugin has missing shared libraries\n' >&2
+	exit 1
+fi
 python3 /usr/share/dwm-titus-image/scripts/image/check-packagekit.py
 [[ -f /usr/share/dnf5/libdnf.conf.d/40-dwm-titus.conf ]]
 [[ -x /usr/local/libexec/dwm-titus/dwm-initial-update-root ]]

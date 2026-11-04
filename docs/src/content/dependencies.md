@@ -9,7 +9,7 @@ eyebrow: Start here
 
 dwm-titus combines **dwm, Quickshell, and Xorg** with services for audio,
 networking, power, authentication, and application integration. Fedora is the
-only supported distribution; the documented image target is Fedora 44 x86_64.
+only supported distribution; the 0.8 image target is Fedora 45 x86_64; Fedora 44 compatibility is retained.
 
 This guide describes the major direct dependencies selected by the installer,
 not an inventory of your machine or every transitive library. DNF and Flatpak
@@ -46,7 +46,7 @@ Preview the actual installation plan before making changes:
 | System foundation | Fedora, RPM/DNF, systemd | Host package management, system services, and user sessions. |
 | Display server | `xorg-x11-server-Xorg`, `xorg-x11-xinit` | Core. X11 graphics and `startx` support. This is not a Wayland session. |
 | Window manager | Repository-built `dwm` | Tiling, floating windows, tags, focus, window rules, and monitor management. |
-| Desktop shell | `quickshell` and managed repository QML | Desktop. Panels, launcher, tray, notifications, Control Center, and Settings. Requires Quickshell 0.3.0 or the compatible Fedora 44 snapshot. |
+| Desktop shell | `quickshell` and managed repository QML | Desktop. Panels, launcher, tray, notifications, Control Center, and Settings. Requires Quickshell 0.3.0 or the compatible Fedora 44/45 snapshot. |
 | Compositor | `picom` | Desktop. Compositing, opacity, shadows, and visual effects. |
 | Wallpaper | `feh` | Desktop. Applies wallpaper through the managed helpers. Full additionally attempts to download the wallpaper collection. |
 | Session communication | `dbus-x11`, systemd user services | Core D-Bus session support; graphical-session integration makes the display environment available to user services. |

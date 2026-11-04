@@ -10,12 +10,12 @@ eyebrow: Start here
 > **dwm-titus is Fedora-only.** Fedora Linux with Xorg is required for every
 > supported installation, package, test, and release path.
 
-The released images and this guide are validated against Fedora 44. Newer
-Fedora releases, including Fedora 45, are accepted by the existing-system
-installer when `/etc/os-release` reports `ID=fedora`, but they are not yet
-release-qualified. Dependency resolution and the desktop are expected to work;
-run `dwm-diagnostics` first and report release-specific problems on the issue
-tracker.
+The 0.8 release targets Fedora 45 x86_64, while retaining Fedora 44 support for
+existing-system installation, source updates and desktop runtime. See the
+[0.8 qualification record](https://github.com/ChrisTitusTech/dwm-titus/blob/main/docs/RELEASE-0.8.0.md)
+for tested paths and remaining gates. The currently published 0.7.2 downloads
+remain Fedora 44 until replacement media is published and verified. Source
+updates do not repair Wi-Fi packages missing from an old ISO (#368).
 
 ## Dependencies
 

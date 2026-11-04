@@ -53,7 +53,7 @@ dwm_packages() {
 		printf '%s\n' gnome-keyring gnome-keyring-pam
 		;;
 	fedora:desktop)
-		# Fedora 44 publishes the compatible Quickshell snapshot in its official
+		# Fedora 44 and 45 publish the compatible Quickshell snapshot in its official
 		# fedora/updates repositories. It is required and belongs in the strict
 		# desktop transaction; the Fedora package-map check proves availability.
 		printf '%s\n' \
@@ -74,16 +74,21 @@ dwm_packages() {
 	fedora:source-update)
 		# Dependencies introduced after the initial installation that the supported
 		# source-checkout synchronization path must reconcile for existing systems.
-		printf '%s\n' xsettingsd xkbset bubblewrap libseccomp NetworkManager-wifi
+		printf '%s\n' xsettingsd xkbset bubblewrap libseccomp
+		dwm_packages "$family" wifi
 		dwm_packages "$family" keyring
+		;;
+	fedora:wifi)
+		# Explicit image/update contract; do not depend on weak RPM dependencies.
+		printf '%s\n' NetworkManager NetworkManager-wifi wpa_supplicant wireless-regdb
 		;;
 	fedora:desktop-optional)
 		# Path: https://github.com/ChrisTitusTech/Path, packaged in
 		# christitustech/copr-fedora; skip when that repository is unavailable.
 		printf '%s\n' \
 			path Thunar gvfs gvfs-smb tumbler thunar-archive-plugin file-roller \
-			xdg-user-dirs NetworkManager \
-			NetworkManager-wifi rsync
+			xdg-user-dirs rsync
+		dwm_packages "$family" wifi
 		;;
 	fedora:gaming)
 		if [[ ${ARCH:-$(uname -m)} == x86_64 ]]; then

@@ -497,7 +497,7 @@ if [ -f "$QUICKSHELL_CONFIG" ]; then
 		quickshell_compatible=1
 		start_managed_quickshell "$QUICKSHELL_CONFIG"
 	else
-		printf '%s\n' 'dwm-titus: compatible Quickshell 0.3.0 or Fedora 44 snapshot is required' >&2
+		printf '%s\n' 'dwm-titus: compatible Quickshell 0.3.0 or Fedora 44/45 snapshot is required' >&2
 	fi
 	if [ "$quickshell_compatible" -eq 1 ]; then
 		wait_for_quickshell_tray "$QUICKSHELL_CONFIG" || true

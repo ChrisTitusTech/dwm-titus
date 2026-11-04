@@ -31,6 +31,9 @@ required_repos=(
 )
 
 required_packages=(
+	NetworkManager-wifi
+	wpa_supplicant
+	wireless-regdb
 	fastfetch
 	python3-libdnf5
 	flatpak
