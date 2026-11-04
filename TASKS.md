@@ -4,6 +4,7 @@
 
 User authorization (2026-11-04): merge PR #425 after thumbnail acceptance,
 finish review/merge of the other three PRs, address #368, and prepare 0.8.
+Fedora 45 becomes the main ISO base; retain Fedora 44 compatibility.
 
 | Issue | Pull request | Behavior |
 | --- | --- | --- |
