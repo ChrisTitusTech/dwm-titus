@@ -81,7 +81,7 @@ helpers and service APIs perform the underlying operations.
 
 | Piece | Dependencies | Role and selection |
 | --- | --- | --- |
-| File manager | `path`, `Thunar` | Full and both image profiles. Prefer [Path](https://github.com/ChrisTitusTech/Path) for fresh-account folder defaults when installed; otherwise Thunar. Path comes from `christitustech/copr-fedora`; the full installer skips it when unavailable, while image builds require it. |
+| File manager | `Thunar`, optional `path` | Thunar is the fresh-account default on every supported Fedora release, even when Path is installed. Existing MIME choices are preserved. Full installs attempt [Path](https://github.com/ChrisTitusTech/Path) from `christitustech/copr-fedora` when available; Fedora 45 images omit the unavailable COPR/Path and use Thunar. |
 | File access and shares | `gvfs`, `gvfs-smb` | Full. File-access integration and SMB network shares. |
 | Thumbnails | `tumbler` | Full. File-manager thumbnail generation. |
 | Archives | `thunar-archive-plugin`, `file-roller` | Full. Archive creation/extraction and file-manager integration. |
