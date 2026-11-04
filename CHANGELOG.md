@@ -6,6 +6,8 @@ versions from `config.mk`.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-04
+
 ### Added
 
 - Add optional Calendar and Weather panel widgets, off by default, with shared
@@ -109,6 +111,10 @@ versions from `config.mk`.
 
 ### Changed
 
+- Use Fedora 45 Server netinst 1.4 for the primary 0.8 standard and NVIDIA
+  images, retaining Fedora 44 installation and desktop compatibility.
+  Validate both releases and support Python 3.15 in native test fixtures.
+
 - Scroll long active-window titles to the right within the panel title pill,
   with reduced motion preserving right-side elision.
 
@@ -210,8 +216,11 @@ versions from `config.mk`.
   transaction output and confirmation. Limit discovery to update state and
   correctly parse active PackageKit operations during legacy recovery.
 
-- Install `NetworkManager-wifi` with the Fedora image and full package set, and
-  reconcile it on existing source checkouts. Without the Wi-Fi plugin,
+- Require `NetworkManager-wifi`, `wpa_supplicant` and `wireless-regdb` explicitly
+  in both image variants and reconcile them on source updates. Reject captures
+  missing their RPMs, Wi-Fi plugin, libraries or regulatory database (#368).
+  Rebuilt and verified installation media are required to replace v0.7.2;
+  source changes do not repair existing downloads. Without the Wi-Fi plugin,
   NetworkManager leaves wireless interfaces unmanaged, so scans and connections
   fail after installation even when the kernel driver is present.
 

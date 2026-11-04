@@ -18,7 +18,8 @@ Fedora 45 becomes the main ISO base; retain Fedora 44 compatibility.
 - [x] Merge #425 at 7474120d915a9a80d77082d8f763e6b829f80fc0.
 - [x] Integrate updated main, validate, review and merge #424 at f66298f9ef06f563df3e56ae6cceac3e17243afb.
 - [x] Integrate updated main, validate, review and merge #423 at a058b8bd5136c6e87802b9ab0ad718880dd88b5c.
-- [ ] Integrate updated main, validate, review and merge #422.
+- [x] Integrate updated main, validate, review and merge #422 at e39dadadd6dc9fca55dbc5cc2809e390a5d0c7ba.
+- [ ] Qualify Fedora 45 build/lint/runtime and Fedora 44 compatibility.
 - [ ] Address #368's published-image Wi-Fi omission and validate new artifacts.
 - [ ] Prepare v0.8.0 source, release notes, checksums and qualification record.
 
