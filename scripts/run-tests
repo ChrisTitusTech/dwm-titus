@@ -111,7 +111,12 @@ export XDG_CONFIG_HOME=$work/xdg/config
 export XDG_DATA_HOME=$work/xdg/data
 export XDG_STATE_HOME=$work/xdg/state
 export XDG_CACHE_HOME=$work/xdg/cache
+export XDG_RUNTIME_DIR=$work/xdg/runtime
 mkdir -p -- "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_STATE_HOME" "$XDG_CACHE_HOME"
+# D-Bus-activated helpers inherit the bus daemon's environment. Set this
+# before tests start private buses, so their document portals cannot replace
+# the live desktop's FUSE mount under /run/user/$UID/doc.
+install -d -m 0700 -- "$XDG_RUNTIME_DIR"
 
 export TMPDIR=$work
 export DWM_TEST_WORKSPACE=$work
