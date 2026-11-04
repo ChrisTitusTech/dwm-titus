@@ -16,6 +16,7 @@ Flickable {
     required property var capabilities
     required property var textScaleCapability
     required property var notificationCapability
+    property bool windowVisible: false
     property string selectedThemeId: ""
     property string selectedWallpaperPath: ""
     property string selectedWallpaperFit: "fill"
@@ -868,6 +869,11 @@ Flickable {
                     && root.appearanceModel.wallpaperPreviewState === "none"
                 onActivated: root.appearanceModel.resetWallpaper()
             }
+        }
+
+        LayoutSettingsPane {
+            Layout.fillWidth: true
+            active: root.windowVisible && root.visible
         }
 
         SectionLabel { label: "Font and text size" }

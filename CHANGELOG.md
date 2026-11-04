@@ -8,6 +8,9 @@ versions from `config.mk`.
 
 ### Added
 
+- Add mouse-accessible Tile, Floating and Monocle choices, master sizing and
+  per-tag tile-gap controls in Settings > Appearance, alongside the existing
+  previewable desktop text scale. Changes follow hotkeys without polling (#297).
 - Add a searchable window overview in Control Center and the command menu.
   Super+Tab toggles it by default; existing user hotkey files are preserved,
   with one-entry migration instructions in the overview guide.

@@ -1,0 +1,159 @@
+#!/usr/bin/env python3
+"""Unprivileged, event-driven access to dwm's versioned layout interface."""
+
+import argparse
+import ctypes as C
+import ctypes.util
+import json
+import select
+import sys
+import time
+
+
+class Data(C.Union):
+    _fields_ = [("b", C.c_char * 20), ("s", C.c_short * 10), ("l", C.c_long * 5)]
+
+
+class Message(C.Structure):
+    _fields_ = [("type", C.c_int), ("serial", C.c_ulong), ("send_event", C.c_int),
+                ("display", C.c_void_p), ("window", C.c_ulong),
+                ("message_type", C.c_ulong), ("format", C.c_int), ("data", Data)]
+
+
+class Event(C.Union):
+    _fields_ = [("message", Message), ("pad", C.c_long * 24)]
+
+
+class Connection:
+    def __init__(self):
+        self.x = C.CDLL(ctypes.util.find_library("X11") or "libX11.so.6")
+        signatures = {
+            "XOpenDisplay": ([C.c_char_p], C.c_void_p),
+            "XDefaultRootWindow": ([C.c_void_p], C.c_ulong),
+            "XInternAtom": ([C.c_void_p, C.c_char_p, C.c_int], C.c_ulong),
+            "XGetWindowProperty": ([C.c_void_p, C.c_ulong, C.c_ulong, C.c_long,
+                C.c_long, C.c_int, C.c_ulong, C.POINTER(C.c_ulong), C.POINTER(C.c_int),
+                C.POINTER(C.c_ulong), C.POINTER(C.c_ulong), C.POINTER(C.c_void_p)], C.c_int),
+            "XSelectInput": ([C.c_void_p, C.c_ulong, C.c_long], C.c_int),
+            "XNextEvent": ([C.c_void_p, C.POINTER(Event)], C.c_int),
+            "XPending": ([C.c_void_p], C.c_int),
+            "XConnectionNumber": ([C.c_void_p], C.c_int),
+            "XSendEvent": ([C.c_void_p, C.c_ulong, C.c_int, C.c_long, C.POINTER(Event)], C.c_int),
+            "XFlush": ([C.c_void_p], C.c_int),
+            "XFree": ([C.c_void_p], C.c_int),
+            "XCloseDisplay": ([C.c_void_p], C.c_int),
+        }
+        for name, (args, result) in signatures.items():
+            function = getattr(self.x, name)
+            function.argtypes, function.restype = args, result
+        self.display = self.x.XOpenDisplay(None)
+        if not self.display:
+            raise RuntimeError("Cannot connect to the X11 session")
+        self.root = self.x.XDefaultRootWindow(self.display)
+        self.state_atom = self.atom("_DWM_LAYOUT_STATE")
+        self.request_atom = self.atom("_DWM_LAYOUT_REQUEST")
+        self.x.XSelectInput(self.display, self.root, 1 << 22)
+
+    def atom(self, name):
+        return self.x.XInternAtom(self.display, name.encode(), False)
+
+    def state(self):
+        actual, count, after = C.c_ulong(), C.c_ulong(), C.c_ulong()
+        form, data = C.c_int(), C.c_void_p()
+        status = self.x.XGetWindowProperty(self.display, self.root, self.state_atom,
+            0, 9, False, 19, C.byref(actual), C.byref(form), C.byref(count),
+            C.byref(after), C.byref(data))
+        try:
+            if status or actual.value != 19 or form.value != 32 or count.value != 9 or after.value:
+                return {"available": False, "detail": "Restart dwm to enable layout controls"}
+            values = list(C.cast(data, C.POINTER(C.c_long))[:9])
+            if values[6] != 3:
+                return {"available": False, "detail": "Unsupported dwm layout interface"}
+            result = dict(zip(("monitor", "tags", "layout", "master", "count", "gap"), values[:6]))
+            result.update(choices=values[8], owner=values[7], available=True, detail="Changes apply to this monitor and tag until dwm exits")
+            return result
+        finally:
+            if data:
+                self.x.XFree(data)
+
+    def change(self, operation, value, monitor, tags, owner):
+        event = Event()
+        event.message = Message(33, 0, True, self.display, self.root,
+            self.request_atom, 32, Data())
+        event.message.data.l[:] = (operation, value, monitor, tags, 3 | (owner << 16))
+        if not self.x.XSendEvent(self.display, self.root, False, (1 << 20) | (1 << 19), C.byref(event)):
+            raise RuntimeError("Could not send the layout request")
+        self.x.XFlush(self.display)
+
+    def wait(self, timeout=None):
+        if not self.x.XPending(self.display):
+            ready, _, _ = select.select([self.x.XConnectionNumber(self.display)], [], [], timeout)
+            if not ready:
+                return False
+        event = Event()
+        self.x.XNextEvent(self.display, C.byref(event))
+        return True
+
+    def close(self):
+        self.x.XCloseDisplay(self.display)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("action", choices=("status", "watch", "set"))
+    parser.add_argument("setting", nargs="?", choices=("layout", "master", "count", "gap"))
+    parser.add_argument("value", nargs="?", type=int)
+    parser.add_argument("monitor", nargs="?", type=int)
+    parser.add_argument("tags", nargs="?", type=int)
+    parser.add_argument("owner", nargs="?", type=int)
+    args = parser.parse_args()
+    keys = ("layout", "master", "count", "gap")
+    bounds = ((0, 2), (5, 95), (0, 20), (0, 64))
+    if args.action == "set":
+        if args.setting is None or args.value is None or args.monitor is None or args.tags is None or args.owner is None:
+            parser.error("set requires a setting, value, monitor, tag mask and settings owner")
+        operation = keys.index(args.setting)
+        low, high = bounds[operation]
+        if not low <= args.value <= high:
+            parser.error(f"{args.setting} must be between {low} and {high}")
+    connection = Connection()
+    try:
+        if args.action == "set":
+            state = connection.state()
+            if not state.get("available") or (state["monitor"], state["tags"], state["owner"]) != (args.monitor, args.tags, args.owner):
+                raise RuntimeError("The edited monitor or tag changed; try again")
+            if args.setting == "layout" and not state["choices"] & (1 << args.value):
+                raise RuntimeError("This dwm build does not provide the requested layout")
+            if state[args.setting] != args.value:
+                connection.change(operation, args.value, args.monitor, args.tags, args.owner)
+                deadline = time.monotonic() + 2
+                while time.monotonic() < deadline:
+                    state = connection.state()
+                    if not state.get("available") or (state["monitor"], state["tags"], state["owner"]) != (args.monitor, args.tags, args.owner):
+                        raise RuntimeError("The edited monitor or tag changed; try again")
+                    if state[args.setting] == args.value:
+                        break
+                    connection.wait(max(0, deadline - time.monotonic()))
+                else:
+                    raise RuntimeError("dwm did not apply the layout change")
+            print(json.dumps(state), flush=True)
+        else:
+            previous = None
+            while True:
+                state = connection.state()
+                if state != previous:
+                    print(json.dumps(state), flush=True)
+                    previous = state
+                if args.action == "status":
+                    break
+                connection.wait()
+    finally:
+        connection.close()
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (OSError, RuntimeError) as error:
+        print(str(error), file=sys.stderr)
+        sys.exit(1)
