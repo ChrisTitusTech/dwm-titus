@@ -502,8 +502,8 @@ check-clipboard: dwm-clipboard-observer
 	python3 tests/test-clipboard-runtime.py
 	python3 tests/test-clipboard-end-to-end.py
 check-layout-settings: all
-	dbus-run-session -- xvfb-run -a -s "-screen 0 1280x800x24" python3 tests/test-layout-settings.py
-	dbus-run-session -- xvfb-run -a -s "-screen 0 1280x800x24 -screen 1 800x600x24 +xinerama" python3 tests/test-layout-settings.py
+	$(call run_managed_test,dbus-run-session -- xvfb-run -a -s "-screen 0 1280x800x24" python3 tests/test-layout-settings.py)
+	$(call run_managed_test,dbus-run-session -- xvfb-run -a -s "-screen 0 1280x800x24 -screen 1 800x600x24 +xinerama" python3 tests/test-layout-settings.py)
 
 check-keyboard-layout: all
 	python3 tests/test-keyboard-refresh.py

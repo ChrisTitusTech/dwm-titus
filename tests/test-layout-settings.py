@@ -55,6 +55,12 @@ import Quickshell.Io
 import "settings"
 import qs.core
 ShellRoot {
+    id: harness
+    function findItem(item: var, name: string): var {
+        if (item.objectName === name) return item;
+        for (const child of item.children || []) { const found = findItem(child, name); if (found) return found; }
+        return null;
+    }
     FloatingWindow {
         visible: true; title: "Layout settings test"
         implicitWidth: 520; implicitHeight: 480; color: Theme.bg
@@ -65,6 +71,11 @@ ShellRoot {
         function state(): string { return JSON.stringify(pane.snapshot); }
         function setValue(key: string, value: int): void { pane.setValue(key, value); }
         function active(value: bool): void { pane.active = value; }
+        function rect(name:string): string {
+            const item = harness.findItem(pane, name);
+            const point = item.mapToGlobal(0, 0);
+            return JSON.stringify({x:point.x, y:point.y, width:item.width, height:item.height, pressed:item.pressed});
+        }
     }
 }
 ''')
@@ -134,6 +145,28 @@ ShellRoot {
                 from PIL import ImageGrab
                 Path(evidence).mkdir(parents=True, exist_ok=True)
                 ImageGrab.grab(xdisplay=os.environ["DISPLAY"]).save(Path(evidence) / "layout-settings.png")
+            # A real drag must never move an edit to a tag selected mid-gesture.
+            run("xdotool", "key", "super+t")
+            wait(lambda: connection.state()["layout"] == 0, "Tile layout did not restore")
+            rect = json.loads(ipc("rect", "windowTileGaps").stdout)
+            run("xdotool", "mousemove", str(round(rect["x"] + rect["width"] * .4)), str(round(rect["y"] + rect["height"] / 2)), "mousedown", "1")
+            try:
+                wait(lambda: json.loads(ipc("rect", "windowTileGaps").stdout)["pressed"], "Mouse did not begin the gap slider drag")
+                run("xdotool", "key", "super+2")
+                wait(lambda: connection.state()["tags"] == 2, "Drag tag switch failed")
+                run("xdotool", "mousemove", str(round(rect["x"] + rect["width"] - 2)), str(round(rect["y"] + rect["height"] / 2)))
+                time.sleep(.1)
+            finally:
+                run("xdotool", "mouseup", "1")
+            time.sleep(.2)
+            assert connection.state()["gap"] == 8, "Cross-tag drag changed the new tag"
+            run("xdotool", "key", "super+1")
+            wait(lambda: connection.state()["tags"] == 1, "Original drag tag did not restore")
+            assert connection.state()["gap"] == 24, "Canceled drag changed the original tag"
+            # Returning to the pane permits a new drag on the current view.
+            rect = json.loads(ipc("rect", "windowTileGaps").stdout)
+            run("xdotool", "mousemove", str(round(rect["x"] + rect["width"] / 2)), str(round(rect["y"] + rect["height"] / 2)), "click", "1")
+            wait(lambda: 30 <= connection.state()["gap"] <= 34, "Normal slider gesture did not apply")
             ticks_before = sum(map(int, Path(f"/proc/{shell.pid}/stat").read_text().rsplit(")", 1)[1].split()[11:13]))
             time.sleep(2)
             ticks_after = sum(map(int, Path(f"/proc/{shell.pid}/stat").read_text().rsplit(")", 1)[1].split()[11:13]))

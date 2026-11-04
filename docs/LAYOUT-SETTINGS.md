@@ -44,3 +44,5 @@ mouse-equivalent QML actions, hotkey convergence and watcher reopening, and
 samples idle CPU. `make check-xvfb-runtime` retains the existing desktop smoke
 coverage. Physical monitor hotplug and GPU/compositor behavior need separate
 hardware qualification.
+
+![Nested X11 layout controls](validation/issue-297/layout-settings.png)

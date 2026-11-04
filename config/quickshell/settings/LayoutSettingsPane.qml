@@ -11,19 +11,57 @@ ColumnLayout {
     property bool active: visible
     property var snapshot: ({ available: false, detail: "Loading layout controls" })
     property string message: ""
-    readonly property bool editable: root.snapshot.available && !action.running
+    readonly property bool editable: root.active && root.snapshot.available && !action.running
     spacing: Theme.spacingSm
 
     function parse(text) {
         try { root.snapshot = JSON.parse(text); }
         catch (error) { root.message = "Could not read layout state"; }
     }
-    function setValue(setting, value) {
+    function currentView() {
+        return { monitor: root.snapshot.monitor, tags: root.snapshot.tags };
+    }
+    function sliderValue(setting, fallback) {
+        return typeof root.snapshot[setting] === "number" ? root.snapshot[setting] : fallback;
+    }
+    function setValue(setting, value, view) {
         if (!root.editable) return;
+        const target = view || root.currentView();
+        if (target.monitor !== root.snapshot.monitor || target.tags !== root.snapshot.tags) {
+            root.message = "The edited monitor or tag changed; try again";
+            return;
+        }
         root.message = "";
+        if (root.snapshot[setting] === value) return;
         action.command = Commands.helperCommand("dwm-layout-settings", "set",
-            [setting, String(value), String(root.snapshot.monitor), String(root.snapshot.tags)], true);
+            [setting, String(value), String(target.monitor), String(target.tags)], true);
         action.running = true;
+    }
+
+    component ViewSlider: Controls.Slider {
+        id: slider
+        required property string setting
+        required property int fallbackValue
+        property var editView: null
+        property int editValue: 0
+        value: root.sliderValue(slider.setting, slider.fallbackValue)
+        onMoved: {
+            slider.editValue = Math.round(value);
+            if (!pressed) root.setValue(slider.setting, slider.editValue, root.currentView());
+        }
+        onPressedChanged: {
+            if (pressed) {
+                slider.editView = root.currentView();
+                slider.editValue = Math.round(value);
+            } else if (slider.editView !== null) {
+                const view = slider.editView;
+                slider.editView = null;
+                root.setValue(slider.setting, slider.editValue, view);
+                slider.value = Qt.binding(function() {
+                    return root.sliderValue(slider.setting, slider.fallbackValue);
+                });
+            }
+        }
     }
 
     SectionLabel { label: "Window layout" }
@@ -48,17 +86,16 @@ ColumnLayout {
         }
     }
     UiText { text: "Master area: " + (root.snapshot.master || 55) + "%"; color: Theme.menuText }
-    Controls.Slider {
+    ViewSlider {
+        setting: "master"
+        fallbackValue: 55
         id: master
         objectName: "windowMasterArea"
         Accessible.name: "Master area percentage"
         Layout.fillWidth: true
         from: 5; to: 95; stepSize: 1
-        value: root.snapshot.master || 55
         enabled: root.editable && root.snapshot.layout !== 1
         palette.highlight: Theme.accent
-        onMoved: { if (!pressed) root.setValue("master", Math.round(value)); }
-        onPressedChanged: { if (!pressed) root.setValue("master", Math.round(value)); }
     }
     RowLayout {
         UiText { text: "Master windows: " + (root.snapshot.count || 0); color: Theme.menuText }
@@ -66,16 +103,15 @@ ColumnLayout {
         ShellButton { label: "+"; enabled: root.editable && root.snapshot.count < 20; onActivated: root.setValue("count", root.snapshot.count + 1) }
     }
     UiText { text: "Tile gaps: " + (root.snapshot.gap || 0) + " px"; color: Theme.menuText }
-    Controls.Slider {
+    ViewSlider {
+        setting: "gap"
+        fallbackValue: 0
         objectName: "windowTileGaps"
         Accessible.name: "Tile gap size"
         Layout.fillWidth: true
         from: 0; to: 64; stepSize: 1
-        value: root.snapshot.gap || 0
         enabled: root.editable && root.snapshot.layout === 0
         palette.highlight: Theme.accent
-        onMoved: { if (!pressed) root.setValue("gap", Math.round(value)); }
-        onPressedChanged: { if (!pressed) root.setValue("gap", Math.round(value)); }
     }
     UiText {
         Layout.fillWidth: true
@@ -93,7 +129,9 @@ ColumnLayout {
     }
     Process {
         id: action
-        stdout: StdioCollector { onStreamFinished: root.parse(text) }
+        // The watch stream owns current state; an older mutation acknowledgement
+        // must not replace a newer monitor/tag snapshot.
+        stdout: StdioCollector {}
         stderr: StdioCollector { onStreamFinished: { if (text.trim()) root.message = text.trim(); } }
     }
 }
