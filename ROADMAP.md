@@ -2,27 +2,23 @@
 
 ## Current scope
 
-Implement the remaining desktop feature requests in separate ready-for-review
-pull requests: #297, #350, #358 and #370. The user authorized this sequence on
-2026-11-04. Do not merge or publish the release in this workflow.
+The four desktop features are implemented in PRs #424, #425, #422 and #423.
+On 2026-11-04, the user verified PR #425's static thumbnails and authorized
+merging all four PRs, addressing #368, and preparing the 0.8 release.
 
-Issue #368 concerns the published v0.7.2 ISO and stays deferred until these
-features are finished and the 0.8 release is prepared. Source fixes do not
-qualify or update already published images.
+## Integration and release sequence
 
-## Review boundaries
+1. Merge #425 after recorded local review, tests and user acceptance.
+2. Integrate updated main into each remaining feature PR; resolve conflicts,
+   validate their combined native/QML behavior, complete independent review,
+   and merge #424 (layout controls), #423 (floating titlebars), and #422
+   (calendar/weather).
+3. Address #368 by checking the Wi-Fi package contract in newly built images,
+   including NetworkManager's Wi-Fi plugin, supplicant and regulatory database.
+   Source fixes do not repair the published v0.7.2 ISO.
+4. Prepare v0.8.0 source, changelog, release notes, checksummed artifacts and
+   Fedora image qualification evidence under the existing SPEC.md contract.
 
-1. #297: visual layout selection, master sizing and per-tag tile gaps in
-   Appearance, retaining the existing desktop-scale preview workflow.
-2. #350: an event-driven overview of individual windows across tags, with
-   keyboard navigation and focus/tag selection without moving windows.
-3. #358: optional calendar and weather panel widgets, supported by the panel
-   settings protocol and bounded, explicitly requested weather networking.
-4. #370: optional floating-window titlebars with move and close controls,
-   configurable without changing existing defaults.
-
-Complete each boundary's focused checks, aggregate repository gate, nested X11
-runtime evidence and independent Codex review before opening its PR. Record
-untested multi-monitor or hardware behavior precisely. The four feature PRs
-are the stop point; release qualification, #368, merging and publication follow
-separately after the feature work is complete.
+Record exact tested commits, reused unchanged evidence and hardware limitations.
+Do not describe an unbuilt or unqualified image as fixed or released. Preparing
+release artifacts does not replace publishing and verifying the new downloads.
