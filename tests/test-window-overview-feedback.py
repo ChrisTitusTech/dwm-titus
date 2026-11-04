@@ -58,7 +58,8 @@ with tempfile.TemporaryDirectory(dir=os.environ["TMPDIR"]) as directory, tempfil
         function state(): string { return JSON.stringify({visible:windowOverviewModel.visible,
             busy:windowOverviewModel.busy, returnWindow:windowOverviewModel.returnWindow,
             rows:windowOverviewModel.rows, message:windowOverviewModel.message,
-            launcher:launcherModel.visible, menu:commandMenuModel.visible, clipboard:clipboardModel.visible}); }
+            launcher:launcherModel.visible, menu:commandMenuModel.visible, clipboard:clipboardModel.visible,
+            settings:settingsModel.visible, systemhealth:systemHealthModel.visible}); }
     }
 }
 '''
@@ -137,12 +138,13 @@ with tempfile.TemporaryDirectory(dir=os.environ["TMPDIR"]) as directory, tempfil
         assert connection.property(root, "_NET_ACTIVE_WINDOW", 33) == [selected]
         assert connection.property(root, "_NET_CURRENT_DESKTOP", 6) == [2]
 
-        for surface in ("launcher", "menu", "clipboard"):
+        for surface in ("launcher", "menu", "clipboard", "settings", "systemhealth"):
             connection.activate(selected)
             assert ipc(surface, "open").returncode == 0
             wait(lambda: state().get(surface), f"{surface} did not open")
             wait(lambda: (connection.property(root, "_NET_ACTIVE_WINDOW", 33) or [0])[0] not in (selected, earlier), f"{surface} did not acquire focus")
             open_overview()
+            assert not state()[surface], f"{surface} remained mapped beneath the overview"
             assert state()["returnWindow"] == str(selected), f"{surface} hid the underlying focus context"
             run("xdotool", "key", "Escape")
             wait(lambda: not state()["visible"] and not state()["busy"] and connection.property(root, "_NET_ACTIVE_WINDOW", 33) == [selected], f"Cancellation over {surface} did not restore the underlying client")
@@ -169,7 +171,7 @@ with tempfile.TemporaryDirectory(dir=os.environ["TMPDIR"]) as directory, tempfil
         time.sleep(2)
         after = sum(map(int, Path(f"/proc/{shell.pid}/stat").read_text().rsplit(")", 1)[1].split()[11:13]))
         assert after - before <= 15, f"Closed production shell consumed {after-before} CPU ticks/2s"
-        print(f"Production shell: Super+Tab toggle, hidden-peer warp, title collision, Launcher/Menu/Clipboard cancellation, WM_TAKE_FOCUS acknowledgement: PASS; idle ticks/2s={after-before}")
+        print(f"Production shell: Super+Tab toggle, hidden-peer warp, title collision, Launcher/Menu/Clipboard/Settings/System Health cancellation, WM_TAKE_FOCUS acknowledgement: PASS; idle ticks/2s={after-before}")
     finally:
         if sys.exc_info()[0]:
             for name in ("dwm.log", "qml.log"):

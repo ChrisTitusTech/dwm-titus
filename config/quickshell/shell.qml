@@ -142,6 +142,8 @@ ShellRoot {
             clipboardModel.close();
             controlCenterModel.close();
             updateCenterModel.close();
+            settingsModel.close();
+            systemHealthModel.close();
         }
     }
     LazyLoader {
