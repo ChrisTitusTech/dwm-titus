@@ -308,7 +308,13 @@ It must not enable any other third-party repository.
 
 The Fedora Kickstart image profiles separately predeclare the four image
 repository groups required by that product: RPM Fusion, Brave Browser, MWT
-Packages, and `christitustech/copr-fedora`. Their inclusion is validated as
+Packages, and (on Fedora 44) `christitustech/copr-fedora`. Fedora 45 images
+use Thunar and distribution Gamescope while that release's COPR is unavailable,
+as explicitly selected for 0.8. Do not leave an unusable COPR enabled on those
+images. Thunar is the fresh-account file-manager default on every supported
+Fedora release, including when Path is installed. Existing user-selected
+file-manager preferences and optional Path workflows remain supported.
+Repository inclusion is validated as
 part of the reviewed ISO profile rather than inferred from existing-system
 installer approval.
 

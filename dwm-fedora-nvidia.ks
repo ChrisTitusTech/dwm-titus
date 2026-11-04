@@ -35,11 +35,19 @@ services --enabled=NetworkManager,systemd-timesyncd
 %pre --interpreter=/bin/sh
 gaming_repo=/tmp/dwm-titus-gaming-repo
 gaming_packages=/tmp/dwm-titus-gaming-packages
+path_packages=/tmp/dwm-titus-path-packages
+: >"$gaming_repo"
+: >"$path_packages"
+. /etc/os-release
 case "$(uname -m)" in
 x86_64)
+	# Fedora 45 COPR is unavailable; use Thunar and distribution Gamescope.
+	if [ "${VERSION_ID:-}" = 44 ]; then
 	cat >"$gaming_repo" <<'EOF'
 repo --name="christitustech-copr-fedora" --baseurl="https://download.copr.fedorainfracloud.org/results/christitustech/copr-fedora/fedora-$releasever-$basearch/" --install
 EOF
+	printf '%s\n' path >"$path_packages"
+	fi
 	cat >"$gaming_packages" <<'EOF'
 steam
 gamescope
@@ -164,7 +172,7 @@ wpa_supplicant
 wireless-regdb
 nm-connection-editor
 rsync
-path
+%include /tmp/dwm-titus-path-packages
 Thunar
 gvfs
 gvfs-smb

@@ -23,6 +23,9 @@ existing-system installer on Fedora Linux. The 0.8 release images target Fedora 
 retained for existing-system installs and updates. See the
 [0.8 qualification record](docs/RELEASE-0.8.0.md) for tested paths and remaining
 gates. Existing published 0.7.2 downloads remain Fedora 44 until replaced.
+Fedora 45 images use Thunar while the optional COPR/Path repository is
+unavailable. Thunar is the fresh-account default on Fedora 44 too, even with
+Path installed; existing user-selected MIME preferences remain preserved.
 
 ## What You Get
 

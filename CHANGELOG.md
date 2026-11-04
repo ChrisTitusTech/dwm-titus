@@ -47,7 +47,7 @@ versions from `config.mk`.
   `christitustech/copr-fedora` COPR. Full installs attempt it after approved
   repository setup and skip it when unavailable. Both Fedora image profiles
   include Path from their existing COPR. Fresh-account folder defaults
-  prefer Path when installed, with Thunar otherwise; existing MIME preferences
+  prefer Thunar on every supported Fedora release; existing MIME preferences
   remain unchanged. Keep GTK as the file chooser portal until Path supports
   cancellation through the portal request API.
 
@@ -110,6 +110,13 @@ versions from `config.mk`.
   terminals during source and desktop updates.
 
 ### Changed
+
+- Make Thunar the fresh-account default file manager on all supported Fedora
+  releases, even when optional Path is installed. Preserve existing preferences.
+
+- Use Thunar on Fedora 45 while the optional COPR/Path repository is unavailable;
+  do not enable that broken repository in the images. Preserve Fedora 44 Path
+  support and existing user file-manager preferences.
 
 - Use Fedora 45 Server netinst 1.4 for the primary 0.8 standard and NVIDIA
   images, retaining Fedora 44 installation and desktop compatibility.

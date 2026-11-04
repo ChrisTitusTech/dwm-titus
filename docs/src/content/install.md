@@ -45,7 +45,7 @@ Both include LightDM, dwm, Quickshell, Brave Origin, Celluloid, mpv, sxiv, Path,
 Alacritty, Starship, Herdr, fonts, Papirus icons, Gear Lever, and `maim` with region capture and
 clipboard dependencies. Fresh accounts use Brave Origin for web browsing,
 Celluloid for its supported audio/video formats, sxiv for its supported image
-formats, Path for folders (with Thunar also available), and Alacritty for the terminal. Existing application
+formats, Thunar for folders, and Alacritty for the terminal. Existing application
 preferences are preserved; use Settings > Defaults to change them. Internet
 access is needed for later updates and additional software.
 
@@ -171,8 +171,8 @@ step, or uses an already enabled COPR. If the package is unavailable, it skips
 Path and retains Thunar. The installer does not enable a repository solely for
 Path. The explicit commands above do not require opting into gaming packages.
 
-Fresh accounts prefer `pathfm.desktop` for folders when Path is installed,
-otherwise `thunar.desktop`. Existing MIME preferences are preserved. To select
+Fresh accounts use `thunar.desktop` for folders on every supported Fedora
+release, including when optional Path is installed. Existing MIME preferences are preserved. To select
 Path on an existing account, use Settings > Default Applications or:
 
 ```bash

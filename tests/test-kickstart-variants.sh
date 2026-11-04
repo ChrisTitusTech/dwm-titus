@@ -79,7 +79,7 @@ required_packages=(
 )
 
 mapfile -t mapped_fedora_packages < <(
-	ARCH=x86_64 dwm_packages fedora full | awk 'NF' | sort -u
+	DWM_IMAGE_FEDORA_RELEASE=45 ARCH=x86_64 dwm_packages fedora full | awk 'NF' | sort -u
 )
 
 dwm_packages fedora runtime-required | grep -Fx xclip >/dev/null
@@ -149,6 +149,28 @@ for ks in "$standard_ks" "$nvidia_ks"; do
 		exit 1
 	fi
 	grep -Fq "url --metalink=\"https://mirrors.fedoraproject.org/metalink?repo=fedora-\$releasever&arch=\$basearch\"" "$ks"
+	# Execute the actual pre-script with private output paths and os-release.
+	# Fedora 44 retains COPR/Path; Fedora 45 uses Thunar without a dead repo.
+	python3 - "$ks" "$work/pre-script" <<'PYPRE'
+from pathlib import Path
+import sys
+text = Path(sys.argv[1]).read_text().split('%pre --interpreter=/bin/sh\n', 1)[1].split('\n%end', 1)[0]
+text = text.replace('/tmp/dwm-titus-', '$DWM_TEST_IMAGE_OUTPUT/')
+text = text.replace('. /etc/os-release', '. "$DWM_TEST_IMAGE_OS_RELEASE"')
+Path(sys.argv[2]).write_text(text)
+PYPRE
+	for release in 44 45; do
+		mkdir -p "$work/pre-$release"
+		printf 'ID=fedora\nVERSION_ID=%s\n' "$release" >"$work/os-release"
+		DWM_TEST_IMAGE_OUTPUT="$work/pre-$release" DWM_TEST_IMAGE_OS_RELEASE="$work/os-release" sh "$work/pre-script"
+		if [[ $release == 44 ]]; then
+			grep -Fq 'christitustech-copr-fedora' "$work/pre-$release/gaming-repo"
+			grep -Fxq path "$work/pre-$release/path-packages"
+		else
+			[[ ! -s $work/pre-$release/gaming-repo && ! -s $work/pre-$release/path-packages ]]
+		fi
+		grep -Fxq gamescope "$work/pre-$release/gaming-packages"
+	done
 	# Execute the actual post-script cleanup prefix in a disposable directory.
 	# Replace its sudoers path before execution; never touch host authorization.
 	awk '

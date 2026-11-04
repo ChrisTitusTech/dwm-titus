@@ -100,7 +100,8 @@ formats, and sxiv for its advertised image formats. The existing-system installe
 also installs Celluloid, mpv, and sxiv in every profile and seeds these media/image
 defaults for fresh accounts. Existing MIME preference files are preserved; use
 Settings > Defaults to change handlers on an existing account. Thunar is the
-fresh image file-manager default when installed.
+fresh-account file-manager default on every supported Fedora release, even
+when Path is also installed.
 Starship uses terminal palette colors; custom Bash and MIME files are preserved.
 The Alacritty shortcut and Herdr opt-in behavior stay the same. sxiv is visible
 in Defaults, and feh remains installed for wallpaper. Tool hashes are recorded
@@ -163,3 +164,8 @@ Compressed images are larger than netinstall media. Check the release host's
 individual asset limit before publication; do not silently truncate or replace
 an oversized ISO. Factory logs are retained beside the archive in `.logs/`;
 disposable build disks and temporary archives are removed when the builder exits.
+
+For 0.8, Fedora 45 images use Thunar while the Fedora 45 COPR is unavailable.
+Do not enable a broken COPR or require Path in those captures. Fedora 44
+profiles retain COPR/Path availability, with Thunar as their default too. Existing user preferences are
+preserved; this does not replace Path on an installed system.

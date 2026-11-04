@@ -36,8 +36,11 @@ chmod -R go-w "${shared_assets[@]}"
 # Loaded from the installed image, not the build host.
 # shellcheck disable=SC1091
 source /usr/share/dwm-titus-image/scripts/dwm-packages.sh
+# shellcheck disable=SC1091
+source /etc/os-release
+[[ $ID == fedora && $VERSION_ID == 45 ]]
 mapfile -t packages < <({
-	dwm_packages fedora full
+	DWM_IMAGE_FEDORA_RELEASE="$VERSION_ID" dwm_packages fedora full
 	dwm_packages fedora terminal
 	dwm_packages fedora lightdm
 	dwm_packages fedora image-boot
@@ -77,7 +80,7 @@ missing=0
 for command in dwm quickshell fastfetch starship herdr brave-origin celluloid mpv sxiv maim xclip xdotool xrandr xset xinput \
 	setxkbmap xkbset notify-send xdg-open xdg-mime xdg-user-dir \
 	picom feh dex-autostart xsettingsd light-locker light-locker-command \
-	nmcli bluetoothctl wpctl pactl playerctl brightnessctl amixer protonrestart \
+	nmcli bluetoothctl wpctl pactl playerctl brightnessctl amixer \
 	flatpak pavucontrol thunar file-roller dconf gsettings \
 	busctl systemctl loginctl pkexec jq python3 \
 	dwm-screenshot dwm-terminal dwm-default-apps dwm-lock dwm-diagnostics \

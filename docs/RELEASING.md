@@ -211,3 +211,8 @@ checksums and qualification record. Source-only fixes or locally prepared ISOs
 do not update v0.7.2 downloads. Fedora 44 compatibility uses the retained test
 runner (`DWM_TEST_FEDORA_RELEASE=44 scripts/run-tests-podman`); separate new
 Fedora 44 release ISOs are not required.
+
+For 0.8, Fedora 45 images use Thunar while the Fedora 45 COPR is unavailable.
+Do not enable a broken COPR or require Path in those captures. Fedora 44
+profiles retain COPR/Path availability, with Thunar as their default too. Existing user preferences are
+preserved; this does not replace Path on an installed system.

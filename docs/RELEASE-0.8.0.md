@@ -22,6 +22,12 @@ Primary images: Fedora 45 Server Network Install 1.4, x86_64, separate standard
 and NVIDIA variants. Fedora 44 existing-system and desktop compatibility remains
 supported. No separate new Fedora 44 image set is planned.
 
+Fedora 45 images use Thunar instead of Path, as the user selected after the
+Fedora 45 COPR endpoint returned 404. That unavailable repository is omitted;
+gaming packages use distribution/RPM Fusion sources. Fedora 44 retains its
+COPR/Path availability. Thunar is the fresh-account default on both versions,
+even with Path installed; existing user-selected MIME preferences are preserved.
+
 Verified upstream source SHA-256:
 `a1e916f139a05955b943cf183b020780cca9c399b02b8f5ec4354c9e5c1dff1a`.
 Fedora 45 signing fingerprint:
