@@ -1017,6 +1017,7 @@ clientmessage(XEvent *e)
 		return;
 	}
 	if (cme->message_type == overviewactivateatom) {
+		Client *other;
 		unsigned int visible, target;
 		Arg arg;
 
@@ -1033,6 +1034,12 @@ clientmessage(XEvent *e)
 			arg.ui = target & (~target + 1U);
 			view(&arg);
 		}
+		/* Explicit selection must reveal the target beneath fullscreen peers. */
+		for (other = selmon->clients; other; other = other->next)
+			if (other != c && ISVISIBLE(other) && other->isfullscreen
+			&& other->fakefullscreen != 1)
+				setfullscreen(other, 0);
+		arrange(selmon);
 		focus(c);
 		restack(c->mon);
 		updatecurrentdesktop();
@@ -4837,6 +4844,7 @@ swallow(Client *p, Client *c)
 	Window w = p->win;
 	p->win = c->win;
 	c->win = w;
+	setclientdesktop(p);
 	updatepingprotocol(p);
 	int ewmhabove = p->ewmhabove;
 	p->ewmhabove = c->ewmhabove;
@@ -5414,6 +5422,7 @@ unswallow(Client *c)
 {
 	c->hung = c->pingpending = 0;
 	c->win = c->swallowing->win;
+	setclientdesktop(c);
 	updatepingprotocol(c);
 	c->ewmhabove = c->swallowing->ewmhabove;
 	c->iswindowedfullscreen = c->swallowing->iswindowedfullscreen;

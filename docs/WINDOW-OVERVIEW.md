@@ -11,7 +11,8 @@ view and restores previous focus. The empty and no-match states are explicit.
 Selection does not change a window's tags or monitor. dwm chooses its actual
 monitor and retains that monitor's visible tag if it already contains the
 window; otherwise it selects the lowest assigned tag on that monitor, then
-focuses and raises the selected window. A closed window produces an actionable
+focuses and raises the selected window. Explicit selection exits another visible
+fullscreen client on that monitor when it would cover the selection. A closed window produces an actionable
 error and the overview can be reopened. The overview tracks open, close, title
 and tag changes through X11 events; there is no polling or screenshot capture.
 Cards are used instead of live pixel previews, including on hidden tags.
@@ -45,7 +46,7 @@ restart is required.
 and two-monitor Xinerama servers. It covers individual same-application cards,
 multiple tags, titles changing while open, keyboard and actual mouse selection,
 Escape focus restoration, multi-tag assignment preservation, closing before
-selection, malformed optional title metadata and the empty state. An 80-card
+selection, fullscreen occlusion, swallowing/restoration metadata, malformed optional title metadata and the empty state. An 80-card
 UI fixture checks scrolling to the final row. It samples idle CPU. Set
 `DWM_FEATURE_EVIDENCE_DIR` to save dark and shipped light-theme screenshots.
 Physical hotplug, distinct physical display arrangements and GPU behavior still

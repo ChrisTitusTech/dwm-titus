@@ -56,7 +56,7 @@ import qs.core
 ShellRoot {
     id: harness
     property var overviewWindow: null
-    WindowOverviewModel { id: provider }
+    WindowOverviewModel { id: provider; property int snapshotCount: 0; onWindowsChanged: snapshotCount++ }
     LazyLoader { active: provider.visible; component: WindowOverviewWindow { id: view; model: provider; Component.onCompleted: harness.overviewWindow = view; Component.onDestruction: harness.overviewWindow = null } }
     function findItem(item: var, name: string): var {
         if (item.objectName === name) return item;
@@ -65,7 +65,7 @@ ShellRoot {
     }
     IpcHandler {
         target: "overviewTest"
-        function state(): string { return JSON.stringify({windows:provider.rows, visible:provider.visible, message:provider.message, selected:provider.selectedIndex}); }
+        function state(): string { return JSON.stringify({windows:provider.rows, visible:provider.visible, message:provider.message, selected:provider.selectedIndex, snapshots:provider.snapshotCount}); }
         function open(): void { provider.openOnScreen(Quickshell.screens[0]); }
         function close(): void { provider.close(); }
         function query(value: string): void { provider.query = value; }
@@ -147,6 +147,15 @@ ShellRoot {
             wait(lambda: ipc("state").returncode == 0, "Overview failed to load: " + (work / "qml.log").read_text())
             ipc("open")
             wait(lambda: len(state().get("windows", [])) == 3, "Overview includes itself or omitted applications: " + (work / "qml.log").read_text())
+            # Moving up by more columns than matches must still select a valid card.
+            run("xdotool", "key", "Up")
+            assert 0 <= state()["selected"] < 3, "Up produced a negative card index"
+            ipc("query", "Example window 0")
+            wait(lambda: len(state()["windows"]) == 1, "Single card filter failed")
+            run("xdotool", "key", "Up")
+            assert state()["selected"] == 0, "Up invalidated the only matching card"
+            ipc("query", "")
+            wait(lambda: len(state()["windows"]) == 3, "Card filter reset failed")
             # Keep both same-application windows individually selectable.
             assert all(row["app"] == "ExampleApplication" for row in state()["windows"])
             x.XStoreName(d, windows[1], b"Changed while overview is open")
@@ -200,6 +209,20 @@ ShellRoot {
             wait(lambda: connection.property(root, "_NET_ACTIVE_WINDOW", 33) == [windows[2]], "Click did not focus the selected window")
             assert connection.property(root, "_NET_CURRENT_DESKTOP", 6) == [5]
             assert initial_info == {row["id"]: (row["tags"], row["monitor"]) for row in connection.state()["windows"]}, "Selection changed assignments"
+            # A normal selection must be visible when a peer owns real fullscreen.
+            run("xdotool", "set_desktop_for_window", str(windows[1]), "0")
+            wait(lambda: next(row for row in connection.state()["windows"] if row["id"] == str(windows[1]))["tags"] == 1, "Fullscreen peer did not move to target tag")
+            connection.activate(windows[0])
+            event = module.Event()
+            event.message = module.Message(33, 0, True, d, windows[0], connection.atom("_NET_WM_STATE"), 32, module.Data())
+            event.message.data.l[0] = 1
+            event.message.data.l[1] = connection.atom("_NET_WM_STATE_FULLSCREEN")
+            x.XSendEvent(d, root, False, (1 << 20) | (1 << 19), C.byref(event))
+            x.XFlush(d)
+            wait(lambda: connection.atom("_NET_WM_STATE_FULLSCREEN") in (connection.property(windows[0], "_NET_WM_STATE") or []), "Peer did not enter fullscreen")
+            connection.activate(windows[1])
+            wait(lambda: connection.atom("_NET_WM_STATE_FULLSCREEN") not in (connection.property(windows[0], "_NET_WM_STATE") or []), "Fullscreen peer still covers selection")
+            assert connection.property(root, "_NET_ACTIVE_WINDOW", 33) == [windows[1]]
             connection.activate(windows[0])
             ipc("open")
             wait(lambda: len(state().get("windows", [])) == 3, "Closing-window scenario did not open")
@@ -212,6 +235,46 @@ ShellRoot {
                 x.XDestroyWindow(d, window)
             x.XSync(d, False)
             wait(lambda: len(state()["windows"]) == 0, "Empty state did not update")
+            ipc("close")
+            # A GUI child inherits its terminal's actual tags through swallowing.
+            parent = x.XCreateSimpleWindow(d, root, 0, 0, 300, 200, 0, 0, 0x557799)
+            terminal_class = b"dwmterm\0Dwmterm\0"
+            x.XChangeProperty(d, parent, connection.atom("WM_CLASS"), 31, 8, 0, terminal_class, len(terminal_class))
+            x.XStoreName(d, parent, b"Swallow metadata parent")
+            x.XMapWindow(d, parent)
+            x.XSync(d, False)
+            wait(lambda: len(connection.state()["windows"]) == 1, "Terminal did not map")
+            run("xdotool", "set_desktop_for_window", str(parent), "2")
+            wait(lambda: connection.state()["windows"][0]["tags"] == 4, "Terminal did not retag")
+            child_source = """import ctypes as C, importlib.machinery,sys,time
+sys.dont_write_bytecode=True
+m=importlib.machinery.SourceFileLoader('overview_child',sys.argv[1]).load_module()
+c=m.Connection();x,d=c.x,c.display
+x.XCreateSimpleWindow.argtypes=[C.c_void_p,C.c_ulong,C.c_int,C.c_int,C.c_uint,C.c_uint,C.c_uint,C.c_ulong,C.c_ulong]
+x.XCreateSimpleWindow.restype=C.c_ulong
+x.XMapWindow.argtypes=[C.c_void_p,C.c_ulong]
+w=x.XCreateSimpleWindow(d,c.root,0,0,300,200,0,0,0x889944)
+x.XMapWindow(d,w);x.XFlush(d);time.sleep(30)
+"""
+            child = subprocess.Popen([sys.executable, "-c", child_source, str(repo / "scripts/dwm-window-overview")])
+            processes.append(child)
+            wait(lambda: len(connection.state()["windows"]) == 1 and connection.state()["windows"][0]["id"] != str(parent), "GUI did not swallow terminal")
+            row = connection.state()["windows"][0]
+            assert row["tags"] == 4, "Swallowed child did not inherit terminal metadata"
+            connection.activate(int(row["id"]))
+            wait(lambda: connection.property(root, "_NET_CURRENT_DESKTOP", 6) == [2], "Swallowed client activation did not reach its actual tag")
+            run("xdotool", "set_desktop_for_window", row["id"], "4")
+            wait(lambda: connection.state()["windows"][0]["tags"] == 16, "Swallowed child retag failed")
+            child.terminate(); child.wait(timeout=5)
+            wait(lambda: len(connection.state()["windows"]) == 1 and connection.state()["windows"][0]["id"] == str(parent), "Terminal did not restore")
+            assert connection.state()["windows"][0]["tags"] == 16, "Restored terminal retained stale metadata"
+            connection.activate(parent)
+            wait(lambda: connection.property(root, "_NET_CURRENT_DESKTOP", 6) == [4], "Restored terminal activation did not reach its actual tag")
+            x.XDestroyWindow(d, parent); x.XSync(d, False)
+            wait(lambda: not connection.state()["windows"], "Restored terminal did not close")
+            snapshots = state()["snapshots"]
+            ipc("open")
+            wait(lambda: state()["snapshots"] > snapshots, "Overview did not receive its reopened empty snapshot")
             ipc("many")
             wait(lambda: len(state()["windows"]) == 80, "Large window list did not render")
             ipc("select", "79")

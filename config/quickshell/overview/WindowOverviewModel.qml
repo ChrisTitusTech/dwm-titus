@@ -55,7 +55,7 @@ Scope {
     }
     function toggle(screen) { if (root.visible) root.close(); else root.openOnScreen(screen); }
     function selectRelative(delta) {
-        if (root.rows.length) root.selectedIndex = (root.selectedIndex + delta + root.rows.length) % root.rows.length;
+        if (root.rows.length) root.selectedIndex = ((root.selectedIndex + delta) % root.rows.length + root.rows.length) % root.rows.length;
     }
     function activate(index) {
         if (root.busy || index < 0 || index >= root.rows.length) return;
