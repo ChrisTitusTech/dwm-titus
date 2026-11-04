@@ -131,6 +131,12 @@ for ks in "$standard_ks" "$nvidia_ks"; do
 		printf 'Unavailable Fedora package found in %s: nwg-look\n' "$ks" >&2
 		exit 1
 	fi
+	# Anaconda-generated installed overrides omit signing keys and mask the
+	# Fedora-owned defaults (under /usr/share/dnf5/repos.d on Fedora 45).
+	if grep -Eq '^repo --name="(updates|fedora-cisco-openh264)" .*--install' "$ks"; then
+		printf 'Official Fedora repositories must retain vendor signing-key configuration: %s\n' "$ks" >&2
+		exit 1
+	fi
 	for repo_line in "${required_repos[@]}"; do
 		grep -Fq "$repo_line" "$ks"
 	done

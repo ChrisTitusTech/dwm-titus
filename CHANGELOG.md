@@ -134,6 +134,10 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Keep Fedora-owned update and OpenH264 repository configurations instead of
+  persisting keyless Anaconda overrides. Signed PackageKit/DNF updates retain
+  their release-specific GPG keys and signature verification.
+
 - Decouple desktop installation updates from local Git branches, changes,
   generated caches, worktrees, and divergent history. Preserve the previous
   managed data tree for recovery and leave external source checkouts untouched.

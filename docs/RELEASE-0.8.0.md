@@ -43,6 +43,11 @@ Repeat these checks in installed VMs. Keep the issue open until both replacement
 public downloads and their checksums are verified; old 0.7.2 downloads remain
 unchanged by a source-only fix.
 
+The factory also preserves Fedora-owned update/OpenH264 repository settings,
+including signing keys. Keyless Anaconda overrides must not mask the Fedora 45
+vendor definitions in `/usr/share/dnf5/repos.d`. Signature verification stays
+enabled; a signed update transaction is part of qualification.
+
 ## Qualification record
 
 Pending: final source gates on Fedora 45 and Fedora 44, both factory captures,
