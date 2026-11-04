@@ -56,7 +56,7 @@ submitting a pull request.
 | Quickshell QML | `scripts/run-tests make check-quickshell-qml` plus real or nested X11 runtime validation |
 | System update UI | `scripts/run-tests tests/test-quickshell-update-ui-xvfb.sh` for the focused native fixture, plus configured QML lint |
 | Documentation | `npm --prefix docs ci`, then `npm --prefix docs run build` |
-| Installer or package mapping | `scripts/run-tests make check-fedora-packages` on Fedora 44 |
+| Installer or package mapping | `scripts/run-tests make check-fedora-packages` on Fedora 45 and Fedora 44 |
 | Fedora Kickstart or ISO | `scripts/run-tests make check-kickstart` plus all evidence required by [SPEC.md Section 9.4](SPEC.md#94-fedora-image-validation) |
 | Release automation | `scripts/run-tests make release-check` and a dry run of the release helper |
 
@@ -64,7 +64,7 @@ Fedora package, VM, and X11 checks require their documented host tools. If a
 required environment is unavailable, state exactly what was not tested in the
 pull request instead of claiming universal validation.
 
-For automated Fedora 44 checks from another host, use rootless Podman:
+For automated Fedora 45 checks from another host, use rootless Podman:
 
 ```sh
 scripts/run-tests-podman make check-update-center-settings
@@ -72,9 +72,13 @@ scripts/run-tests-podman make clean all
 scripts/run-tests-podman
 ```
 
-The runner builds `localhost/dwm-titus-tests:fedora-44` from the shared package
-map and delegates to `scripts/run-tests`. Fedora 44 is pinned; package versions
-resolve from Fedora 44 repositories at build time. Image/container storage is
+The runner builds `localhost/dwm-titus-tests:fedora-45` from the shared package
+map and delegates to `scripts/run-tests`. Fedora 45 is the default. Set
+`DWM_TEST_FEDORA_RELEASE=44` to run the same gates with the retained Fedora 44
+Containerfile. Other release values fail before building. Package versions
+resolve from the selected release repositories at build time. Fedora 45 builds
+the pinned shfmt v3.7.0 formatter from upstream Go module sources because that
+release has no shfmt RPM. Image/container storage is
 the only persistent container-engine state. Both the current worktree and Git
 repository are mounted read-only without SELinux relabeling, using
 nonrecursive binds. The runner requires host `findmnt` and rejects every
@@ -118,7 +122,7 @@ visible UI changes, but do not replace runtime validation.
 
 ## Local Review Loop
 
-Use the supported Fedora host or a disposable Fedora 44 container. Complete
+Use the supported Fedora host or a disposable Fedora 45 container (plus Fedora 44 compatibility checks). Complete
 validation before pushing so fixes do not require another hosted CI run:
 
 1. Fetch the intended base and integrate it before the final full gate. Run

@@ -2,6 +2,7 @@
 """Exercise calendar and weather popups, explicit networking and panel persistence on private X11."""
 import ctypes as C
 import importlib.machinery
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -70,8 +71,10 @@ with tempfile.TemporaryDirectory(dir=os.environ["TMPDIR"]) as directory:
         server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         threading.Thread(target=server.serve_forever, daemon=True).start()
         wrapper = helpers / "dwm-weather"
-        wrapper.write_text("#!/usr/bin/env python3\nimport importlib.machinery,sys\nsys.dont_write_bytecode=True\n"
-            + "module=importlib.machinery.SourceFileLoader('weather'," + repr(str(repo / "scripts/dwm-weather")) + ").load_module()\n"
+        wrapper.write_text("#!/usr/bin/env python3\nimport importlib.machinery,importlib.util,sys\nsys.dont_write_bytecode=True\n"
+            + "loader=importlib.machinery.SourceFileLoader('weather'," + repr(str(repo / "scripts/dwm-weather")) + ")\n"
+            + "spec=importlib.util.spec_from_loader(loader.name,loader)\n"
+            + "module=importlib.util.module_from_spec(spec);sys.modules[spec.name]=module;loader.exec_module(module)\n"
             + "module.PROVIDER=" + repr(f"http://127.0.0.1:{server.server_port}/") + "\nsys.exit(module.main())\n")
         wrapper.chmod(0o755)
         qml = work / "config/quickshell"

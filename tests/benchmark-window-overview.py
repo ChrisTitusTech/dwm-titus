@@ -8,6 +8,7 @@ import argparse
 import ctypes as C
 import hashlib
 import importlib.machinery
+import importlib.util
 import io
 import json
 import os
@@ -24,7 +25,11 @@ import time
 
 sys.dont_write_bytecode = True
 repo = Path(__file__).resolve().parents[1]
-module = importlib.machinery.SourceFileLoader("overview_benchmark", str(repo / "scripts/dwm-window-overview")).load_module()
+loader = importlib.machinery.SourceFileLoader("overview_benchmark", str(repo / "scripts/dwm-window-overview"))
+spec = importlib.util.spec_from_loader(loader.name, loader)
+module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
+loader.exec_module(module)
 
 
 def run(*args, check=True):

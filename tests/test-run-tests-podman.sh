@@ -12,15 +12,17 @@ repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 	printf 'Missing executable scripts/run-tests-podman\n' >&2
 	exit 1
 }
-[[ -f $repo/tests/containers/fedora-44/Containerfile ]] || {
-	printf 'Missing Fedora 44 Containerfile\n' >&2
+[[ -f $repo/tests/containers/fedora-45/Containerfile ]] || {
+	printf 'Missing Fedora 45 Containerfile\n' >&2
 	exit 1
 }
 work=$(mktemp -d "${TMPDIR:-/tmp}/podman-contract.XXXXXX")
 trap 'find "$work" -depth -delete' EXIT
-mkdir -p "$work/bin" "$work/repository/scripts" "$work/repository/tests/containers/fedora-44"
+mkdir -p "$work/bin" "$work/repository/scripts" "$work/repository/tests/containers/fedora-45"
 cp "$repo/scripts/run-tests-podman" "$work/repository/scripts/"
 cp "$repo/scripts/run-tests" "$repo/scripts/dwm-packages.sh" "$work/repository/scripts/"
+cp "$repo/tests/containers/fedora-45/Containerfile" "$work/repository/tests/containers/fedora-45/"
+mkdir -p "$work/repository/tests/containers/fedora-44"
 cp "$repo/tests/containers/fedora-44/Containerfile" "$work/repository/tests/containers/fedora-44/"
 printf 'ignored/\n' >"$work/repository/.gitignore"
 printf 'original\n' >"$work/repository/tracked"
@@ -66,6 +68,8 @@ import tarfile
 
 work = Path(os.environ['CONTRACT_WORK'])
 args = sys.argv[1:]
+release = os.environ.get('DWM_TEST_FEDORA_RELEASE', '45')
+containerfile = f'tests/containers/fedora-{release}/Containerfile'
 with (work / 'calls').open('a') as log:
     log.write(args[0] + '\n')
 if args[0] == 'info':
@@ -73,13 +77,13 @@ if args[0] == 'info':
     print(os.environ.get('CONTRACT_ROOTLESS', 'true'))
     sys.exit(int(os.environ.get('CONTRACT_INFO_STATUS', '0')))
 if args[0] == 'build':
-    assert args == ['build', '--tag', 'localhost/dwm-titus-tests:fedora-44',
-                    '--file', 'tests/containers/fedora-44/Containerfile', '-'], args
+    assert args == ['build', '--tag', f'localhost/dwm-titus-tests:fedora-{release}',
+                    '--file', containerfile, '-'], args
     archive = tarfile.open(fileobj=io.BytesIO(sys.stdin.buffer.read()))
     assert set(archive.getnames()) == {'scripts/dwm-packages.sh',
-                                      'tests/containers/fedora-44/Containerfile'}
-    text = archive.extractfile('tests/containers/fedora-44/Containerfile').read().decode()
-    assert text.splitlines()[0] == 'FROM registry.fedoraproject.org/fedora:44'
+                                      containerfile}
+    text = archive.extractfile(containerfile).read().decode()
+    assert text.splitlines()[0] == f'FROM registry.fedoraproject.org/fedora:{release}'
     assert 'scripts/dwm-packages.sh' in text
     for profile in ['ci-smoke', 'desktop', 'system-management', 'qml-validation']:
         assert profile in text
@@ -90,7 +94,7 @@ assert args[1:7] == ['--rm', '--interactive', '--network=private',
                       f'type=bind,src={work}/repository/.git,dst=/source/repository,ro=true,bind-nonrecursive'], args
 assert args[7:9] == ['--mount',
                     f'type=bind,src={work}/current worktree,dst=/source/worktree,ro=true,bind-nonrecursive'], args
-assert args[9:13] == ['localhost/dwm-titus-tests:fedora-44', 'bash', '-c', args[12]], args
+assert args[9:13] == [f'localhost/dwm-titus-tests:fedora-{release}', 'bash', '-c', args[12]], args
 assert args[13] == 'container-stage', args
 assert len(args[14]) == 40, args
 script = args[12]
@@ -150,6 +154,8 @@ expect_failure() {
 	grep -Fq "$message" "$work/err"
 }
 
+expect_failure 2 'Supported test releases are Fedora 44 and 45' env DWM_TEST_FEDORA_RELEASE=46 "$runner"
+[[ ! -s $work/calls ]]
 expect_failure 2 'Rootless Podman is required' env CONTRACT_ROOTLESS=false "$runner"
 [[ $(<"$work/calls") == info ]]
 expect_failure 2 'Rootless Podman is required' env CONTRACT_ROOTLESS=unknown "$runner"
@@ -169,7 +175,7 @@ for child in "$mount_source/ignored" "$work/repository/.git/objects"; do
 done
 expect_failure 2 'Nested host mounts are unsupported' env CONTRACT_POST_BUILD_MOUNT="$mount_source/ignored" "$runner"
 [[ $(<"$work/calls") == $'info\nbuild' ]]
-expect_failure 23 'Fedora 44 image build failed' env CONTRACT_BUILD_STATUS=23 "$runner"
+expect_failure 23 'Fedora 45 image build failed' env CONTRACT_BUILD_STATUS=23 "$runner"
 [[ $(<"$work/calls") == $'info\nbuild' ]]
 expect_failure 128 'Container staging failed (status 128)' env CONTRACT_STAGE_FAILURE=1 "$runner"
 mkdir "$work/no-podman"
@@ -204,7 +210,8 @@ expect_failure 17 'Container test command failed (status 17)' "$runner" bash -c 
 printf 'check:\n\t@test -n "$(DWM_TEST_WORKSPACE)"\n' >"$source_tree/Makefile"
 "$runner" >"$work/default"
 rm "$source_tree/Makefile"
+env DWM_TEST_FEDORA_RELEASE=44 "$runner" bash -c 'test -e tracked' >"$work/fedora44"
 snapshot >"$work/after"
 cmp "$work/before" "$work/after"
 [[ ! -e $work/container ]]
-printf 'Rootless Fedora 44 runner contract: PASS\n'
+printf 'Rootless Fedora 44/45 runner contract: PASS\n'

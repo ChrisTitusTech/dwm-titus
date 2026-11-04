@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+fedora_release=${DWM_TEST_FEDORA_RELEASE:-45}
+case "$fedora_release" in
+44 | 45) ;;
+*)
+	printf 'Supported test releases are Fedora 44 and 45\n' >&2
+	exit 2
+	;;
+esac
+
 # All host Git operations are read-only, including optional index refreshes.
 export GIT_OPTIONAL_LOCKS=0
 for dependency in podman git tar findmnt; do
@@ -47,15 +56,16 @@ reject_nested_mounts() {
 # Reject every descendant mount, even ignored scratch; nonrecursive binds
 # prevent any later child mount from becoming a writable path in the container.
 reject_nested_mounts
-image=localhost/dwm-titus-tests:fedora-44
-printf '==> Building Fedora 44 test image\n'
+image=localhost/dwm-titus-tests:fedora-$fedora_release
+containerfile=tests/containers/fedora-$fedora_release/Containerfile
+printf '==> Building Fedora %s test image\n' "$fedora_release"
 set +e
-tar -C "$source_tree" -cf - scripts/dwm-packages.sh tests/containers/fedora-44/Containerfile |
-	podman build --tag "$image" --file tests/containers/fedora-44/Containerfile -
+tar -C "$source_tree" -cf - scripts/dwm-packages.sh "$containerfile" |
+	podman build --tag "$image" --file "$containerfile" -
 build_status=("${PIPESTATUS[@]}")
 set -e
 if ((build_status[1] != 0 || build_status[0] != 0)); then
-	printf 'Fedora 44 image build failed (context %s, build %s)\n' "${build_status[@]}" >&2
+	printf 'Fedora %s image build failed (context %s, build %s)\n' "$fedora_release" "${build_status[@]}" >&2
 	((build_status[1] == 0)) || exit "${build_status[1]}"
 	exit "${build_status[0]}"
 fi
@@ -100,7 +110,7 @@ git --literal-pathspecs add --force --pathspec-from-file="$available" --pathspec
 git -c user.name="Disposable test runner" -c user.email=tests@example.invalid \
     -c commit.gpgsign=false commit --allow-empty -m "Disposable test snapshot"
 trap - ERR
-printf "==> Running scripts/run-tests in Fedora 44\n"
+printf "==> Running scripts/run-tests in Fedora\n"
 if scripts/run-tests "$@"; then
     exit 0
 else
@@ -112,7 +122,7 @@ fi
 run_status=("${PIPESTATUS[@]}")
 set -e
 if ((run_status[1] != 0)); then
-	printf 'Fedora 44 container failed (status %s); see staging/test diagnostics above\n' "${run_status[1]}" >&2
+	printf 'Fedora %s container failed (status %s); see staging/test diagnostics above\n' "$fedora_release" "${run_status[1]}" >&2
 	exit "${run_status[1]}"
 fi
 if ((run_status[0] != 0)); then
