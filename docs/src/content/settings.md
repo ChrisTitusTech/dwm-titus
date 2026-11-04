@@ -101,6 +101,13 @@ first layout, right-click to open this section. The pill reads the layout from
 the running keymap, so layouts set with `setxkbmap` by hand show up too. It can
 be hidden like the other panel widgets.
 
+In Appearance, **Window layout** offers Tile, Floating and Monocle choices,
+master-area sizing and tile gaps. These settings apply to the current monitor
+and tag for this dwm session; changing tags restores their own choices. Gaps
+start at zero after restarting dwm. **Font and text size** below provides the
+existing preview and rollback controls for desktop scale. Layout hotkeys keep
+working, and the visual controls follow them automatically.
+
 The Appearance section also manages notification behavior. **Do Not Disturb**
 suppresses low and normal urgency popups without discarding their history;
 critical notifications remain visible. Choose a four-, six-, or ten-second

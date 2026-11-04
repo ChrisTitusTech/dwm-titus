@@ -432,6 +432,7 @@ FloatingWindow {
                                     || root.settingsModel.capabilityRefreshPending
                                 windowVisible: root.visible
                                 sourceComponent: AppearanceSettingsPane {
+                                    windowVisible: root.visible
                                     appearanceModel: root.appearanceModel
                                     accessibilityModel: root.accessibilityModel
                                     notificationModel: root.notificationModel

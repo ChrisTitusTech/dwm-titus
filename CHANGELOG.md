@@ -8,6 +8,10 @@ versions from `config.mk`.
 
 ### Added
 
+- Add mouse-accessible Tile, Floating and Monocle choices, master sizing and
+  per-tag tile-gap controls in Settings > Appearance, alongside the existing
+  previewable desktop text scale. Changes follow hotkeys without polling (#297).
+
 - Ship titstack customization and diagnosis skills, an AI assistant Settings
   page, an optional skills RPM, actionable crash notifications, and opt-in X11 hang
   detection. Diagnosis

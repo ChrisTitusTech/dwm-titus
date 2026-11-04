@@ -1,19 +1,14 @@
 # Active Tasks
 
-## Fedora 0.7.2 initial updates
+## #297: visual layout and scale settings
 
-User authorization: implement issues #347, #344, #346 and #345 and open one
-ready-for-review PR. No merge or release publication is authorized.
+- [x] Inspect issue scope, existing scale controls, base ancestry and local changes.
+- [x] Add bounded layout requests with stale monitor/tag rejection.
+- [x] Add event-driven layout choices, master sizing and per-tag tile gaps.
+- [x] Retain desktop text-scale preview and user configuration.
+- [x] Exercise requests, hotkeys, geometry, tag restoration and idle QML in Xvfb.
+- [x] Complete the aggregate gate and native runtime coverage.
+- [ ] Complete independent review and publish the ready-for-review PR.
 
-- [x] Inspect issues, verify clean origin/main ancestry, create codex/fedora-0.7.2.
-- [x] Audit effective DNF5 settings and preserve administrator overrides.
-- [x] Provision fastfetch and initial-update dependencies in both image variants.
-- [x] Implement repository-gated first-login offer and visible authorized update.
-- [x] Implement bounded throughput/latency measurement with trusted fallback lists.
-- [x] Complete failure/retry, real prompt, Fedora installation and runtime checks.
-- [x] Complete full repository gates and document image-validation limitations.
-- [x] Complete independent review, fix valid findings, and prepare the validated PR.
-
-Behavior and recovery: [INITIAL-UPDATE.md](docs/INITIAL-UPDATE.md).
-
-Validation: [INITIAL-UPDATE-QUALIFICATION.md](docs/INITIAL-UPDATE-QUALIFICATION.md).
+Subsequent feature boundaries and the deferred ISO release issue are tracked in
+[ROADMAP.md](ROADMAP.md). Replace this task set when the active boundary ends.

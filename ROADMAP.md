@@ -1,28 +1,28 @@
-# Fedora 0.7.2 Roadmap
+# Fedora 0.8 Roadmap
 
 ## Current scope
 
-Address issues #347, #344, #346 and #345 in one ready-for-review PR, as requested
-on 2026-09-24. Version 0.7.2 covers the initial Fedora image update workflow,
-DNF defaults and mirror measurement, and offline fastfetch provisioning.
-Merge, tag publication, release assets and live deployment are outside this PR.
+Implement the remaining desktop feature requests in separate ready-for-review
+pull requests: #297, #350, #358 and #370. The user authorized this sequence on
+2026-11-04. Do not merge or publish the release in this workflow.
 
-## Implementation and qualification
+Issue #368 concerns the published v0.7.2 ISO and stays deferred until these
+features are finished and the 0.8 release is prepared. Source fixes do not
+qualify or update already published images.
 
-1. Audit effective Fedora 44 DNF5 configuration and provision conservative,
-   interactive defaults without replacing administrator overrides.
-2. Include fastfetch and mirror-measurement runtime dependencies in both images.
-3. Offer the initial update after repository access, measure trusted mirrors,
-   authorize a visible transaction, preserve retry, and persist only success.
-4. Validate ordering, mirror fallback and security, actual DNF prompts, clean
-   Fedora build/staged installation, image invariants and desktop behavior.
-5. Run repository gates and independent review, document exact image-validation
-   limits, and publish a ready-for-review PR against main.
+## Review boundaries
 
-Prior desktop-update work is documented in [DESKTOP-UPDATES.md](docs/DESKTOP-UPDATES.md)
-and PR #318. Preserve earlier qualification in
-[P8-QUALIFICATION.md](docs/P8-QUALIFICATION.md).
+1. #297: visual layout selection, master sizing and per-tag tile gaps in
+   Appearance, retaining the existing desktop-scale preview workflow.
+2. #350: an event-driven overview of individual windows across tags, with
+   keyboard navigation and focus/tag selection without moving windows.
+3. #358: optional calendar and weather panel widgets, supported by the panel
+   settings protocol and bounded, explicitly requested weather networking.
+4. #370: optional floating-window titlebars with move and close controls,
+   configurable without changing existing defaults.
 
-Exit: all four issue behaviors are implemented; validation evidence distinguishes
-focused/container/runtime checks from full offline image qualification. Do not
-claim a released or hardware-qualified image from static checks alone.
+Complete each boundary's focused checks, aggregate repository gate, nested X11
+runtime evidence and independent Codex review before opening its PR. Record
+untested multi-monitor or hardware behavior precisely. The four feature PRs
+are the stop point; release qualification, #368, merging and publication follow
+separately after the feature work is complete.

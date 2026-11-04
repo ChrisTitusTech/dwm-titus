@@ -79,7 +79,11 @@ are not included by implication.
 The installed session must provide:
 
 - Standard dwm tiling, floating, monocle, tagging, focus, and monitor behavior.
-- Per-tag layout state and sizing.
+- Per-tag layout state and sizing, including tile gaps (zero by default).
+  Settings > Appearance must offer layout selection and master sizing without
+  replacing existing hotkeys. State updates are event-driven; changes name the
+  edited monitor and view so stale requests cannot affect another tag. Layout
+  state is session-local; desktop font/text scale retains its preview workflow.
 - EWMH desktop and active-window integration for external bars and tools.
 - Xinerama multi-monitor support.
 - Window swallowing.

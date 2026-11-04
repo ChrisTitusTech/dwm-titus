@@ -166,6 +166,7 @@ struct Monitor {
 	char ltsymbol[16];
 	float mfact;
 	int nmaster;
+	int gap;
 	int num;
 	int by, bh;           /* bar geometry */
 	int tx, tw;           /* bar tray geometry */
@@ -272,6 +273,8 @@ static void setfocus(Client *c);
 static void setfullscreen(Client *c, int fullscreen);
 static void fullscreen(const Arg *arg);
 static void setlayout(const Arg *arg);
+static void publishlayout(void);
+static void layoutrequest(XClientMessageEvent *event);
 static void shrinkfloating(Client *c);
 static void setcfact(const Arg *arg);
 static void setmfact(const Arg *arg);
@@ -457,6 +460,9 @@ static int selectedmonitorcachevalid;
 static Atom dwmfullscreenmonitorsatom, dwmtagupdateatom;
 /* XKB keyboard group state published on the root window (see SPEC.md 5.1) */
 static Atom hangrequestatom, hanggenerationatom;
+static Atom layoutstateatom, layoutrequestatom;
+static long layoutcache[7];
+static int layoutcachevalid;
 static int hangtogglecached = -1;
 static long long hangtogglechecked;
 static Atom kbgroupatom, kbnamesatom, kbsymbolsatom, kbrequestatom, kbutf8atom;
@@ -541,6 +547,7 @@ struct Pertag {
 	unsigned int curtag, prevtag; /* current and previous tag */
 	int nmasters[LENGTH(tags) + 1]; /* number of windows in master area */
 	float mfacts[LENGTH(tags) + 1]; /* mfacts per tag */
+	int gaps[LENGTH(tags) + 1]; /* tile gaps per tag, zero by default */
 	unsigned int sellts[LENGTH(tags) + 1]; /* selected layouts */
 	const Layout *ltidxs[LENGTH(tags) + 1][2]; /* matrix of tags and layouts indexes  */
 	int showbars[LENGTH(tags) + 1]; /* display bar for the current tag */
@@ -981,6 +988,7 @@ cleanup(void)
 	XSync(dpy, False);
 	XSetInputFocus(dpy, PointerRoot, RevertToPointerRoot, CurrentTime);
 	ewmh_clear_active_window();
+	XDeleteProperty(dpy, root, layoutstateatom);
 }
 
 void
@@ -1007,6 +1015,10 @@ clientmessage(XEvent *e)
 	unsigned long i, j, nstates, out;
 	int changed = 0, enabled, truncated, updateabove = 0;
 
+	if (cme->window == root && cme->message_type == layoutrequestatom) {
+		layoutrequest(cme);
+		return;
+	}
 	/* A _NET_WM_PING reply is sent back to the root window and names the
 	 * pinged client in data.l[2]. */
 	if (cme->window == root && cme->message_type == wmatom[WMProtocols]
@@ -1371,6 +1383,7 @@ dirtomon(int dir)
 void
 drawbar(Monitor *m)
 {
+	publishlayout();
 	/* The Quickshell panel handles drawing; the dwm bar is unused. */
 	return;
 
@@ -3792,6 +3805,70 @@ setlayout(const Arg *arg)
 		drawbar(selmon);
 }
 
+/* Version 1: selected monitor, visible tag mask, layout index, master percent,
+ * master count and tile gap. Publish only changes to keep shell watches idle. */
+void
+publishlayout(void)
+{
+	long state[7];
+	unsigned int i;
+
+	if (!selmon || !layoutstateatom)
+		return;
+	for (i = 0; i < LENGTH(layouts) && selmon->lt[selmon->sellt] != &layouts[i]; i++);
+	state[0] = selmon->num;
+	state[1] = selmon->tagset[selmon->seltags];
+	state[2] = i < LENGTH(layouts) ? (long)i : -1;
+	state[3] = (long)(selmon->mfact * 100.0f + 0.5f);
+	state[4] = selmon->nmaster;
+	state[5] = selmon->gap;
+	state[6] = 1;
+	if (layoutcachevalid && !memcmp(state, layoutcache, sizeof state))
+		return;
+	XChangeProperty(dpy, root, layoutstateatom, XA_INTEGER, 32,
+		PropModeReplace, (unsigned char *)state, LENGTH(state));
+	memcpy(layoutcache, state, sizeof state);
+	layoutcachevalid = 1;
+}
+
+/* A request names the exact monitor and view which the user was editing.
+ * Reject a stale view instead of applying it to another tag or monitor. */
+void
+layoutrequest(XClientMessageEvent *event)
+{
+	long operation = event->data.l[0], value = event->data.l[1];
+	Arg arg = {0};
+
+	if (event->format != 32 || event->data.l[4] != 1 || !selmon
+	|| event->data.l[2] != selmon->num
+	|| (unsigned long)event->data.l[3] != selmon->tagset[selmon->seltags])
+		return;
+	switch (operation) {
+	case 0:
+		if (value < 0 || (unsigned long)value >= LENGTH(layouts)) return;
+		arg.v = &layouts[value];
+		setlayout(&arg);
+		break;
+	case 1:
+		if (value < 5 || value > 95) return;
+		if (!selmon->lt[selmon->sellt]->arrange) return;
+		selmon->mfact = selmon->pertag->mfacts[selmon->pertag->curtag] = value / 100.0f;
+		arrange(selmon);
+		break;
+	case 2:
+		if (value < 0 || value > 20) return;
+		arg.i = (int)value - selmon->nmaster;
+		incnmaster(&arg);
+		break;
+	case 3:
+		if (value < 0 || value > 64) return;
+		selmon->gap = selmon->pertag->gaps[selmon->pertag->curtag] = (int)value;
+		arrange(selmon);
+		break;
+	}
+	publishlayout();
+}
+
 void
 setcfact(const Arg *arg)
 {
@@ -4618,6 +4695,8 @@ setup(void)
 	/* Reconcile monitor-specific tags after geometry is set up */
 	reconcilemonitortags();
 	/* init atoms */
+	layoutstateatom = XInternAtom(dpy, "_DWM_LAYOUT_STATE", False);
+	layoutrequestatom = XInternAtom(dpy, "_DWM_LAYOUT_REQUEST", False);
 	utf8string = XInternAtom(dpy, "UTF8_STRING", False);
 	hangrequestatom = XInternAtom(dpy, "_DWM_TITUS_HANG_KILL", False);
 	hanggenerationatom = XInternAtom(dpy, "_DWM_TITUS_HANG_GENERATION", False);
@@ -5012,6 +5091,7 @@ static void
 tile(Monitor *m)
 {
 	unsigned int i, n;
+	int gap, masters, stacks;
 	int mx = 0, my = 0, mh = 0, mw = 0;
 	int sx = 0, sy = 0, sh = 0, sw = 0;
 	float mfacts, sfacts;
@@ -5023,26 +5103,32 @@ tile(Monitor *m)
 	if (n == 0)
 		return;
 
-	sx = mx = m->wx;
-	sy = my = m->wy;
-	sh = mh = m->wh;
-	sw = mw = m->ww;
+	masters = MIN(n, (unsigned int)m->nmaster);
+	stacks = n - masters;
+	/* Bound effective spacing so dense views and tiny screens remain usable. */
+	gap = MIN(m->gap, MIN(m->ww / 8, m->wh / (2 * (MAX(masters, stacks) + 1))));
+	sx = mx = m->wx + gap;
+	sy = my = m->wy + gap;
+	sh = mh = m->wh - 2 * gap;
+	sw = mw = m->ww - 2 * gap;
 
 	if (m->nmaster && n > m->nmaster) {
-		sw = mw * (1 - m->mfact);
-		mw = mw * m->mfact;
-		sx = mx + mw;
+		sw = (mw - gap) * (1 - m->mfact);
+		mw = (mw - gap) * m->mfact;
+		sx = mx + mw + gap;
 	}
 
+	mh -= MAX(0, masters - 1) * gap;
+	sh -= MAX(0, stacks - 1) * gap;
 	getfacts(m, mh, sh, &mfacts, &sfacts, &mrest, &srest);
 
 	for (i = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), i++)
 		if (i < m->nmaster) {
 			resize(c, mx, my, mw - (2*c->bw), (mh / mfacts) * c->cfact + (i < mrest ? 1 : 0) - (2*c->bw), 0);
-			my += HEIGHT(c);
+			my += HEIGHT(c) + gap;
 		} else {
 			resize(c, sx, sy, sw - (2*c->bw), (sh / sfacts) * c->cfact + ((i - m->nmaster) < srest ? 1 : 0) - (2*c->bw), 0);
-			sy += HEIGHT(c);
+			sy += HEIGHT(c) + gap;
 		}
 }
 
@@ -5177,6 +5263,7 @@ toggleview(const Arg *arg)
 		/* apply settings for this view */
 		selmon->nmaster = selmon->pertag->nmasters[selmon->pertag->curtag];
 		selmon->mfact = selmon->pertag->mfacts[selmon->pertag->curtag];
+		selmon->gap = selmon->pertag->gaps[selmon->pertag->curtag];
 		selmon->sellt = selmon->pertag->sellts[selmon->pertag->curtag];
 		selmon->lt[selmon->sellt] = selmon->pertag->ltidxs[selmon->pertag->curtag][selmon->sellt];
 		selmon->lt[selmon->sellt^1] = selmon->pertag->ltidxs[selmon->pertag->curtag][selmon->sellt^1];
@@ -6220,6 +6307,7 @@ view(const Arg *arg)
 
 	selmon->nmaster = selmon->pertag->nmasters[selmon->pertag->curtag];
 	selmon->mfact = selmon->pertag->mfacts[selmon->pertag->curtag];
+	selmon->gap = selmon->pertag->gaps[selmon->pertag->curtag];
 	selmon->sellt = selmon->pertag->sellts[selmon->pertag->curtag];
 	selmon->lt[selmon->sellt] = selmon->pertag->ltidxs[selmon->pertag->curtag][selmon->sellt];
 	selmon->lt[selmon->sellt^1] = selmon->pertag->ltidxs[selmon->pertag->curtag][selmon->sellt^1];
@@ -6593,6 +6681,7 @@ reconcilemonitortags(void)
 
 		m->nmaster = m->pertag->nmasters[m->pertag->curtag];
 		m->mfact = m->pertag->mfacts[m->pertag->curtag];
+		m->gap = m->pertag->gaps[m->pertag->curtag];
 		m->sellt = m->pertag->sellts[m->pertag->curtag];
 		m->lt[m->sellt] = m->pertag->ltidxs[m->pertag->curtag][m->sellt];
 		m->lt[m->sellt ^ 1] = m->pertag->ltidxs[m->pertag->curtag][m->sellt ^ 1];
