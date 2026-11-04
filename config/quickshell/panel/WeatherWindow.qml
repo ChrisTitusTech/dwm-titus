@@ -49,7 +49,7 @@ ClickAwayPopup {
                     verticalAlignment: TextInput.AlignVCenter
                     text: root.draftLocation
                     clip: true
-                    enabled: !root.model.busy
+                    readOnly: root.model.busy
                     maximumLength: 120
                     Accessible.name: "Weather city"
                     onTextEdited: root.draftLocation = text

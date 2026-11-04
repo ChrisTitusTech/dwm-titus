@@ -40,8 +40,10 @@ sample = {"current_condition": [{"temp_C": "22", "temp_F": "72", "FeelsLikeC": "
 class Handler(BaseHTTPRequestHandler):
     requests = []
     code = 200
+    delay = 0
     def do_GET(self):
         Handler.requests.append(self.path)
+        time.sleep(Handler.delay)
         self.send_response(Handler.code)
         self.end_headers()
         self.wfile.write(json.dumps(sample).encode())
@@ -80,7 +82,7 @@ with tempfile.TemporaryDirectory(dir=os.environ["TMPDIR"]) as directory:
             location:weatherModel.location, unit:weatherModel.unit, busy:weatherModel.busy, message:weatherModel.message,
             weatherVisible:weatherModel.visible, calendarVisible:calendarModel.visible, month:calendarModel.month,
             year:calendarModel.year, days:calendarModel.days, widgets:panelSettingsModel.values,
-            provider:panelSettingsModel.providerState, clipboardVisible:clipboardModel.visible}); }
+            provider:panelSettingsModel.providerState, utilityVisible:controlCenterModel.utilityVisible, clipboardVisible:clipboardModel.visible}); }
         function calendar(): void {
             calendarModel.timestamp = new Date(2024, 1, 29, 12).getTime();
             root.requestPanelPopup(root.defaultPanelWindow, "calendar");
@@ -135,6 +137,12 @@ with tempfile.TemporaryDirectory(dir=os.environ["TMPDIR"]) as directory:
             run("xdotool", "key", "super+v")
             wait(lambda: state()["clipboardVisible"] and not state()["calendarVisible"], "Clipboard shortcut left Calendar above the clipboard")
             run("quickshell", "ipc", "--path", str(qml / "shell.qml"), "call", "clipboard", "close")
+            for widget in ("calendar",):
+                ipc(widget)
+                run("xdotool", "key", "super+slash")
+                wait(lambda: state()["utilityVisible"] and not state()["calendarVisible"], "Keybinds shortcut left Calendar above its utility")
+                run("xdotool", "key", "Escape")
+                wait(lambda: not state()["utilityVisible"], "Keybinds Escape failed")
             ipc("widget", "weather", "true")
             wait(lambda: state()["widgets"]["weather"], "Weather toggle did not persist")
             ipc("weather")
@@ -151,6 +159,11 @@ with tempfile.TemporaryDirectory(dir=os.environ["TMPDIR"]) as directory:
             wait(lambda: state()["clipboardVisible"] and not state()["weatherVisible"], "Clipboard shortcut left Weather above the clipboard")
             run("quickshell", "ipc", "--path", str(qml / "shell.qml"), "call", "clipboard", "close")
             ipc("weather")
+            run("xdotool", "key", "super+slash")
+            wait(lambda: state()["utilityVisible"] and not state()["weatherVisible"], "Keybinds shortcut left Weather above its utility")
+            run("xdotool", "key", "Escape")
+            wait(lambda: not state()["utilityVisible"], "Weather keybinds Escape failed")
+            ipc("weather")
             Handler.code = 503
             ipc("fetch", "London", "f")
             wait(lambda: state()["message"].startswith("Weather unavailable") and not state()["busy"], "Offline failure was not reported")
@@ -163,13 +176,23 @@ with tempfile.TemporaryDirectory(dir=os.environ["TMPDIR"]) as directory:
             run("xdotool", "mousemove", "20", "600", "click", "1")
             wait(lambda: not state()["weatherVisible"], "Weather click-away failed")
             ipc("weather")
+            wait(lambda: state()["weatherVisible"] and not state()["busy"], "Weather did not reopen for delayed fetch")
+            Handler.code = 200
+            Handler.delay = 2
+            run("xdotool", "key", "Return")
+            wait(lambda: state()["busy"], "Delayed fetch did not start")
+            run("xdotool", "key", "Escape")
+            wait(lambda: not state()["weatherVisible"] and state()["busy"], "Escape did not dismiss Weather during a fetch")
+            wait(lambda: not state()["busy"], "Dismissed fetch did not finish")
+            Handler.delay = 0
+            ipc("weather")
             ipc("widget", "weather", "false")
             wait(lambda: not state()["weatherVisible"], "Disabling Weather left its popup visible")
             before = sum(map(int, Path(f"/proc/{shell.pid}/stat").read_text().rsplit(")", 1)[1].split()[11:13]))
             time.sleep(2)
             after = sum(map(int, Path(f"/proc/{shell.pid}/stat").read_text().rsplit(")", 1)[1].split()[11:13]))
             assert after - before <= 15
-            print(f"Calendar leap year/navigation, popup Escape/click-away/clipboard hotkey, persisted toggles, no automatic weather requests, explicit fetch/failure cache: PASS; closed idle ticks/2s={after-before}")
+            print(f"Calendar leap year/navigation, popup Escape (including fetch)/click-away/clipboard/keybinds hotkeys, persisted toggles, no automatic weather requests, explicit fetch/failure cache: PASS; closed idle ticks/2s={after-before}")
         finally:
             if sys.exc_info()[0]:
                 print((work / "qml.log").read_text() if (work / "qml.log").exists() else "No QML log", file=sys.stderr)

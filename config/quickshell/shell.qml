@@ -282,7 +282,7 @@ ShellRoot {
         powerModel: powerModel
         panelSettingsModel: panelSettingsModel
         onVisibleChanged: if (visible) { root.closePanelWidgets(); updateCenterModel.close(); clipboardModel.close(); }
-        onUtilityVisibleChanged: if (utilityVisible) { updateCenterModel.close(); clipboardModel.close(); }
+        onUtilityVisibleChanged: if (utilityVisible) { root.closePanelWidgets(); updateCenterModel.close(); clipboardModel.close(); }
     }
 
     SystemHealthModel {
