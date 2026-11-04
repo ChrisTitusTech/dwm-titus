@@ -106,7 +106,9 @@ The installed session must provide:
   appear above real fullscreen clients without becoming managed or taking focus.
   Ordinary shell popups and EWMH above hints retain their existing priority.
 - Window icons from `_NET_WM_ICON`.
-- A searchable window overview with individual cards across all tags. Selecting
+- A searchable window overview with individual cards across all tags. The
+  default Super+Tab binding toggles it; upgrades preserve existing user hotkey
+  files and document the one-entry migration. Selecting
   a card chooses its actual monitor, retains an already-visible assigned tag
   or selects its lowest assigned tag, and focuses the existing window without
   changing assignments. Keyboard selection and Escape dismissal are supported.

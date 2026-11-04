@@ -9,6 +9,8 @@ versions from `config.mk`.
 ### Added
 
 - Add a searchable window overview in Control Center and the command menu.
+  Super+Tab toggles it by default; existing user hotkey files are preserved,
+  with one-entry migration instructions in the overview guide.
   Individual cards show titles, applications, tags and monitors; click or use
   the keyboard to focus existing windows without moving them (#350).
 

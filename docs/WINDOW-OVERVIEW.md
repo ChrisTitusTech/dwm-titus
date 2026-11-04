@@ -1,6 +1,6 @@
 # Window overview
 
-Choose Window overview in Control Center or the command menu. The fullscreen
+Press `Super+Tab`, or choose Window overview in Control Center or the command menu. The fullscreen
 view contains one card per managed application window across all tags, including
 several windows from the same application. Each card identifies the title,
 application, complete tag list and owning monitor. Type to filter by application,
@@ -18,8 +18,15 @@ and tag changes through X11 events; there is no polling or screenshot capture.
 Cards are used instead of live pixel previews, including on hidden tags.
 
 `dwm-window-overview open`, `toggle` and `close` use the managed Quickshell IPC
-instance. Existing hotkeys are preserved. A custom binding can invoke
-`dwm-window-overview toggle`. `list` prints a JSON snapshot including active client; `watch` streams
+instance. The shipped `Super+Tab` binding invokes `dwm-window-overview toggle`
+in place of the former Previous tag binding. Existing user hotkey files are
+preserved by installation; update only that entry in `hotkeys.toml` to migrate:
+
+```toml
+{ mod="SUPER", key="Tab", desc="Window overview", func="spawn", exec=["dwm-window-overview", "toggle"] },
+```
+
+Other custom hotkeys can invoke the same helper. `list` prints a JSON snapshot including active client; `watch` streams
 changed snapshots while subscribed; `activate XID` validates membership and
 waits up to two seconds for a per-request acknowledgement. This also supports
 clients with Input=false and WM_TAKE_FOCUS. Internal `restore XID` restores focus on

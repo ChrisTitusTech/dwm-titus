@@ -48,6 +48,7 @@ with tempfile.TemporaryDirectory(dir=os.environ["TMPDIR"]) as directory, tempfil
     helpers = work / "data/dwm-titus/scripts"
     helpers.mkdir(parents=True)
     (helpers / "dwm-window-overview").symlink_to(repo / "scripts/dwm-window-overview")
+    os.environ["PATH"] = str(helpers) + os.pathsep + os.environ["PATH"]
     qml = work / "config/quickshell"
     shutil.copytree(repo / "config/quickshell", qml)
     source = (qml / "shell.qml").read_text()
@@ -123,6 +124,12 @@ with tempfile.TemporaryDirectory(dir=os.environ["TMPDIR"]) as directory, tempfil
             wait(lambda: not state()["visible"] and not state()["busy"], "Successful selection reopened the overview")
 
         wait(lambda: bool(state()), "Production root did not load")
+        # Exercise the shipped TOML binding through real dwm dispatch and helper IPC.
+        run("xdotool", "key", "super+Tab")
+        wait(lambda: state().get("visible") and not state()["busy"] and state()["rows"], "Default Super+Tab did not open the overview")
+        run("xdotool", "key", "super+Tab")
+        wait(lambda: not state()["visible"] and not state()["busy"], "Default Super+Tab did not close the overview")
+        assert connection.property(root, "_NET_CURRENT_DESKTOP", 6) == [0], "Super+Tab changed the tag"
         open_overview()
         assert any(row["id"] == str(same_title) for row in state()["rows"]), "Application title collided with the overview identity"
         choose("Hidden selection target")
@@ -162,7 +169,7 @@ with tempfile.TemporaryDirectory(dir=os.environ["TMPDIR"]) as directory, tempfil
         time.sleep(2)
         after = sum(map(int, Path(f"/proc/{shell.pid}/stat").read_text().rsplit(")", 1)[1].split()[11:13]))
         assert after - before <= 15, f"Closed production shell consumed {after-before} CPU ticks/2s"
-        print(f"Production shell: hidden-peer warp, title collision, Launcher/Menu/Clipboard cancellation, WM_TAKE_FOCUS acknowledgement: PASS; idle ticks/2s={after-before}")
+        print(f"Production shell: Super+Tab toggle, hidden-peer warp, title collision, Launcher/Menu/Clipboard cancellation, WM_TAKE_FOCUS acknowledgement: PASS; idle ticks/2s={after-before}")
     finally:
         if sys.exc_info()[0]:
             for name in ("dwm.log", "qml.log"):
