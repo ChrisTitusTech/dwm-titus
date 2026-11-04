@@ -85,7 +85,7 @@ if args[0] == 'build':
     text = archive.extractfile(containerfile).read().decode()
     assert text.splitlines()[0] == f'FROM registry.fedoraproject.org/fedora:{release}'
     assert 'scripts/dwm-packages.sh' in text
-    for profile in ['ci-smoke', 'desktop', 'system-management', 'qml-validation']:
+    for profile in ['ci-smoke', 'required', 'wifi', 'terminal', 'desktop', 'system-management', 'qml-validation']:
         assert profile in text
     sys.exit(int(os.environ.get('CONTRACT_BUILD_STATUS', '0')))
 assert args[0] == 'run', args

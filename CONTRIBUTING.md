@@ -72,6 +72,8 @@ scripts/run-tests-podman make clean all
 scripts/run-tests-podman
 ```
 
+The SDK includes the shared required, Wi-Fi, terminal and desktop capabilities
+so full runtime tests have their actual X11/input and command prerequisites.
 The runner builds `localhost/dwm-titus-tests:fedora-45` from the shared package
 map and delegates to `scripts/run-tests`. Fedora 45 is the default. Set
 `DWM_TEST_FEDORA_RELEASE=44` to run the same gates with the retained Fedora 44
