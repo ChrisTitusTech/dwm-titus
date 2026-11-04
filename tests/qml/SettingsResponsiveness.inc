@@ -204,6 +204,9 @@
                 const index = root.responseSectionIndex;
                 const section = settingsModel.sections[index];
                 if (root.delayedSection !== section.id) {
+                    // Drain the startup mock command before manually holding
+                    // updater flags; its onExited handler also clears them.
+                    if (section.id === "system" && desktopUpdateModel.initialLoading) return;
                     root.delayedSection = section.id;
                     root.delayedFrames = 0;
                     if (section.id === "input") settingsModel.recoverInputPreview();
