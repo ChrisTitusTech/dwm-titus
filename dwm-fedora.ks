@@ -16,8 +16,8 @@ firstboot --disable
 selinux --disabled
 
 url --metalink="https://mirrors.fedoraproject.org/metalink?repo=fedora-$releasever&arch=$basearch"
-repo --name="updates" --metalink="https://mirrors.fedoraproject.org/metalink?repo=updates-released-f$releasever&arch=$basearch" --install
-repo --name="fedora-cisco-openh264" --metalink="https://mirrors.fedoraproject.org/metalink?repo=fedora-cisco-openh264-$releasever&arch=$basearch" --install
+repo --name="updates" --metalink="https://mirrors.fedoraproject.org/metalink?repo=updates-released-f$releasever&arch=$basearch"
+repo --name="fedora-cisco-openh264" --metalink="https://mirrors.fedoraproject.org/metalink?repo=fedora-cisco-openh264-$releasever&arch=$basearch"
 repo --name="rpmfusion-free" --metalink="https://mirrors.rpmfusion.org/metalink?repo=free-fedora-$releasever&arch=$basearch" --install
 repo --name="rpmfusion-free-updates" --metalink="https://mirrors.rpmfusion.org/metalink?repo=free-fedora-updates-released-$releasever&arch=$basearch" --install
 repo --name="rpmfusion-free-tainted" --metalink="https://mirrors.rpmfusion.org/metalink?repo=free-fedora-tainted-$releasever&arch=$basearch" --install
@@ -34,11 +34,22 @@ services --enabled=NetworkManager,systemd-timesyncd
 %pre --interpreter=/bin/sh
 gaming_repo=/tmp/dwm-titus-gaming-repo
 gaming_packages=/tmp/dwm-titus-gaming-packages
+path_packages=/tmp/dwm-titus-path-packages
+legacy_themes=/tmp/dwm-titus-legacy-theme-packages
+: >"$legacy_themes"
+: >"$gaming_repo"
+: >"$path_packages"
+. /etc/os-release
 case "$(uname -m)" in
 x86_64)
+	# Fedora 45 COPR is unavailable; use Thunar and distribution Gamescope.
+	if [ "${VERSION_ID:-}" = 44 ]; then
 	cat >"$gaming_repo" <<'EOF'
 repo --name="christitustech-copr-fedora" --baseurl="https://download.copr.fedorainfracloud.org/results/christitustech/copr-fedora/fedora-$releasever-$basearch/" --install
 EOF
+	printf '%s\n' path >"$path_packages"
+	printf '%s\n' numix-gtk-theme deepin-gtk-theme >"$legacy_themes"
+	fi
 	cat >"$gaming_packages" <<'EOF'
 steam
 gamescope
@@ -148,10 +159,9 @@ adwaita-icon-theme
 papirus-icon-theme
 arc-theme
 adw-gtk3-theme
-numix-gtk-theme
+%include /tmp/dwm-titus-legacy-theme-packages
 yaru-gtk3-theme
 yaru-gtk4-theme
-deepin-gtk-theme
 bluebird-gtk3-theme
 qt6ct
 qt5ct
@@ -159,9 +169,11 @@ google-noto-color-emoji-fonts
 google-noto-sans-mono-fonts
 NetworkManager
 NetworkManager-wifi
+wpa_supplicant
+wireless-regdb
 nm-connection-editor
 rsync
-path
+%include /tmp/dwm-titus-path-packages
 Thunar
 gvfs
 gvfs-smb

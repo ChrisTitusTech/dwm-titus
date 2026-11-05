@@ -132,7 +132,7 @@ if grep -q 'image/webp=' "$XDG_CONFIG_HOME/mimeapps.list"; then exit 1; fi
 cp "$XDG_CONFIG_HOME/mimeapps.list" "$work/seeded-mimes"
 bash "$repo/scripts/image/seed-apps.sh"
 cmp "$XDG_CONFIG_HOME/mimeapps.list" "$work/seeded-mimes"
-# When Path is installed alongside Thunar, Path is preferred as default.
+# Thunar remains the default even when optional Path is also installed.
 cat >"$XDG_DATA_DIRS/applications/pathfm.desktop" <<'APP'
 [Desktop Entry]
 Type=Application
@@ -144,7 +144,7 @@ printf '#!/bin/sh\nexit 0\n' >"$work/bin/pathfm"
 chmod +x "$work/bin/pathfm"
 rm "$XDG_CONFIG_HOME/mimeapps.list"
 bash "$repo/scripts/image/seed-apps.sh"
-[[ $(xdg-mime query default inode/directory) == pathfm.desktop ]]
+[[ $(xdg-mime query default inode/directory) == thunar.desktop ]]
 # Ensure no duplicate keys exist in mimeapps.list
 [[ $(grep -c '^inode/directory=' "$XDG_CONFIG_HOME/mimeapps.list") == 1 ]]
 # A fresh account without Path selects Thunar; existing preferences are preserved.

@@ -5,7 +5,7 @@ set -euo pipefail
 [[ $(id -u) == 0 && $(getent passwd imagebuilder | cut -d: -f6) == /home/imagebuilder ]]
 # shellcheck disable=SC1091
 source /etc/os-release
-[[ $ID == fedora && $VERSION_ID == 44 ]]
+[[ $ID == fedora && $VERSION_ID == 45 ]]
 variant=$(cat /etc/dwm-titus-factory-target)
 [[ $variant == standard || $variant == nvidia ]]
 source_dir=/home/imagebuilder/.local/share/dwm-titus
@@ -39,7 +39,7 @@ fi
 fc-cache -f
 rpm -qa --qf '%{NAME}-%{EPOCHNUM}:%{VERSION}-%{RELEASE}.%{ARCH}\n' | sort >/usr/share/dwm-titus-image/rpm-manifest.txt
 flatpak --system list --columns=ref:full,active:full >/usr/share/dwm-titus-image/flatpak-manifest.txt
-printf 'protocol=1\nvariant=%s\nfedora=44\narchitecture=x86_64\n' "$variant" >/etc/dwm-titus-image
+printf 'protocol=1\nvariant=%s\nfedora=45\narchitecture=x86_64\n' "$variant" >/etc/dwm-titus-image
 [[ -x /usr/local/bin/dwm && -f /usr/share/xsessions/dwm.desktop ]]
 [[ -d /var/lib/flatpak/app/it.mijorus.gearlever ]]
 printf 'DWM_FACTORY_PREPARED\n'

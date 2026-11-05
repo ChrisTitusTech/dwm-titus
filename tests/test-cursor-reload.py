@@ -3,6 +3,7 @@
 
 import ctypes as c
 import importlib.machinery
+import importlib.util
 import os
 import subprocess
 import sys
@@ -13,9 +14,13 @@ sys.dont_write_bytecode = True
 
 repo = Path(__file__).resolve().parent.parent
 os.environ["XCURSOR_PATH"] = str(repo / "assets/cursors")
-module = importlib.machinery.SourceFileLoader(
+loader = importlib.machinery.SourceFileLoader(
     "cursor_reload", str(repo / "scripts/dwm-cursor-reload")
-).load_module()
+)
+spec = importlib.util.spec_from_loader(loader.name, loader)
+module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
+loader.exec_module(module)
 bind = module.binding
 x11, xc, fixes = (
     c.CDLL("libX11.so.6"),

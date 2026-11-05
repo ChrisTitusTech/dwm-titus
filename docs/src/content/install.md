@@ -10,12 +10,13 @@ eyebrow: Start here
 > **dwm-titus is Fedora-only.** Fedora Linux with Xorg is required for every
 > supported installation, package, test, and release path.
 
-The released images and this guide are validated against Fedora 44. Newer
-Fedora releases, including Fedora 45, are accepted by the existing-system
-installer when `/etc/os-release` reports `ID=fedora`, but they are not yet
-release-qualified. Dependency resolution and the desktop are expected to work;
-run `dwm-diagnostics` first and report release-specific problems on the issue
-tracker.
+The 0.8 release targets Fedora 45 x86_64, while retaining Fedora 44 support for
+existing-system installation, source updates and desktop runtime. See the
+[0.8 qualification record](https://github.com/ChrisTitusTech/dwm-titus/blob/main/docs/RELEASE-0.8.0.md)
+for tested paths and hardware limits. The current 0.8.0 offline images install
+Fedora 45 and include the Wi-Fi package/plugin fix from #368. Supported source
+updates also reconcile missing Wi-Fi packages on installed systems. Download
+new media to replace older saved ISOs.
 
 ## Dependencies
 
@@ -25,7 +26,7 @@ and the differences between installation profiles and image variants.
 
 ## Fedora ISO (Recommended for a New Installation)
 
-The current offline images install a complete Fedora 44 x86_64
+The current 0.8.0 offline images install a complete Fedora 45 x86_64
 desktop from a compressed system image. Packages are included, so installation
 works without an Internet connection or software selection.
 
@@ -41,11 +42,11 @@ download, start again instead of resuming the older file. The build manifest
 records the version, size and SHA-256 of each current image.
 
 Use the standard image unless you need the proprietary NVIDIA driver packages.
-Both include LightDM, dwm, Quickshell, Brave Origin, Celluloid, mpv, sxiv, Path, Thunar,
+Both include LightDM, dwm, Quickshell, Brave Origin, Celluloid, mpv, sxiv, Thunar,
 Alacritty, Starship, Herdr, fonts, Papirus icons, Gear Lever, and `maim` with region capture and
 clipboard dependencies. Fresh accounts use Brave Origin for web browsing,
 Celluloid for its supported audio/video formats, sxiv for its supported image
-formats, Path for folders (with Thunar also available), and Alacritty for the terminal. Existing application
+formats, Thunar for folders, and Alacritty for the terminal. Existing application
 preferences are preserved; use Settings > Defaults to change them. Internet
 access is needed for later updates and additional software.
 
@@ -75,8 +76,9 @@ For NVIDIA, use the NVIDIA ISO link from the table with the same checksum file.
 1. Write the ISO as a disk image to an **8 GB or larger USB drive** using a USB
    image writer. This erases the USB drive; copying the ISO file onto it is not
    the same as writing the image.
-2. Boot the USB and use the default media-test/install entry. Qualification used
-   Secure Boot disabled; Secure Boot support is not verified.
+2. Boot the USB and use the default normal installation entry. The optional
+   media-test entry is also available. Qualification used Secure Boot disabled;
+   Secure Boot support is not verified.
 3. Select your language and keyboard, time zone, installation disk and partition
    layout. Create your user account and select administrator access.
 4. Review the proposed disk changes and choose **Begin Installation**. The
@@ -151,28 +153,30 @@ Every profile includes GNOME Keyring and its PAM module for credential storage
 and support for automatic unlock at password login. Unlock also requires the
 display manager's PAM stack to load `pam_gnome_keyring.so` and matching account
 and keyring passwords; installing the packages does not configure PAM services.
-The installer separately asks before enabling the `christitustech/copr-fedora`
-COPR for patched Gamescope and RPM Fusion nonfree for Steam. Declining skips the
+The installer separately asks before enabling RPM Fusion nonfree for Steam
+and, on Fedora 44, the `christitustech/copr-fedora` COPR for patched Gamescope.
+Fedora 45 uses distribution Gamescope and omits that unavailable COPR. Declining skips the
 gaming subset without affecting other full-profile extras.
 
 ### Optional Path File Manager
 
 [Path](https://github.com/ChrisTitusTech/Path) is packaged as `path` in the
 [christitustech/copr-fedora COPR](https://copr.fedorainfracloud.org/coprs/christitustech/copr-fedora/).
-To install it explicitly on Fedora x86_64:
+To install it explicitly on Fedora 44 x86_64 (the Fedora 45 COPR is unavailable):
 
 ```bash
 sudo dnf copr enable christitustech/copr-fedora
 sudo dnf install path
 ```
 
-The full installer attempts Path after its existing gaming-repository approval
+The Fedora 44 full installer attempts Path after its existing gaming-repository approval
 step, or uses an already enabled COPR. If the package is unavailable, it skips
 Path and retains Thunar. The installer does not enable a repository solely for
 Path. The explicit commands above do not require opting into gaming packages.
 
-Fresh accounts prefer `pathfm.desktop` for folders when Path is installed,
-otherwise `thunar.desktop`. Existing MIME preferences are preserved. To select
+Fresh recommended/full and image accounts use `thunar.desktop` for folders on
+every supported Fedora release, including when optional Path is installed.
+Core seeds this association only when Thunar is already installed. Existing MIME preferences are preserved. To select
 Path on an existing account, use Settings > Default Applications or:
 
 ```bash
@@ -266,7 +270,7 @@ Installer package profiles are selected with `DWM_INSTALL_PROFILE`:
   change these in Settings > Defaults when updating an existing account. Herdr is
   skipped unless `--install-herdr` is provided.
 - `recommended`: `core` plus the recommended desktop layer such as Quickshell,
-  Picom, Feh, Dex, fonts, theming, screenshot, audio, Bluetooth control and
+  Picom, Feh, Dex, Thunar, fonts, theming, screenshot, audio, Bluetooth control and
   tray tools, brightness tools, Flatpak, the GTK desktop portal, PackageKit,
   AccountsService, CUPS, and the Fedora printer configuration tool. These
   system services are prerequisites for the planned Phase 6 Settings update,
@@ -277,13 +281,14 @@ Installer package profiles are selected with `DWM_INSTALL_PROFILE`:
   profile from independently installed programs. Existing installations must
   rerun the recommended or full installer to add the Phase 6 PackageKit,
   Python RPM binding, AccountsService, CUPS, and printer-tool packages.
-- `full`: `recommended` plus optional extras such as Thunar with SMB-share
+- `full`: `recommended` plus optional extras such as Thunar SMB-share
   browsing, network tray utilities,
   wallpapers, and display-manager setup. x86_64 Fedora full installs also
   include Steam, Gamescope, and 64-bit and 32-bit GameMode and MangoHud support
   after separate repository approval.
-  The installer enables the `christitustech/copr-fedora` COPR for Gamescope and
-  RPM Fusion nonfree for Steam, then adds the invoking user to the `gamemode`
+  The installer enables RPM Fusion nonfree for Steam and, on Fedora 44, the
+  `christitustech/copr-fedora` COPR for Gamescope. Fedora 45 uses distribution
+  Gamescope without the unavailable COPR. It adds the invoking user to the `gamemode`
   group; log out and back in before using its privileged tuning helpers.
 
 The default is `full` to preserve the historical automated installer behavior.

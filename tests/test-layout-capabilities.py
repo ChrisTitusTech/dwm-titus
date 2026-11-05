@@ -1,6 +1,7 @@
 """Build isolated custom config.h variants and exercise semantic layout requests."""
 import ctypes as C
 import importlib.machinery
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -14,7 +15,11 @@ import time
 
 sys.dont_write_bytecode = True
 repo = Path(__file__).resolve().parents[1]
-module = importlib.machinery.SourceFileLoader("layout_caps", str(repo / "scripts/dwm-layout-settings")).load_module()
+loader = importlib.machinery.SourceFileLoader("layout_caps", str(repo / "scripts/dwm-layout-settings"))
+spec = importlib.util.spec_from_loader(loader.name, loader)
+module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
+loader.exec_module(module)
 
 
 def wait(predicate):

@@ -2,6 +2,7 @@
 """Exercise window listing, focus routing and keyboard/mouse overview navigation on private X11."""
 import ctypes as C
 import importlib.machinery
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -15,7 +16,11 @@ from urllib.parse import unquote, urlparse
 
 sys.dont_write_bytecode = True
 repo = Path(__file__).resolve().parents[1]
-module = importlib.machinery.SourceFileLoader("overview", str(repo / "scripts/dwm-window-overview")).load_module()
+loader = importlib.machinery.SourceFileLoader("overview", str(repo / "scripts/dwm-window-overview"))
+spec = importlib.util.spec_from_loader(loader.name, loader)
+module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
+loader.exec_module(module)
 
 
 def wait(predicate, message):
@@ -368,9 +373,11 @@ ShellRoot {
             wait(lambda: len(connection.state()["windows"]) == 1, "Terminal did not map")
             run("xdotool", "set_desktop_for_window", str(parent), "2")
             wait(lambda: connection.state()["windows"][0]["tags"] == 4, "Terminal did not retag")
-            child_source = """import ctypes as C, importlib.machinery,sys,time
+            child_source = """import ctypes as C, importlib.machinery,importlib.util,sys,time
 sys.dont_write_bytecode=True
-m=importlib.machinery.SourceFileLoader('overview_child',sys.argv[1]).load_module()
+loader=importlib.machinery.SourceFileLoader('overview_child',sys.argv[1])
+spec=importlib.util.spec_from_loader(loader.name,loader)
+m=importlib.util.module_from_spec(spec);sys.modules[spec.name]=m;loader.exec_module(m)
 c=m.Connection();x,d=c.x,c.display
 x.XCreateSimpleWindow.argtypes=[C.c_void_p,C.c_ulong,C.c_int,C.c_int,C.c_uint,C.c_uint,C.c_uint,C.c_ulong,C.c_ulong]
 x.XCreateSimpleWindow.restype=C.c_ulong

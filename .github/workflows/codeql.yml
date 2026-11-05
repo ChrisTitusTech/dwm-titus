@@ -19,7 +19,7 @@ jobs:
   analyze:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    container: fedora:44
+    container: fedora:45
 
     steps:
       - name: Install checkout dependency
