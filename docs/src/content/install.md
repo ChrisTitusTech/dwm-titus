@@ -152,28 +152,30 @@ Every profile includes GNOME Keyring and its PAM module for credential storage
 and support for automatic unlock at password login. Unlock also requires the
 display manager's PAM stack to load `pam_gnome_keyring.so` and matching account
 and keyring passwords; installing the packages does not configure PAM services.
-The installer separately asks before enabling the `christitustech/copr-fedora`
-COPR for patched Gamescope and RPM Fusion nonfree for Steam. Declining skips the
+The installer separately asks before enabling RPM Fusion nonfree for Steam
+and, on Fedora 44, the `christitustech/copr-fedora` COPR for patched Gamescope.
+Fedora 45 uses distribution Gamescope and omits that unavailable COPR. Declining skips the
 gaming subset without affecting other full-profile extras.
 
 ### Optional Path File Manager
 
 [Path](https://github.com/ChrisTitusTech/Path) is packaged as `path` in the
 [christitustech/copr-fedora COPR](https://copr.fedorainfracloud.org/coprs/christitustech/copr-fedora/).
-To install it explicitly on Fedora x86_64:
+To install it explicitly on Fedora 44 x86_64 (the Fedora 45 COPR is unavailable):
 
 ```bash
 sudo dnf copr enable christitustech/copr-fedora
 sudo dnf install path
 ```
 
-The full installer attempts Path after its existing gaming-repository approval
+The Fedora 44 full installer attempts Path after its existing gaming-repository approval
 step, or uses an already enabled COPR. If the package is unavailable, it skips
 Path and retains Thunar. The installer does not enable a repository solely for
 Path. The explicit commands above do not require opting into gaming packages.
 
-Fresh accounts use `thunar.desktop` for folders on every supported Fedora
-release, including when optional Path is installed. Existing MIME preferences are preserved. To select
+Fresh recommended/full and image accounts use `thunar.desktop` for folders on
+every supported Fedora release, including when optional Path is installed.
+Core seeds this association only when Thunar is already installed. Existing MIME preferences are preserved. To select
 Path on an existing account, use Settings > Default Applications or:
 
 ```bash
