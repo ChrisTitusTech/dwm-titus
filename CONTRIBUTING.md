@@ -39,6 +39,11 @@ The desktop smoke and panel-popup tests use separate private `/tmp/qs-*` and
 Quickshell IPC sockets below Linux's 108-byte path limit, even with a long test
 root. Their fixture workspaces remain under the managed root; each runtime is
 removed on success, failure, and handled interruption.
+The desktop smoke fixture exposes the panel helpers but excludes the real
+`autostart.sh` and `autostop.sh` session hooks, and uses private XDG configuration
+and data search paths. It starts its own panel; it must not launch host XDG
+autostart applications such as light-locker on its private Xvfb display.
+Session lifecycle behavior is covered separately by `make check-session-guards`.
 
 Use `./install.sh --dry-run --non-interactive --profile core` to inspect the
 dependency plan without changing the system.
