@@ -56,7 +56,7 @@ rmdir "$source_tree/directory"
 ln -s tracked "$source_tree/directory"
 export CONTRACT_WORK=$work
 
-# Mock only the external container engine; execute the real staging script.
+# Mock container execution while preserving real Git staging and test commands.
 cat >"$work/bin/podman" <<'PY'
 #!/usr/bin/env python3
 import io
@@ -104,6 +104,12 @@ script = script.replace('/source/repository', str(work / 'repository/.git'))
 # Paths containing spaces must remain quoted by the runner's staging script.
 script = script.replace('/source/worktree', str(work / 'current worktree'))
 script = script.replace('/workspace', str(stage))
+# The mock runs staging directly on its host, not inside a container. Keep
+# container account/display setup out of this fixture even when invoked as root;
+# the real rootless runner integration covers that namespaced setup.
+root_setup = 'if ((EUID == 0)); then'
+assert script.count(root_setup) == 1
+script = script.replace(root_setup, 'if false; then', 1)
 if os.environ.get('CONTRACT_STAGE_FAILURE'):
     args[15] = '0' * 40
 result = subprocess.run(['bash', '-c', script, *args[14:]], input=sys.stdin.buffer.read())
