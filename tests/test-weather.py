@@ -1,6 +1,7 @@
 """Weather provider parsing, explicit requests and safe failure/persistence."""
 from contextlib import redirect_stdout, redirect_stderr
 import importlib.machinery
+import importlib.util
 import io
 import json
 import os
@@ -12,7 +13,11 @@ from unittest.mock import patch
 
 sys.dont_write_bytecode = True
 repo = Path(__file__).resolve().parents[1]
-weather = importlib.machinery.SourceFileLoader("weather", str(repo / "scripts/dwm-weather")).load_module()
+loader = importlib.machinery.SourceFileLoader("weather", str(repo / "scripts/dwm-weather"))
+spec = importlib.util.spec_from_loader(loader.name, loader)
+weather = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = weather
+loader.exec_module(weather)
 sample = {"current_condition": [{"temp_C": "22", "temp_F": "72", "FeelsLikeC": "25",
     "FeelsLikeF": "76", "humidity": "76", "windspeedKmph": "7", "windspeedMiles": "4",
     "weatherDesc": [{"value": "Overcast"}]}]}

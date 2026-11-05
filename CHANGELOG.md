@@ -6,6 +6,8 @@ versions from `config.mk`.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-04
+
 ### Added
 
 - Add optional Calendar and Weather panel widgets, off by default, with shared
@@ -43,9 +45,10 @@ versions from `config.mk`.
 
 - Integrate Path from `ChrisTitusTech/Path`, available as `path` in the
   `christitustech/copr-fedora` COPR. Full installs attempt it after approved
-  repository setup and skip it when unavailable. Both Fedora image profiles
-  include Path from their existing COPR. Fresh-account folder defaults
-  prefer Path when installed, with Thunar otherwise; existing MIME preferences
+  repository setup and skip it when unavailable. Both Fedora 44 image profiles
+  include Path from their existing COPR; Fedora 45 omits the unavailable COPR
+  and Path. Fresh-account folder defaults
+  prefer Thunar on every supported Fedora release; existing MIME preferences
   remain unchanged. Keep GTK as the file chooser portal until Path supports
   cancellation through the portal request API.
 
@@ -109,6 +112,20 @@ versions from `config.mk`.
 
 ### Changed
 
+- Make Thunar the fresh-account default file manager on all supported Fedora
+  releases, even when optional Path is installed. Preserve existing preferences.
+
+- Use Thunar on Fedora 45 while the optional COPR/Path repository is unavailable;
+  do not enable that broken repository in the images. Preserve Fedora 44 Path
+  support and existing user file-manager preferences.
+
+- Retain optional Numix/Deepin GTK theme RPMs on Fedora 44; omit those
+  unavailable packages from Fedora 45 images instead of ignoring install errors.
+
+- Use Fedora 45 Server netinst 1.4 for the primary 0.8 standard and NVIDIA
+  images, retaining Fedora 44 installation and desktop compatibility.
+  Validate both releases and support Python 3.15 in native test fixtures.
+
 - Scroll long active-window titles to the right within the panel title pill,
   with reduced motion preserving right-side elision.
 
@@ -117,6 +134,10 @@ versions from `config.mk`.
   authorization policy are not stored or changed by the updater.
 
 ### Fixed
+
+- Keep Fedora-owned update and OpenH264 repository configurations instead of
+  persisting keyless Anaconda overrides. Signed PackageKit/DNF updates retain
+  their release-specific GPG keys and signature verification.
 
 - Decouple desktop installation updates from local Git branches, changes,
   generated caches, worktrees, and divergent history. Preserve the previous
@@ -210,8 +231,11 @@ versions from `config.mk`.
   transaction output and confirmation. Limit discovery to update state and
   correctly parse active PackageKit operations during legacy recovery.
 
-- Install `NetworkManager-wifi` with the Fedora image and full package set, and
-  reconcile it on existing source checkouts. Without the Wi-Fi plugin,
+- Require `NetworkManager-wifi`, `wpa_supplicant` and `wireless-regdb` explicitly
+  in both image variants and reconcile them on source updates. Reject captures
+  missing their RPMs, Wi-Fi plugin, libraries or regulatory database (#368).
+  Rebuilt and verified installation media are required to replace v0.7.2;
+  source changes do not repair existing downloads. Without the Wi-Fi plugin,
   NetworkManager leaves wireless interfaces unmanaged, so scans and connections
   fail after installation even when the kernel driver is present.
 

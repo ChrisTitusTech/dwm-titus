@@ -36,14 +36,29 @@ chmod -R go-w "${shared_assets[@]}"
 # Loaded from the installed image, not the build host.
 # shellcheck disable=SC1091
 source /usr/share/dwm-titus-image/scripts/dwm-packages.sh
+# shellcheck disable=SC1091
+source /etc/os-release
+[[ $ID == fedora && $VERSION_ID == 45 ]]
 mapfile -t packages < <({
-	dwm_packages fedora full
+	DWM_IMAGE_FEDORA_RELEASE="$VERSION_ID" dwm_packages fedora full
 	dwm_packages fedora terminal
 	dwm_packages fedora lightdm
 	dwm_packages fedora image-boot
 	dwm_packages fedora image-desktop
 } | sort -u)
 rpm -q "${packages[@]}" >/dev/null
+# Issue #368: reject incomplete Wi-Fi support before publishing either capture.
+mapfile -t wifi_packages < <(dwm_packages fedora wifi)
+rpm -q "${wifi_packages[@]}" | tee /usr/share/dwm-titus-image/wifi-packages.txt
+[[ -s /usr/lib/firmware/regulatory.db ]]
+command -v wpa_supplicant >/dev/null
+wifi_plugin=$(find /usr/lib /usr/lib64 -path '*/NetworkManager/*/libnm-device-plugin-wifi.so' -print -quit 2>/dev/null || true)
+[[ -n $wifi_plugin && -s $wifi_plugin ]]
+wifi_libraries=$(ldd "$wifi_plugin")
+if [[ $wifi_libraries == *'not found'* ]]; then
+	printf 'NetworkManager Wi-Fi plugin has missing shared libraries\n' >&2
+	exit 1
+fi
 python3 /usr/share/dwm-titus-image/scripts/image/check-packagekit.py
 [[ -f /usr/share/dnf5/libdnf.conf.d/40-dwm-titus.conf ]]
 [[ -x /usr/local/libexec/dwm-titus/dwm-initial-update-root ]]
@@ -65,7 +80,7 @@ missing=0
 for command in dwm quickshell fastfetch starship herdr brave-origin celluloid mpv sxiv maim xclip xdotool xrandr xset xinput \
 	setxkbmap xkbset notify-send xdg-open xdg-mime xdg-user-dir \
 	picom feh dex-autostart xsettingsd light-locker light-locker-command \
-	nmcli bluetoothctl wpctl pactl playerctl brightnessctl amixer protonrestart \
+	nmcli bluetoothctl wpctl pactl playerctl brightnessctl amixer \
 	flatpak pavucontrol thunar file-roller dconf gsettings \
 	busctl systemctl loginctl pkexec jq python3 \
 	dwm-screenshot dwm-terminal dwm-default-apps dwm-lock dwm-diagnostics \

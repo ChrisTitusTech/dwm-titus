@@ -17,10 +17,14 @@ concurrency:
 
 jobs:
   validate:
-    name: Desktop smoke
+    name: Desktop smoke (Fedora ${{ matrix.fedora }})
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    container: fedora:44
+    strategy:
+      fail-fast: false
+      matrix:
+        fedora: [45, 44]
+    container: fedora:${{ matrix.fedora }}
     defaults:
       run:
         shell: bash

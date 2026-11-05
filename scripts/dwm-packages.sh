@@ -1,6 +1,21 @@
 #!/usr/bin/env bash
 # Shared package capability map for dwm-titus installers and diagnostics.
 
+# Resolve the image override first, then installer detection, then host identity.
+dwm_fedora_release() {
+	if [[ -n ${DWM_IMAGE_FEDORA_RELEASE:-} ]]; then
+		printf '%s\n' "$DWM_IMAGE_FEDORA_RELEASE"
+	elif [[ -n ${VERSION_ID:-} ]]; then
+		printf '%s\n' "$VERSION_ID"
+	else
+		(
+			# shellcheck disable=SC1091
+			source /etc/os-release
+			printf '%s\n' "${VERSION_ID:-}"
+		)
+	fi
+}
+
 dwm_packages() {
 	local family=$1
 	local profile=$2
@@ -20,7 +35,7 @@ dwm_packages() {
 		dwm_packages "$family" build
 		printf '%s\n' quickshell python3 dbus-daemon util-linux procps-ng \
 			xorg-x11-server-Xvfb xdotool xprop xrandr xset xsettingsd \
-			jq inotify-tools gawk google-noto-sans-fonts setxkbmap xkbcomp xmodmap xinput
+			jq inotify-tools gawk google-noto-sans-fonts setxkbmap xkbcomp xmodmap xinput xwininfo
 		;;
 	fedora:image-build)
 		printf '%s\n' xorriso mtools rsync squashfs-tools-ng isomd5sum diffutils python3-pillow fontconfig google-noto-sans-fonts
@@ -53,11 +68,11 @@ dwm_packages() {
 		printf '%s\n' gnome-keyring gnome-keyring-pam
 		;;
 	fedora:desktop)
-		# Fedora 44 publishes the compatible Quickshell snapshot in its official
+		# Fedora 44 and 45 publish the compatible Quickshell snapshot in its official
 		# fedora/updates repositories. It is required and belongs in the strict
 		# desktop transaction; the Fedora package-map check proves availability.
 		printf '%s\n' \
-			quickshell picom python3 feh dex-autostart mate-polkit xsettingsd bubblewrap libseccomp \
+			quickshell Thunar picom python3 feh dex-autostart mate-polkit xsettingsd bubblewrap libseccomp \
 			alsa-utils brightnessctl dbus-tools inotify-tools jq pulseaudio-utils pipewire pavucontrol \
 			pipewire-pulseaudio wireplumber libnotify light-locker xorg-x11-drv-libinput \
 			bluez blueman playerctl upower power-profiles-daemon flatpak xdg-desktop-portal-gtk \
@@ -74,16 +89,24 @@ dwm_packages() {
 	fedora:source-update)
 		# Dependencies introduced after the initial installation that the supported
 		# source-checkout synchronization path must reconcile for existing systems.
-		printf '%s\n' xsettingsd xkbset bubblewrap libseccomp NetworkManager-wifi
+		printf '%s\n' xsettingsd xkbset bubblewrap libseccomp
+		dwm_packages "$family" wifi
 		dwm_packages "$family" keyring
+		;;
+	fedora:wifi)
+		# Explicit image/update contract; do not depend on weak RPM dependencies.
+		printf '%s\n' NetworkManager NetworkManager-wifi wpa_supplicant wireless-regdb
 		;;
 	fedora:desktop-optional)
 		# Path: https://github.com/ChrisTitusTech/Path, packaged in
 		# christitustech/copr-fedora; skip when that repository is unavailable.
+		if [[ $(dwm_fedora_release) != 45 ]]; then
+			printf '%s\n' path
+		fi
 		printf '%s\n' \
-			path Thunar gvfs gvfs-smb tumbler thunar-archive-plugin file-roller \
-			xdg-user-dirs NetworkManager \
-			NetworkManager-wifi rsync
+			gvfs gvfs-smb tumbler thunar-archive-plugin file-roller \
+			xdg-user-dirs rsync
+		dwm_packages "$family" wifi
 		;;
 	fedora:gaming)
 		if [[ ${ARCH:-$(uname -m)} == x86_64 ]]; then
@@ -97,9 +120,11 @@ dwm_packages() {
 		;;
 	fedora:theme-gtk)
 		printf '%s\n' \
-			arc-theme adw-gtk3-theme numix-gtk-theme \
-			yaru-gtk3-theme yaru-gtk4-theme deepin-gtk-theme \
-			bluebird-gtk3-theme
+			arc-theme adw-gtk3-theme yaru-gtk3-theme yaru-gtk4-theme bluebird-gtk3-theme
+		# Retired Fedora 45 RPMs remain available to Fedora 44 images/installers.
+		if [[ $(dwm_fedora_release) != 45 ]]; then
+			printf '%s\n' numix-gtk-theme deepin-gtk-theme
+		fi
 		;;
 	fedora:theme-optional)
 		printf '%s\n' qt6ct qt5ct

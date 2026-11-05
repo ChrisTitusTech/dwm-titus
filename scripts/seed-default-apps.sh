@@ -54,7 +54,6 @@ def entry(desktop, command, prefixes, required=True):
 entry('io.github.celluloid_player.Celluloid.desktop', 'celluloid', ('audio/', 'video/', 'application/'))
 entry('sxiv.desktop', 'sxiv', ('image/',))
 entry('brave-origin.desktop', 'brave-origin', ('text/html', 'x-scheme-handler/http', 'application/xhtml', 'application/pdf'), required=sys.argv[1] == '--image')
-entry('pathfm.desktop', 'pathfm', ('inode/directory',), required=False)
 entry('thunar.desktop', 'thunar', ('inode/directory',), required=False)
 PY
 )

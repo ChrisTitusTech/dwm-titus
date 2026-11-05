@@ -151,7 +151,7 @@ payload_dir="$work_dir/dwm-titus"
 system_image_args=()
 if [[ -n $system_image ]]; then
 	image_sha=$(
-		python3 - "$system_image" "$variant" <<'PYTHON'
+		python3 - "$system_image" "$variant" "$input_iso" <<'PYTHON'
 import hashlib
 import json
 from pathlib import Path
@@ -162,8 +162,19 @@ selected = next((value for suffix, value in formats.items() if path.name.endswit
 if selected is None:
     sys.exit('System image must be a .tar.zst or .tar.xz file')
 metadata = json.loads(Path(str(path) + '.json').read_text())
-if metadata.get('protocol') not in (1, 2) or (metadata.get('variant'), metadata.get('fedora'), metadata.get('architecture')) != (sys.argv[2], '44', 'x86_64'):
-    sys.exit('System-image manifest does not match Fedora 44, x86_64 and selected variant')
+# Read the ISO9660 primary volume descriptor, rather than trusting filenames.
+with Path(sys.argv[3]).open('rb') as source:
+    source.seek(16 * 2048)
+    descriptor = source.read(2048)
+if descriptor[:7] != b'\x01CD001\x01':
+    sys.exit('Input is not a supported Fedora Server ISO')
+volume = descriptor[40:72].decode('ascii').strip()
+platforms = {'Fedora-S-dvd-x86_64-44': '44', 'Fedora-S-dvd-x86_64-45': '45'}
+release = platforms.get(volume)
+if release is None:
+    sys.exit('Input is not a supported Fedora Server x86_64 ISO')
+if metadata.get('protocol') not in (1, 2) or (metadata.get('variant'), metadata.get('fedora'), metadata.get('architecture')) != (sys.argv[2], release, 'x86_64'):
+    sys.exit('System-image manifest does not match installer Fedora release, x86_64 and selected variant')
 if metadata['protocol'] == 2 and metadata.get('compression') != selected[0]:
     sys.exit('System-image compression does not match its manifest')
 with path.open('rb') as stream:

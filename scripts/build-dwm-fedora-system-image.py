@@ -16,18 +16,18 @@ def run(*args, **kwargs):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--input', type=Path, required=True, help='Verified Fedora 44 Server netinst ISO')
+    parser.add_argument('--input', type=Path, required=True, help='Verified Fedora 45 Server netinst ISO')
     parser.add_argument('--output', type=Path, required=True, help='New root filesystem .tar.zst (or legacy .tar.xz)')
     parser.add_argument('--variant', choices=['standard', 'nvidia'], default='standard')
     parser.add_argument('--timeout', type=int, default=7200)
     args = parser.parse_args()
     args.input = args.input.resolve(strict=True)
     args.output = args.output.absolute()
-    # Pin the reviewed Fedora 44 Server base used by both firmware paths.
+    # Pin the reviewed Fedora 45 Server base used by both firmware paths.
     with args.input.open('rb') as stream:
         source_sha256 = hashlib.file_digest(stream, 'sha256').hexdigest()
-    if source_sha256 != 'ae20c06bea746913cadea7d80463e13f4bf55bee4df2918111c921c674b70283':
-        parser.error('input checksum does not match Fedora 44 Server 1.7 x86_64')
+    if source_sha256 != 'a1e916f139a05955b943cf183b020780cca9c399b02b8f5ec4354c9e5c1dff1a':
+        parser.error('input checksum does not match Fedora 45 Server 1.4 x86_64')
     if (not args.output.name.endswith(('.tar.zst', '.tar.xz')) or args.output.exists()
             or args.output.with_name(args.output.name + '.json').exists()):
         parser.error('output and its manifest must be new .tar.zst or .tar.xz files')
@@ -83,7 +83,7 @@ def main():
                        '-drive', f'file={work}/factory.qcow2,if=virtio,format=qcow2',
                        '-cdrom', str(work / 'factory.iso'), '-nic', 'user,model=virtio-net-pci',
                        '-kernel', str(work / 'vmlinuz'), '-initrd', str(work / 'initrd.img'),
-                       '-append', 'inst.stage2=hd:LABEL=Fedora-S-dvd-x86_64-44 inst.ks=hd:LABEL=Fedora-S-dvd-x86_64-44:/factory.ks inst.text console=ttyS0']
+                       '-append', 'inst.stage2=hd:LABEL=Fedora-S-dvd-x86_64-45 inst.ks=hd:LABEL=Fedora-S-dvd-x86_64-45:/factory.ks inst.text console=ttyS0']
             (evidence / 'qemu-command.json').write_text(json.dumps(command, indent=2) + '\n')
             with (evidence / 'factory-console.log').open('w') as console:
                 run(*command, stdout=console, stderr=subprocess.STDOUT, timeout=args.timeout)
@@ -114,7 +114,7 @@ def main():
                 staged.replace(args.output)
             finally:
                 staged.unlink(missing_ok=True)
-            manifest = {'protocol': 2, 'variant': args.variant, 'fedora': '44', 'architecture': 'x86_64',
+            manifest = {'protocol': 2, 'variant': args.variant, 'fedora': '45', 'architecture': 'x86_64',
                         'source_sha256': source_sha256, 'sha256': digest, 'size': args.output.stat().st_size,
                         'compression': compression, 'compression_args': compression_args,
                         'tar_sha256': tar_digest, 'tar_size': tar_size}

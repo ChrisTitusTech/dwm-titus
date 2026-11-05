@@ -31,6 +31,9 @@ required_repos=(
 )
 
 required_packages=(
+	NetworkManager-wifi
+	wpa_supplicant
+	wireless-regdb
 	fastfetch
 	python3-libdnf5
 	flatpak
@@ -59,10 +62,8 @@ required_packages=(
 	papirus-icon-theme
 	arc-theme
 	adw-gtk3-theme
-	numix-gtk-theme
 	yaru-gtk3-theme
 	yaru-gtk4-theme
-	deepin-gtk-theme
 	bluebird-gtk3-theme
 	PackageKit
 	PackageKit-glib
@@ -76,7 +77,7 @@ required_packages=(
 )
 
 mapfile -t mapped_fedora_packages < <(
-	ARCH=x86_64 dwm_packages fedora full | awk 'NF' | sort -u
+	DWM_IMAGE_FEDORA_RELEASE=45 ARCH=x86_64 dwm_packages fedora full | awk 'NF' | sort -u
 )
 
 dwm_packages fedora runtime-required | grep -Fx xclip >/dev/null
@@ -130,6 +131,12 @@ for ks in "$standard_ks" "$nvidia_ks"; do
 		printf 'Unavailable Fedora package found in %s: nwg-look\n' "$ks" >&2
 		exit 1
 	fi
+	# Anaconda-generated installed overrides omit signing keys and mask the
+	# Fedora-owned defaults (under /usr/share/dnf5/repos.d on Fedora 45).
+	if grep -Eq '^repo --name="(updates|fedora-cisco-openh264)" .*--install' "$ks"; then
+		printf 'Official Fedora repositories must retain vendor signing-key configuration: %s\n' "$ks" >&2
+		exit 1
+	fi
 	for repo_line in "${required_repos[@]}"; do
 		grep -Fq "$repo_line" "$ks"
 	done
@@ -146,6 +153,31 @@ for ks in "$standard_ks" "$nvidia_ks"; do
 		exit 1
 	fi
 	grep -Fq "url --metalink=\"https://mirrors.fedoraproject.org/metalink?repo=fedora-\$releasever&arch=\$basearch\"" "$ks"
+	# Execute the actual pre-script with private output paths and os-release.
+	# Fedora 44 retains COPR/Path; Fedora 45 uses Thunar without a dead repo.
+	python3 - "$ks" "$work/pre-script" <<'PYPRE'
+from pathlib import Path
+import sys
+text = Path(sys.argv[1]).read_text().split('%pre --interpreter=/bin/sh\n', 1)[1].split('\n%end', 1)[0]
+text = text.replace('/tmp/dwm-titus-', '$DWM_TEST_IMAGE_OUTPUT/')
+text = text.replace('. /etc/os-release', '. "$DWM_TEST_IMAGE_OS_RELEASE"')
+Path(sys.argv[2]).write_text(text)
+PYPRE
+	for release in 44 45; do
+		mkdir -p "$work/pre-$release"
+		printf 'ID=fedora\nVERSION_ID=%s\n' "$release" >"$work/os-release"
+		DWM_TEST_IMAGE_OUTPUT="$work/pre-$release" DWM_TEST_IMAGE_OS_RELEASE="$work/os-release" sh "$work/pre-script"
+		if [[ $release == 44 ]]; then
+			grep -Fq 'christitustech-copr-fedora' "$work/pre-$release/gaming-repo"
+			grep -Fxq path "$work/pre-$release/path-packages"
+			grep -Fxq numix-gtk-theme "$work/pre-$release/legacy-theme-packages"
+			grep -Fxq deepin-gtk-theme "$work/pre-$release/legacy-theme-packages"
+		else
+			[[ ! -s $work/pre-$release/gaming-repo && ! -s $work/pre-$release/path-packages &&
+				! -s $work/pre-$release/legacy-theme-packages ]]
+		fi
+		grep -Fxq gamescope "$work/pre-$release/gaming-packages"
+	done
 	# Execute the actual post-script cleanup prefix in a disposable directory.
 	# Replace its sudoers path before execution; never touch host authorization.
 	awk '

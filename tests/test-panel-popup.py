@@ -33,9 +33,12 @@ for handler, visible in (('onVisibleChanged', 'visible'),
   assert 'clipboardModel.close();' in body, handler
  if handler == 'onVisibleChanged': assert len(matches) >= 6
 assert 'commandMenuModel.close();\n                clipboardModel.close();\n                updateCenterModel.close();' in shell_source
-with tempfile.TemporaryDirectory(prefix='panel-popup-', dir=os.environ.get('TMPDIR', str(Path.home()/'tmp'))) as temp:
+# Keep the AF_UNIX IPC path below 108 bytes even in the Fedora SDK's longer HOME.
+# Fixtures stay under the managed root; only this private runtime uses /tmp.
+with tempfile.TemporaryDirectory(prefix='pp-', dir='/tmp') as ipc_runtime, \
+     tempfile.TemporaryDirectory(prefix='panel-popup-', dir=os.environ.get('TMPDIR', str(Path.home()/'tmp'))) as temp:
  base=Path(temp); config=base/'config'; qml=config/'quickshell'; qml.mkdir(parents=True)
- runtime=base/'runtime'; runtime.mkdir(mode=0o700)
+ runtime=Path(ipc_runtime)
  shutil.copytree(repo/'config/quickshell/core',qml/'core')
  (qml/'shell.qml').write_text('''import QtQuick
 import Quickshell
@@ -46,7 +49,7 @@ ShellRoot {
  ClickAwayPopup { id: popup; targetWindow: panel; visible: false; popupWidth: 280; popupHeight: 300; onDismissed: visible = false; Rectangle { anchors.fill: parent; color: "red" } }
  IpcHandler { target: "test"; function open(): void { popup.visible = true; } }
 }''')
- env={**os.environ,'XDG_RUNTIME_DIR':str(runtime),'HOME':str(base),'XDG_CONFIG_HOME':str(config),'XDG_DATA_HOME':str(base/'data'),'XDG_STATE_HOME':str(base/'state'),'QT_QPA_PLATFORM':'xcb','QT_QPA_PLATFORMTHEME':''}
+ env={**os.environ,'XDG_RUNTIME_DIR':str(runtime),'HOME':str(base),'XDG_CONFIG_HOME':str(config),'XDG_DATA_HOME':str(base/'data'),'XDG_STATE_HOME':str(base/'state'),'XDG_CACHE_HOME':str(base/'cache'),'QT_QPA_PLATFORM':'xcb','QT_QPA_PLATFORMTHEME':''}
  log=(base/'runtime.log').open('w+')
  wm=subprocess.Popen([str(repo/'dwm')],env=env,stdout=log,stderr=log)
  shell=subprocess.Popen(['quickshell','--no-duplicate'],env=env,stdout=log,stderr=log)

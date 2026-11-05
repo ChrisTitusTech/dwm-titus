@@ -29,6 +29,7 @@ body:
     attributes:
       label: Fedora release
       options:
+        - Fedora 45
         - Fedora 44
         - Fedora Rawhide
     validations:
@@ -38,7 +39,7 @@ body:
     id: environment
     attributes:
       label: Fedora release, architecture, and session
-      placeholder: "Fedora 44, x86_64, X11 via LightDM"
+      placeholder: "Fedora 45, x86_64, X11 via LightDM"
     validations:
       required: true
 

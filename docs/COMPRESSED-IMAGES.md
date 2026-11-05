@@ -1,7 +1,7 @@
 # Compressed system image builds
 
 The compressed-image path prepares the complete desktop once in a disposable
-Fedora 44 virtual machine. Anaconda installs its local filesystem archive,
+Fedora 45 virtual machine. Anaconda installs its local filesystem archive,
 then creates configuration for the account selected by the user. Package
 selection and repository downloads happen at image-build time. Disk selection,
 partitioning, locale and account creation remain interactive. The default layout
@@ -43,12 +43,12 @@ export TMPDIR="$HOME/tmp/dwm-compressed/staging"
 export DWM_TEST_TMP_ROOT="$HOME/tmp/dwm-compressed"
 
 scripts/build-dwm-fedora-system-image.py \
-  --input "$HOME/tmp/dwm-compressed/Fedora-Server-netinst-x86_64-44-1.7.iso" \
+  --input "$HOME/tmp/dwm-compressed/Fedora-Server-netinst-x86_64-45-1.4.iso" \
   --output "$HOME/tmp/dwm-compressed/artifacts/standard.tar.zst" \
   --variant standard
 
 scripts/build-dwm-fedora-installer-iso.sh \
-  --input "$HOME/tmp/dwm-compressed/Fedora-Server-netinst-x86_64-44-1.7.iso" \
+  --input "$HOME/tmp/dwm-compressed/Fedora-Server-netinst-x86_64-45-1.4.iso" \
   --system-image "$HOME/tmp/dwm-compressed/artifacts/standard.tar.zst" \
   --output "$HOME/tmp/dwm-compressed/artifacts/dwm-titus.iso" \
   --variant standard
@@ -58,6 +58,9 @@ Repeat both commands with `--variant nvidia` and distinct `nvidia.tar.zst` and
 `dwm-titus-nvidia.iso` outputs. Standard and NVIDIA archives are not
 interchangeable. Keep each archive's `.json` manifest beside it: the ISO builder
 checks the platform, variant, size and SHA-256 before embedding the payload.
+The ISO9660 volume ID must identify the same Fedora release as the payload.
+Fedora 45 is primary; legacy Fedora 44 payloads still require matching Fedora
+44 installer media. Cross-release pairs fail before output replacement.
 A checksum detects changed bytes; it does not authenticate an untrusted archive.
 
 Zstd captures use `zstd -T0 -19`. Compression wall time and peak memory are
@@ -97,7 +100,10 @@ formats, and sxiv for its advertised image formats. The existing-system installe
 also installs Celluloid, mpv, and sxiv in every profile and seeds these media/image
 defaults for fresh accounts. Existing MIME preference files are preserved; use
 Settings > Defaults to change handlers on an existing account. Thunar is the
-fresh image file-manager default when installed.
+fresh-account file-manager default on every supported Fedora release, even
+when Path is also installed. Existing-system recommended and full profiles
+provide Thunar. Core installs seed that folder association only when Thunar is
+already installed; upgrading profiles preserves any existing MIME file.
 Starship uses terminal palette colors; custom Bash and MIME files are preserved.
 The Alacritty shortcut and Herdr opt-in behavior stay the same. sxiv is visible
 in Defaults, and feh remains installed for wallpaper. Tool hashes are recorded
@@ -105,6 +111,12 @@ in `tool-sha256.txt`; bundled tool licenses and Herdr source are available under
 `/usr/local/share/doc/` on the installed system.
 
 ## Desktop dependency gate
+
+Both variants explicitly include `NetworkManager-wifi`, `wpa_supplicant` and
+`wireless-regdb` for #368. Capture verifies the plugin and shared libraries,
+supplicant and regulatory database, and records `wifi-packages.txt`. Repeat
+the RPM and plugin checks on the installed VM; physical radio association must
+be recorded separately.
 
 Image capture fails if the shared full Fedora package contract is incomplete.
 It also checks the executables used by the shipped desktop. Screenshot support
@@ -154,3 +166,8 @@ Compressed images are larger than netinstall media. Check the release host's
 individual asset limit before publication; do not silently truncate or replace
 an oversized ISO. Factory logs are retained beside the archive in `.logs/`;
 disposable build disks and temporary archives are removed when the builder exits.
+
+For 0.8, Fedora 45 images use Thunar while the Fedora 45 COPR is unavailable.
+Do not enable a broken COPR or require Path in those captures. Fedora 44
+profiles retain COPR/Path availability, with Thunar as their default too. Existing user preferences are
+preserved; this does not replace Path on an installed system.

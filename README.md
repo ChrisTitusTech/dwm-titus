@@ -19,11 +19,15 @@ part themselves.
 **dwm-titus is a Fedora-only distribution.** Fedora Linux is the sole supported
 platform for installation, runtime behavior, package resolution, testing, and
 release qualification. Use either the Fedora desktop image or the
-existing-system installer on Fedora Linux. The published images and release
-qualification target Fedora 44 x86_64. Newer releases, including Fedora 45, are
-accepted by the existing-system installer but are not yet release-qualified;
-run `dwm-diagnostics` and report release-specific problems on the issue
-tracker.
+existing-system installer on Fedora Linux. The 0.8 release images target Fedora 45 x86_64, with Fedora 44 compatibility
+retained for existing-system installs and updates. See the
+[0.8 qualification record](docs/RELEASE-0.8.0.md) for tested paths and remaining
+gates. Existing published 0.7.2 downloads remain Fedora 44 until replaced.
+Fedora 45 images use Thunar while the optional COPR/Path repository is
+unavailable. Thunar is the fresh-account default on Fedora 44 too, even with
+Path installed. Recommended and full installs provide Thunar; core installs
+seed a folder default only if Thunar is already installed. Existing user-selected
+MIME preferences remain preserved.
 
 ## What You Get
 
@@ -111,8 +115,8 @@ before making changes.
 | Profile | Includes |
 | --- | --- |
 | `core` | The X11 session, required dependencies, and one terminal emulator. |
-| `recommended` | The complete everyday desktop, including Alacritty, Quickshell, Gear Lever for AppImages, theming, screenshots, audio, brightness, and the PackageKit, Python RPM binding, AccountsService, CUPS, and printer-tool prerequisites for Phase 6 system management. |
-| `full` | The recommended desktop plus optional file-manager (Thunar, and Path from `christitustech/copr-fedora` when available), wallpaper, display-manager, and supported Fedora gaming integrations. |
+| `recommended` | The complete everyday desktop, including Alacritty, Thunar, Quickshell, Gear Lever for AppImages, theming, screenshots, audio, brightness, and the PackageKit, Python RPM binding, AccountsService, CUPS, and printer-tool prerequisites for Phase 6 system management. |
+| `full` | The recommended desktop plus file-manager integrations, optional Path from the Fedora 44 COPR, wallpaper, display-manager, and supported Fedora gaming integrations. |
 
 `maim` is an optional dependency used only by the screenshot hotkeys. If it is
 unavailable, installation continues and reports that the screenshot hotkeys

@@ -8,6 +8,8 @@ repo=$(
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
+export DWM_TEST_ISO_RELEASE=44
+
 mkdir -p "$work/bin"
 export DWM_TEST_REAL_RSYNC
 DWM_TEST_REAL_RSYNC=$(command -v rsync)
@@ -122,13 +124,13 @@ done
 
 if [[ -n $extract_to ]]; then
 	mkdir -p "$(dirname -- "$extract_to")"
-	cat >"$extract_to" <<'OUT'
+	cat >"$extract_to" <<OUT
 set default="1"
 menuentry 'Install Fedora' {
-	linux /images/pxeboot/vmlinuz inst.stage2=hd:LABEL=Fedora-S-dvd-x86_64-44 quiet
+	linux /images/pxeboot/vmlinuz inst.stage2=hd:LABEL=Fedora-S-dvd-x86_64-${DWM_TEST_ISO_RELEASE} quiet
 }
 menuentry 'Test this media & install Fedora' {
-	linux /images/pxeboot/vmlinuz inst.stage2=hd:LABEL=Fedora-S-dvd-x86_64-44 rd.live.check quiet
+	linux /images/pxeboot/vmlinuz inst.stage2=hd:LABEL=Fedora-S-dvd-x86_64-${DWM_TEST_ISO_RELEASE} rd.live.check quiet
 }
 OUT
 	printf '# original menu: %s\n' "$extract_path" >>"$extract_to"
@@ -137,7 +139,7 @@ fi
 
 if [[ -n $outdev ]]; then
 	[[ -s $product_map && -s $efi_image && $efi_reference == efi_path=--interval:appended_partition_2:all:: ]]
-	grep -Fq 'inst.ks=hd:LABEL=Fedora-S-dvd-x86_64-44:/dwm-fedora.ks' "$efi_image"
+	grep -Fq "inst.ks=hd:LABEL=Fedora-S-dvd-x86_64-${DWM_TEST_ISO_RELEASE}:/dwm-fedora.ks" "$efi_image"
 	cp "$efi_image" "$DWM_TEST_ESP_MENU"
 	[[ -s $payload_map/payload-marker && -s $payload_map/nested/deeper/keep.txt ]]
 	if [[ -n $(find "$payload_map" \( -name '.env' -o -name '.env.*' -o -name '.envrc' \) -print -quit) ]]; then
@@ -188,14 +190,14 @@ cat >"$work/bin/mcopy" <<'SH'
 set -euo pipefail
 if [[ $1 == -i ]]; then
 	[[ $3 == ::/EFI/BOOT/grub.cfg ]]
-	cat >"$4" <<'MENU'
+	cat >"$4" <<MENU
 set default="1"
 # original ESP menu
 menuentry 'Install Fedora' {
-	linux /images/pxeboot/vmlinuz inst.stage2=hd:LABEL=Fedora-S-dvd-x86_64-44 quiet
+	linux /images/pxeboot/vmlinuz inst.stage2=hd:LABEL=Fedora-S-dvd-x86_64-${DWM_TEST_ISO_RELEASE} quiet
 }
 menuentry 'Test this media & install Fedora' {
-	linux /images/pxeboot/vmlinuz inst.stage2=hd:LABEL=Fedora-S-dvd-x86_64-44 rd.live.check quiet
+	linux /images/pxeboot/vmlinuz inst.stage2=hd:LABEL=Fedora-S-dvd-x86_64-${DWM_TEST_ISO_RELEASE} rd.live.check quiet
 }
 MENU
 else
@@ -251,7 +253,8 @@ run_builder() {
 		else
 			grep -Fqx 'set default="1"' "$work/menu"
 		fi
-		[[ $(grep -c 'inst.ks=hd:LABEL=Fedora-S-dvd-x86_64-44:/dwm-fedora.ks' "$work/menu") == 2 ]]
+		[[ $(grep -c "inst.ks=hd:LABEL=Fedora-S-dvd-x86_64-${DWM_TEST_ISO_RELEASE}:/dwm-fedora.ks" "$work/menu") == 2 ]]
+		[[ $(grep -c "inst.stage2=hd:LABEL=Fedora-S-dvd-x86_64-${DWM_TEST_ISO_RELEASE} " "$work/menu") == 2 ]]
 		if [[ $variant == nvidia ]]; then
 			[[ $(grep -c 'rd.driver.blacklist=nouveau modprobe.blacklist=nouveau nvidia-drm.modeset=1' "$work/menu") == 2 ]]
 		elif grep -Fq 'nvidia-drm.modeset=1' "$work/menu"; then
@@ -376,6 +379,22 @@ fi
 grep -Fq -- '--out-dir requires --series' "$work/bad.err"
 [[ ! -e $work/ignored.png && ! -e $work/ignored && ! -e $work/branding && ! -e $work/sidebar-logo-v0.7.1.png ]]
 
+# Minimal ISO9660 PVD fixture: platform checks read bytes, not the input name.
+set_iso_release() {
+	export DWM_TEST_ISO_RELEASE=$1
+	python3 - "$input_iso" "$1" <<'PYPVD'
+from pathlib import Path
+import sys
+pvd = bytearray(2048)
+pvd[:7] = b'\x01CD001\x01'
+pvd[40:72] = f'Fedora-S-dvd-x86_64-{sys.argv[2]}'.encode().ljust(32)
+with Path(sys.argv[1]).open('wb') as stream:
+    stream.seek(16 * 2048)
+    stream.write(pvd)
+PYPVD
+}
+set_iso_release 44
+
 # Offline payloads must match the variant and verified bytes before ISO creation.
 image="$work/root filesystem.tar.xz"
 mkdir "$work/rootfs"
@@ -416,10 +435,11 @@ p = pathlib.Path(sys.argv[1]); m = json.loads(p.read_text())
 m['variant'] = 'standard'; p.write_text(json.dumps(m))
 PYTHON
 mkdir "$work/invalid-temp"
-for failure in variant checksum manifest; do
+for failure in variant platform checksum manifest; do
 	selected=standard
 	case $failure in
 	variant) selected=nvidia ;;
+	platform) set_iso_release 45 ;;
 	checksum) printf 'tampered\n' >>"$image" ;;
 	manifest) rm "$image.json" ;;
 	esac
@@ -433,7 +453,22 @@ for failure in variant checksum manifest; do
 	fi
 	[[ $(cat "$standard_iso") == 'previous image' ]]
 	[[ -z $(find "$work/invalid-temp" -mindepth 1 -print -quit) ]]
+	set_iso_release 44
 done
+
+# Fedora 45 is the new primary; reject cross-release payloads above, while
+# retaining Fedora 44 and legacy xz/protocol-1 pairing compatibility.
+set_iso_release 45
+tar -cJf "$image" -C "$work/rootfs" .
+python3 - "$image" <<'PY45'
+import hashlib, json, pathlib, sys
+p = pathlib.Path(sys.argv[1])
+m = dict(protocol=1, variant='standard', fedora='45', architecture='x86_64',
+         size=p.stat().st_size, sha256=hashlib.sha256(p.read_bytes()).hexdigest())
+pathlib.Path(str(p) + '.json').write_text(json.dumps(m))
+PY45
+run_builder standard "$standard_iso" --system-image "$image"
+set_iso_release 44
 
 # Zstd uses the same Anaconda-compatible neutral archive path. Verify both
 # firmware defaults, then reject a correctly hashed but damaged stream.

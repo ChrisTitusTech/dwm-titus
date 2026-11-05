@@ -244,6 +244,8 @@ fedora_health=$(DWM_TEST_QUICKSHELL_VERSION='0.2.1, revision dacfa9de829ac7cb173
 printf '%s\n' "$fedora_health" | grep -Fqx "$(printf 'ok\tQuickshell\tAvailable')"
 DWM_TEST_MODE=1 DWM_TEST_QUICKSHELL_VERSION='0.2.1^git20260209.dacfa9d-3.fc44' \
 	"$repo/scripts/dwm-quickshell-version-check"
+DWM_TEST_MODE=1 DWM_TEST_QUICKSHELL_VERSION='0.2.1^git20260209.dacfa9d-3.fc45' \
+	"$repo/scripts/dwm-quickshell-version-check"
 DWM_TEST_MODE=1 DWM_TEST_QUICKSHELL_VERSION='0.2.1, revision dacfa9de829ac7cb173825f593236bf2c21f637e' \
 	"$repo/scripts/dwm-quickshell-version-check"
 DWM_TEST_MODE=1 DWM_TEST_QUICKSHELL_VERSION='quickshell pre-release, revision: dacfa9de829ac7cb173825f593236bf2c21f637e' \
@@ -252,11 +254,11 @@ DWM_TEST_MODE=1 DWM_TEST_QUICKSHELL_VERSION=0.3.0 \
 	"$repo/scripts/dwm-quickshell-version-check"
 for unsupported_snapshot in \
 	0.2.1^git20260209.dacfa9d-3.fc43 \
-	0.2.1^git20260209.dacfa9d-3.fc45 \
+	0.2.1^git20260209.dacfa9d-3.fc46 \
 	0.2.1^git20260209.dacfa9d; do
 	if DWM_TEST_MODE=1 DWM_TEST_QUICKSHELL_VERSION=$unsupported_snapshot \
 		"$repo/scripts/dwm-quickshell-version-check" 2>/dev/null; then
-		printf 'Version check accepted snapshot outside the Fedora 44 contract: %s.\n' \
+		printf 'Version check accepted snapshot outside the Fedora 44/45 contract: %s.\n' \
 			"$unsupported_snapshot" >&2
 		exit 1
 	fi
@@ -414,7 +416,7 @@ if DWM_TEST_QUICKSHELL_VERSION=0.2.1 run_helper action restart-quickshell \
 	printf 'Restart accepted an unsupported Quickshell version.\n' >&2
 	exit 1
 fi
-grep -Fq 'compatible Quickshell 0.3.0 or Fedora 44 snapshot is required' \
+grep -Fq 'compatible Quickshell 0.3.0 or Fedora 44/45 snapshot is required' \
 	"$work/quickshell-outdated.err"
 grep -Fq 'pkill -x quickshell' "$work/actions.log"
 grep -Fq 'quickshell --no-duplicate' "$work/actions.log"
