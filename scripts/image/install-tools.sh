@@ -19,7 +19,8 @@ install -o root -g root -m 0755 "$work/starship" /usr/local/bin/starship
 herdr_version=0.7.5
 herdr_sha=3dc83288073e4c2d3c679a30e7be97bcca9141c6fd17dbbb9219142e95c59253
 printf 'Downloading required Herdr %s (SHA-256 verified)\n' "$herdr_version"
-curl --fail --location --silent --show-error --retry 3 --connect-timeout 10 --max-time 120 \
+# The 11 MiB pinned asset can exceed two minutes on a throttled release CDN.
+curl --fail --location --silent --show-error --retry 3 --connect-timeout 10 --max-time 300 \
 	"https://github.com/herdrdev/herdr/releases/download/v$herdr_version/herdr-linux-x86_64" \
 	-o "$work/herdr"
 printf '%s  %s\n' "$herdr_sha" "$work/herdr" | sha256sum --check --status
