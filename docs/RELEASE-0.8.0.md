@@ -58,15 +58,14 @@ also passed a clean build, native X11 smoke test and staged installation. Manage
 documentation builds passed. The release-preparation PR records the final reviewed
 commit, commands and evidence paths.
 
-Both clean Fedora 45 factory captures passed without manual repair. Their desktop
-source is `ca437d0`; later source changes affect test SDKs, fixtures and documentation.
-The final artifact manifest records the separate embedded checkout revision and
-checksums. These are preparation candidates, not artifacts built from a published tag.
-
-| Payload | Compressed bytes | SHA-256 |
-| --- | ---: | --- |
-| Standard | 2871769745 | `734cb674f5cbfa2d006a60ace12fe3fab1c0d0f6a6bcece6d2e3e4f0c4b2051a` |
-| NVIDIA | 3577973812 | `94755563691146d9ecb6ac35050920a3f21e6f2d7b3510026d9bcb68819099eb` |
+Both clean Fedora 45 qualification captures passed without manual repair. Final
+payloads are refreshed from the corrected release source because installed accounts
+receive their checkout from the factory filesystem. This includes the reviewed
+test-fixture fix that prevents a root-run mock from creating a real host account;
+updating only the outer ISO would leave the old fixture in installed checkouts.
+The final artifact manifest records factory and embedded checkout revisions,
+compressed sizes and hashes. These are preparation candidates, not artifacts built
+from a published tag. Earlier qualification captures remain separate evidence.
 
 | Installed VM | Result |
 | --- | --- |
@@ -81,7 +80,7 @@ named firmware. No NIC was present during installation; first boot kept its link
 down until explicitly enabled. All three installed systems had distinct machine IDs.
 Anaconda 45.30 extracted the zstd payloads successfully. Compression ran alongside
 other work; no controlled end-to-end install-speed comparison is claimed.
-Recorded installer-process intervals were 413.87 seconds (standard UEFI), 340.53
+Initial qualification installer-process intervals were 413.87 seconds (standard UEFI), 340.53
 seconds (standard BIOS) and 352.04 seconds (NVIDIA UEFI). They include startup,
 payload checksum/extraction, post-install work and bootloader creation under shared
 host load. Individual stage timings were not collected. The artifact timing record
