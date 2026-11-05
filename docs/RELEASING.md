@@ -84,8 +84,8 @@ the signing fingerprint against https://fedoraproject.org/security/ and verify
 the signature before using the checksum. For the current x86_64 base:
 
 ```sh
-DWM_RELEASE_SOURCE=$(pwd) # Run from the clean source checkout.
 mkdir -p "$HOME/tmp/dwm-release"
+(
 cd "$HOME/tmp/dwm-release"
 curl -fLO https://fedoraproject.org/fedora.gpg
 curl -fLO https://dl.fedoraproject.org/pub/fedora/linux/releases/45/Server/x86_64/iso/Fedora-Server-45-1.4-x86_64-CHECKSUM
@@ -94,6 +94,7 @@ gpg --show-keys --with-fingerprint ./fedora.gpg
 gpgv --keyring ./fedora.gpg --output Fedora-Server-45.verified-checksums Fedora-Server-45-1.4-x86_64-CHECKSUM
 # Continue only after gpgv succeeds and its signer matches Fedora 45.
 sha256sum -c --ignore-missing Fedora-Server-45.verified-checksums
+)
 ```
 
 The Fedora 45 fingerprint is
@@ -144,7 +145,7 @@ scripts/generate-sidebar-logo.py --version 0.7.1 --output sidebar-logo-v0.7.1.pn
 Build the regular Fedora installer ISO from a Fedora netinst ISO:
 
 ```sh
-"$DWM_RELEASE_SOURCE/scripts/build-dwm-fedora-installer-iso.sh" \
+scripts/build-dwm-fedora-installer-iso.sh \
   --input "$HOME/tmp/dwm-release/Fedora-Server-netinst-x86_64-45-1.4.iso" \
   --output release/dwm-titus.iso
 ```
@@ -152,7 +153,7 @@ Build the regular Fedora installer ISO from a Fedora netinst ISO:
 Build the NVIDIA installer ISO:
 
 ```sh
-"$DWM_RELEASE_SOURCE/scripts/build-dwm-fedora-installer-iso.sh" \
+scripts/build-dwm-fedora-installer-iso.sh \
   --input "$HOME/tmp/dwm-release/Fedora-Server-netinst-x86_64-45-1.4.iso" \
   --output release/dwm-titus-nvidia.iso \
   --variant nvidia
