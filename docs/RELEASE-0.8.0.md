@@ -1,7 +1,12 @@
-# dwm-titus 0.8.0 release preparation
+# dwm-titus 0.8.0 - Fedora 45
 
-Status: source and candidate qualification prepared; no 0.8 tag, GitHub release or replacement
-public image has been published by this workflow.
+Release: https://github.com/ChrisTitusTech/dwm-titus/releases/tag/v0.8.0
+
+Standard and NVIDIA images use Fedora 45 Server Network Install 1.4, x86_64.
+Fedora 44 remains supported for existing-system installation and source updates.
+Both images include NetworkManager-wifi, wpa_supplicant and wireless-regdb.
+Fedora 45 uses Thunar and omits the unavailable COPR/Path and retired optional
+Numix/Deepin GTK packages. Existing user application preferences are preserved.
 
 ## Desktop changes
 
@@ -12,114 +17,86 @@ public image has been published by this workflow.
 - Optional Calendar and Weather widgets default off. Weather requests require
   an explicit location and Fetch; no automatic location lookup or refresh.
 
-All four feature PRs (#425, #424, #423, #422) merged after local validation and
-independent Codex review. The user verified the overview thumbnails in their
-real X11 session. See CHANGELOG.md for the other changes since 0.7.2.
+Feature PRs #425, #424, #423 and #422 merged after local validation and
+independent Codex review. The user verified overview thumbnails in a real X11
+session. See CHANGELOG.md for the other changes since 0.7.2.
 
-## Platform and Wi-Fi
+## Provenance and checksums
 
-Primary images: Fedora 45 Server Network Install 1.4, x86_64, separate standard
-and NVIDIA variants. Fedora 44 existing-system and desktop compatibility remains
-supported. No separate new Fedora 44 image set is planned.
+Qualified build source: `37115915c527b33f4a7786cf197f1c2d739cc214` (PR #427).
+Merged release commit: `529e772c808927450080a7fd9fdbc22c113d253f`.
+Both have the identical Git tree `1b01586ead1f20bcf7612181e5d93948486ea710`.
+The qualified artifacts were retained unchanged after the merge; they were built
+before tagging and are not represented as newly built from the tag.
 
-Fedora 45 images use Thunar instead of Path, as the user selected after the
-Fedora 45 COPR endpoint returned 404. That unavailable repository is omitted;
-gaming packages use distribution/RPM Fusion sources. Fedora 44 retains its
-COPR/Path availability. Thunar is the fresh-account default on both versions,
-even with Path installed; existing user-selected MIME preferences are preserved.
-Fedora 45 also omits the unavailable optional Numix and Deepin GTK theme RPMs;
-Fedora 44 retains them. The shipped desktop theme palettes remain available.
+| Image | Bytes | SHA-256 |
+| --- | ---: | --- |
+| dwm-titus.iso | 4,169,138,176 | `941d6a57915982d4c53f48d1f44a31d8b52faaa3db796f78359acd86f9630d7f` |
+| dwm-titus-nvidia.iso | 4,875,681,792 | `133d8cb30666574c4248c734fb4855b221ceaa050f73482eeae01a24a008aee2` |
 
-Verified upstream source SHA-256:
+Download a fresh SHA256SUMS alongside the ISO and run
+`sha256sum --ignore-missing -c SHA256SUMS`. Restart older partial downloads.
+The manifest records all archive and payload hashes. Public verification is
+recorded separately in PUBLICATION-VERIFICATION.json after complete downloads.
+
+Base ISO SHA-256:
 `a1e916f139a05955b943cf183b020780cca9c399b02b8f5ec4354c9e5c1dff1a`.
 Fedora 45 signing fingerprint:
 `4F50A6114CD5C6976A7F1179655A4B02F577861E`.
-The signed official checksum manifest and ISO digest were independently checked.
+The official signed checksum and the source ISO were independently verified.
 
-#368 is a release gate. Both images explicitly require NetworkManager-wifi,
-wpa_supplicant and wireless-regdb. Capture checks the RPMs, Wi-Fi plugin and
-libraries, supplicant and regulatory database, and records their versions.
-Installed-VM qualification repeated these checks for both variants. Keep the issue open until both replacement
-public downloads and their checksums are verified; old 0.7.2 downloads remain
-unchanged by a source-only fix.
+## Validation
 
-The factory also preserves Fedora-owned update/OpenH264 repository settings,
-including signing keys. Keyless Anaconda overrides must not mask the Fedora 45
-vendor definitions in `/usr/share/dnf5/repos.d`. Signature verification stays
-enabled; a signed update transaction is part of qualification.
+Fedora 45 passed the full managed source gate. Fedora 44 coverage completed in
+explicit resumed segments, followed by final rebuilt-SDK package, build,
+staged-install, preservation and native X11 checks. An overlong panel-popup IPC
+path was fixed before the resumed run; the failed aggregate is retained as such.
+ShellCheck/shfmt, configured QML lint, nested X11/UI/backend tests, dependency
+resolution, installer preservation, reproducible archives and documentation
+builds passed. Independent complete-diff Codex review passed at the build source;
+all nine PR feedback threads were resolved and the PR was approved and merged.
 
-## Qualification record
+The source archive matches all 1,132 tracked paths. The final runtime archive
+was reproduced from a clean build; binaries/config/scripts/assets match, and
+bytecode and object files are excluded. The first bytecode-contaminated trial
+archive was discarded.
 
-Required source checks passed on Fedora 44 and 45 in explicitly recorded resumed
-segments, including clean builds, ShellCheck/shfmt, configured QML lint, native and
-nested X11 tests, backend/UI tests, dependency resolution, staged installs,
-preservation checks and reproducible release archives. The updated Fedora 44 SDK
-also passed a clean build, native X11 smoke test and staged installation. Managed
-documentation builds passed. The release-preparation PR records the final reviewed
-commit, commands and evidence paths.
+Both fresh payloads passed strict package, Wi-Fi plugin/library/regulatory-data,
+signed-repository, asset and identity checks. Complete compressed/uncompressed
+hashes, tracked source contents, symlink targets and ownership were independently
+verified. Factory accounts, temporary sudo rules, machine/storage identity and
+SSH host keys were removed. Two long launcher sessions returned 143 after
+completed captures; those launchers are not claimed as passing aggregate factory
+commands. Independent byte validation, final ISO/media checks and the three
+complete installed-VM qualifications below passed.
 
-Both clean Fedora 45 qualification captures passed without manual repair. Final
-payloads are refreshed from the corrected release source because installed accounts
-receive their checkout from the factory filesystem. This includes the reviewed
-test-fixture fix that prevents a root-run mock from creating a real host account;
-updating only the outer ISO would leave the old fixture in installed checkouts.
-The final artifact manifest records factory and embedded checkout revisions,
-compressed sizes and hashes. These are preparation candidates, not artifacts built
-from a published tag. Earlier qualification captures remain separate evidence.
+| Installed VM | Offline install and first desktop | Installer-process interval | Closed Quickshell CPU / 20 s |
+| --- | --- | ---: | ---: |
+| Standard UEFI | Passed | 192.05 s | 0.05% |
+| Standard BIOS | Passed | 209.92 s | 0.00% |
+| NVIDIA UEFI, virtio graphics | Passed | 166.49 s | 0.00% |
 
-| Installed VM | Result |
-| --- | --- |
-| Standard, x86_64 UEFI | Offline Anaconda install, disk boot, LightDM, dwm and managed Quickshell passed. |
-| Standard, x86_64 BIOS | Offline install, disk boot and the same desktop/Wi-Fi checks passed. |
-| NVIDIA, x86_64 UEFI | Offline install and desktop/Wi-Fi checks passed with virtio graphics; this is not physical NVIDIA validation. |
-
-VMs used QEMU/KVM, four vCPUs, 6 GiB RAM and fresh 50 GiB virtual disks. Automated
-installs used the actual ISO kernel/initrd and public offline Kickstart with private
-QA account/disk selections and a serial console. Installed disks booted through the
-named firmware. No NIC was present during installation; first boot kept its link
-down until explicitly enabled. All three installed systems had distinct machine IDs.
-Anaconda 45.30 extracted the zstd payloads successfully. Compression ran alongside
-other work; no controlled end-to-end install-speed comparison is claimed.
-Initial qualification installer-process intervals were 413.87 seconds (standard UEFI), 340.53
-seconds (standard BIOS) and 352.04 seconds (NVIDIA UEFI). They include startup,
-payload checksum/extraction, post-install work and bootloader creation under shared
-host load. Individual stage timings were not collected. The artifact timing record
-contains the start/end timestamps; these values are not a firmware or variant comparison.
-
-Separate probes booted the actual ISO through standard BIOS/UEFI and NVIDIA UEFI
-to the branded Fedora 45 language-selection screen without disks or networking.
-The BIOS menu visibly selected normal installation and retained media-check and
-troubleshooting entries. This complements the automated complete-install tests.
-
-Both variants contain NetworkManager/NetworkManager-wifi `1.58.1-3.fc45`,
-wpa_supplicant `2.11-13.fc45` and wireless-regdb `2026.09.03-1.fc45`.
-Their Wi-Fi plugin dependencies resolved, the supplicant executed and regulatory
-data was readable. The guest kernel lacks mac80211_hwsim, so no simulated radio
-association was tested. Package inventories accompany the prepared artifacts.
+KVM guests used four vCPUs, 6 GiB RAM and fresh 50 GiB disks. Installation had no
+NIC, and disk first boot kept networking down until explicitly enabled. These
+intervals reflect shared host load and are not controlled speed comparisons.
+LightDM, dwm, managed Quickshell, embedded source copies, distinct machine IDs,
+Wi-Fi contents and MIME defaults passed in all three systems. Both final CDs
+booted to the branded v0.8.0 Fedora 45 installer; normal installation is the
+default and media-check/troubleshooting entries remain available.
 
 The standard UEFI fresh account exercised the themed Starship prompt, Brave
-Origin, Herdr in Alacritty, Gear Lever offline, sxiv and Thunar. MIME discovery
-reported `sxiv.desktop` and `thunar.desktop`. The overview displayed eight static
-thumbnails. Screenshot shortcuts produced a 1280x800 screen JPEG, 600x400 region
-JPEG and a 600x400 PNG clipboard readback. Closed Quickshell used 0.0% CPU
-over a 20-second sample in that guest.
+HTTPS browsing, Herdr, Gear Lever offline, sxiv, Thunar and nine static overview
+cards. Screenshot hotkeys produced a 1280x800 JPEG, 600x400 JPEG and 600x400 PNG
+clipboard readback. PackageKit checked signatures and upgraded actual less and
+less-color packages from 704-4.fc45 to 710-2.fc45 after user confirmation. Fedora's
+normal active-session policy authorized the update without a password prompt;
+no authorization policy changed. A prior confirmation left pending past the
+daemon idle timeout did not upgrade and was rejected by version/signature checks.
 
-After explicitly enabling networking, NetworkManager obtained a DHCP address.
-An interactive PackageKit refresh and update required confirmation and normal
-authentication. PackageKit `1.4.0-2.fc45` checked signatures and upgraded actual
-`less`/`less-color` packages from `704-4.fc45` to `710-2.fc45`. This exercised a real
-transaction through pkcon; the Settings QML frontend stayed unprivileged.
+## Hardware limits
 
-Earlier attempts failed on the unavailable COPR and retired theme RPMs, then on
-keyless Anaconda repository overrides. The corrected clean captures above supersede
-those attempts. A manually repaired prototype is excluded from prepared deliverables.
-Test evidence retains initial failures and interrupted runs separately from passing
-reruns; the aggregate source gate is completed in resumed segments.
-
-The artifact directory contains SHA256SUMS, BUILD-MANIFEST.json, package inventories
-and selected qualification evidence. Public download links remain on 0.7.2 until a
-separately authorized publication and full download verification replace them.
-
-Physical NVIDIA acceleration, Secure Boot, physical radios, audio devices,
-monitor hotplug and laptop suspend remain unqualified unless new evidence is
-recorded. Virtual graphics and installed Wi-Fi packages do not prove those paths.
+Physical NVIDIA acceleration, Wi-Fi radio association, Secure Boot, physical
+audio, monitor hotplug and laptop suspend remain unqualified. NVIDIA VM testing
+used virtio graphics without a physical GPU; nvidia-persistenced failed in that
+VM and does not constitute a physical driver pass. Installed Wi-Fi packages do
+not prove radio association. The live host desktop was not redeployed for QA.
