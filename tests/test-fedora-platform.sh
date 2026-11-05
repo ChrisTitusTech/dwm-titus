@@ -211,3 +211,39 @@ for approval in true false failed; do
 	grep -Fx "optional:$expected" "$work/optional-$approval"
 done
 printf 'Optional desktop packages follow approved repository setup: PASS\n'
+
+# Run the real repository setup with command mocks: Fedora 45 must never
+# request the unavailable COPR (including its plugin), while Fedora 44 keeps it.
+awk '
+    /^configure_fedora_gaming_repositories\(\) \{/ { capture = 1 }
+    capture { print }
+    capture && /^}$/ { exit }
+' "$repo/install.sh" >"$work/gaming-repositories.sh"
+# shellcheck disable=SC2034,SC2329
+for release in 44 45; do
+	(
+		DISTRO_ID=fedora INSTALL_PROFILE=full ARCH=x86_64
+		FEDORA_GAMING_REPOS_APPROVED=true FEDORA_GAMING_COPR=christitustech/copr-fedora
+		info() { :; }
+		warn() { printf '%s\n' "$*" >&2; }
+		rpm() { printf '%s\n' "$release"; }
+		dnf() {
+			printf 'dnf %s\n' "$*"
+			[[ $release != 45 ]]
+		}
+		sudo() { printf '%s\n' "$*"; }
+		install_packages() { printf 'install %s\n' "$*"; }
+		# shellcheck source=/dev/null
+		source "$work/gaming-repositories.sh"
+		configure_fedora_gaming_repositories
+	) >"$work/gaming-$release"
+	grep -F "rpmfusion-nonfree-release-$release.noarch.rpm" "$work/gaming-$release"
+	if [[ $release == 45 ]]; then
+		if grep -F copr "$work/gaming-$release"; then
+			exit 1
+		fi
+	else
+		grep -Fx 'dnf copr enable -y christitustech/copr-fedora' "$work/gaming-$release"
+	fi
+done
+printf 'Release-aware gaming repository setup: PASS\n'

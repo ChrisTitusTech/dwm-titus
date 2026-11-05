@@ -25,7 +25,9 @@ retained for existing-system installs and updates. See the
 gates. Existing published 0.7.2 downloads remain Fedora 44 until replaced.
 Fedora 45 images use Thunar while the optional COPR/Path repository is
 unavailable. Thunar is the fresh-account default on Fedora 44 too, even with
-Path installed; existing user-selected MIME preferences remain preserved.
+Path installed. Recommended and full installs provide Thunar; core installs
+seed a folder default only if Thunar is already installed. Existing user-selected
+MIME preferences remain preserved.
 
 ## What You Get
 

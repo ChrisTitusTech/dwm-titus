@@ -84,6 +84,9 @@ the signing fingerprint against https://fedoraproject.org/security/ and verify
 the signature before using the checksum. For the current x86_64 base:
 
 ```sh
+DWM_RELEASE_SOURCE=$(pwd) # Run from the clean source checkout.
+mkdir -p "$HOME/tmp/dwm-release"
+cd "$HOME/tmp/dwm-release"
 curl -fLO https://fedoraproject.org/fedora.gpg
 curl -fLO https://dl.fedoraproject.org/pub/fedora/linux/releases/45/Server/x86_64/iso/Fedora-Server-45-1.4-x86_64-CHECKSUM
 curl -fLO https://dl.fedoraproject.org/pub/fedora/linux/releases/45/Server/x86_64/iso/Fedora-Server-netinst-x86_64-45-1.4.iso
@@ -141,23 +144,24 @@ scripts/generate-sidebar-logo.py --version 0.7.1 --output sidebar-logo-v0.7.1.pn
 Build the regular Fedora installer ISO from a Fedora netinst ISO:
 
 ```sh
-scripts/build-dwm-fedora-installer-iso.sh \
-  --input ~/Downloads/Fedora-Server-netinst-x86_64-45-1.4.iso \
+"$DWM_RELEASE_SOURCE/scripts/build-dwm-fedora-installer-iso.sh" \
+  --input "$HOME/tmp/dwm-release/Fedora-Server-netinst-x86_64-45-1.4.iso" \
   --output release/dwm-titus.iso
 ```
 
 Build the NVIDIA installer ISO:
 
 ```sh
-scripts/build-dwm-fedora-installer-iso.sh \
-  --input ~/Downloads/Fedora-Server-netinst-x86_64-45-1.4.iso \
+"$DWM_RELEASE_SOURCE/scripts/build-dwm-fedora-installer-iso.sh" \
+  --input "$HOME/tmp/dwm-release/Fedora-Server-netinst-x86_64-45-1.4.iso" \
   --output release/dwm-titus-nvidia.iso \
   --variant nvidia
 ```
 
 Both Kickstart profiles share the Fedora, RPM Fusion, Brave, and MWT repository
-declarations used by this project. On x86_64, both also enable the
-`christitustech/copr-fedora` repository; other architectures omit that COPR and
+declarations used by this project. On Fedora 44 x86_64, both also enable the
+`christitustech/copr-fedora` repository. Fedora 45 omits the unavailable COPR
+and uses distribution Gamescope; other architectures omit that COPR and
 its x86-only gaming packages. The ISO builder selects the matching standard or
 NVIDIA profile. The NVIDIA profile additionally installs RPM Fusion NVIDIA
 driver packages, blacklists Nouveau, and sets NVIDIA DRM modesetting for first

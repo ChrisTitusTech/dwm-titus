@@ -101,7 +101,9 @@ also installs Celluloid, mpv, and sxiv in every profile and seeds these media/im
 defaults for fresh accounts. Existing MIME preference files are preserved; use
 Settings > Defaults to change handlers on an existing account. Thunar is the
 fresh-account file-manager default on every supported Fedora release, even
-when Path is also installed.
+when Path is also installed. Existing-system recommended and full profiles
+provide Thunar. Core installs seed that folder association only when Thunar is
+already installed; upgrading profiles preserves any existing MIME file.
 Starship uses terminal palette colors; custom Bash and MIME files are preserved.
 The Alacritty shortcut and Herdr opt-in behavior stay the same. sxiv is visible
 in Defaults, and feh remains installed for wallpaper. Tool hashes are recorded

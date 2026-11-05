@@ -311,7 +311,9 @@ repository groups required by that product: RPM Fusion, Brave Browser, MWT
 Packages, and (on Fedora 44) `christitustech/copr-fedora`. Fedora 45 images
 use Thunar and distribution Gamescope while that release's COPR is unavailable,
 as explicitly selected for 0.8. Do not leave an unusable COPR enabled on those
-images. Thunar is the fresh-account file-manager default on every supported
+images. Recommended and full existing-system profiles install Thunar. Core profiles
+seed its folder default only if it is already installed. Thunar is the
+fresh-account file-manager default on every supported
 Fedora release, including when Path is installed. Existing user-selected
 file-manager preferences and optional Path workflows remain supported.
 Repository inclusion is validated as

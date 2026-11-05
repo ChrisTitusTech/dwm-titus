@@ -32,6 +32,7 @@ mapfile -t packages < <(
 		# Official image additions; brave-origin is resolved by factory repos.
 		dwm_packages fedora image-desktop | awk '$0 != "brave-origin"'
 		dwm_packages fedora desktop
+		dwm_packages fedora recommended
 		dwm_packages fedora ci-smoke
 		dwm_packages fedora qml-validation
 		dwm_packages fedora wifi
@@ -116,3 +117,24 @@ printf '%s\n' "$missing_provider_packages" | grep -Fxq power-profiles-daemon
 
 printf 'Fedora required, desktop, and image package map: PASS (%s packages)\n' \
 	"${#packages[@]}"
+
+# Checkout installs use detected identity; factory checks can override it.
+for release in 44 45; do
+	for profile in recommended full; do
+		VERSION_ID=$release dwm_packages fedora "$profile" | grep -Fx Thunar >/dev/null
+	done
+	for profile in desktop-optional theme-gtk; do
+		VERSION_ID=$release dwm_packages fedora "$profile" >"$work/profile"
+		if [[ $release == 45 ]]; then
+			if grep -Ex 'path|numix-gtk-theme|deepin-gtk-theme' "$work/profile"; then
+				exit 1
+			fi
+		else
+			grep -Ex 'path|numix-gtk-theme|deepin-gtk-theme' "$work/profile" >/dev/null
+		fi
+	done
+done
+VERSION_ID=45 DWM_IMAGE_FEDORA_RELEASE=44 dwm_packages fedora desktop-optional | grep -Fx path >/dev/null
+if VERSION_ID=44 DWM_IMAGE_FEDORA_RELEASE=45 dwm_packages fedora desktop-optional | grep -Fx path; then
+	exit 1
+fi

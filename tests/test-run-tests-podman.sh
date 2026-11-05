@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Default-release cases must not inherit the caller's compatibility selection.
+unset DWM_TEST_FEDORA_RELEASE
+
 # Disposable fixture repositories must not spawn background Git maintenance
 # that races their removal or rewrites the host-immutability snapshot.
 export GIT_CONFIG_COUNT=2

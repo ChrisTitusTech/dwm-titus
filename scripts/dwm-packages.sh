@@ -1,6 +1,21 @@
 #!/usr/bin/env bash
 # Shared package capability map for dwm-titus installers and diagnostics.
 
+# Resolve the image override first, then installer detection, then host identity.
+dwm_fedora_release() {
+	if [[ -n ${DWM_IMAGE_FEDORA_RELEASE:-} ]]; then
+		printf '%s\n' "$DWM_IMAGE_FEDORA_RELEASE"
+	elif [[ -n ${VERSION_ID:-} ]]; then
+		printf '%s\n' "$VERSION_ID"
+	else
+		(
+			# shellcheck disable=SC1091
+			source /etc/os-release
+			printf '%s\n' "${VERSION_ID:-}"
+		)
+	fi
+}
+
 dwm_packages() {
 	local family=$1
 	local profile=$2
@@ -85,11 +100,11 @@ dwm_packages() {
 	fedora:desktop-optional)
 		# Path: https://github.com/ChrisTitusTech/Path, packaged in
 		# christitustech/copr-fedora; skip when that repository is unavailable.
-		if [[ ${DWM_IMAGE_FEDORA_RELEASE:-} != 45 ]]; then
+		if [[ $(dwm_fedora_release) != 45 ]]; then
 			printf '%s\n' path
 		fi
 		printf '%s\n' \
-			Thunar gvfs gvfs-smb tumbler thunar-archive-plugin file-roller \
+			gvfs gvfs-smb tumbler thunar-archive-plugin file-roller \
 			xdg-user-dirs rsync
 		dwm_packages "$family" wifi
 		;;
@@ -107,7 +122,7 @@ dwm_packages() {
 		printf '%s\n' \
 			arc-theme adw-gtk3-theme yaru-gtk3-theme yaru-gtk4-theme bluebird-gtk3-theme
 		# Retired Fedora 45 RPMs remain available to Fedora 44 images/installers.
-		if [[ ${DWM_IMAGE_FEDORA_RELEASE:-} != 45 ]]; then
+		if [[ $(dwm_fedora_release) != 45 ]]; then
 			printf '%s\n' numix-gtk-theme deepin-gtk-theme
 		fi
 		;;
@@ -143,6 +158,7 @@ dwm_packages() {
 		dwm_packages "$family" media
 		;;
 	fedora:recommended)
+		printf '%s\n' Thunar
 		dwm_packages "$family" desktop
 		dwm_packages "$family" system-management
 		dwm_packages "$family" screenshot-optional

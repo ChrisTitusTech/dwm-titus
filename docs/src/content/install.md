@@ -14,8 +14,9 @@ The 0.8 release targets Fedora 45 x86_64, while retaining Fedora 44 support for
 existing-system installation, source updates and desktop runtime. See the
 [0.8 qualification record](https://github.com/ChrisTitusTech/dwm-titus/blob/main/docs/RELEASE-0.8.0.md)
 for tested paths and remaining gates. The currently published 0.7.2 downloads
-remain Fedora 44 until replacement media is published and verified. Source
-updates do not repair Wi-Fi packages missing from an old ISO (#368).
+remain Fedora 44 until replacement media is published and verified. Supported source
+updates reconcile missing Wi-Fi packages on installed systems. They cannot
+modify an already downloaded or published ISO (#368).
 
 ## Dependencies
 
@@ -266,7 +267,7 @@ Installer package profiles are selected with `DWM_INSTALL_PROFILE`:
   change these in Settings > Defaults when updating an existing account. Herdr is
   skipped unless `--install-herdr` is provided.
 - `recommended`: `core` plus the recommended desktop layer such as Quickshell,
-  Picom, Feh, Dex, fonts, theming, screenshot, audio, Bluetooth control and
+  Picom, Feh, Dex, Thunar, fonts, theming, screenshot, audio, Bluetooth control and
   tray tools, brightness tools, Flatpak, the GTK desktop portal, PackageKit,
   AccountsService, CUPS, and the Fedora printer configuration tool. These
   system services are prerequisites for the planned Phase 6 Settings update,
@@ -277,13 +278,14 @@ Installer package profiles are selected with `DWM_INSTALL_PROFILE`:
   profile from independently installed programs. Existing installations must
   rerun the recommended or full installer to add the Phase 6 PackageKit,
   Python RPM binding, AccountsService, CUPS, and printer-tool packages.
-- `full`: `recommended` plus optional extras such as Thunar with SMB-share
+- `full`: `recommended` plus optional extras such as Thunar SMB-share
   browsing, network tray utilities,
   wallpapers, and display-manager setup. x86_64 Fedora full installs also
   include Steam, Gamescope, and 64-bit and 32-bit GameMode and MangoHud support
   after separate repository approval.
-  The installer enables the `christitustech/copr-fedora` COPR for Gamescope and
-  RPM Fusion nonfree for Steam, then adds the invoking user to the `gamemode`
+  The installer enables RPM Fusion nonfree for Steam and, on Fedora 44, the
+  `christitustech/copr-fedora` COPR for Gamescope. Fedora 45 uses distribution
+  Gamescope without the unavailable COPR. It adds the invoking user to the `gamemode`
   group; log out and back in before using its privileged tuning helpers.
 
 The default is `full` to preserve the historical automated installer behavior.

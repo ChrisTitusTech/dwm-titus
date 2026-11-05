@@ -45,8 +45,9 @@ versions from `config.mk`.
 
 - Integrate Path from `ChrisTitusTech/Path`, available as `path` in the
   `christitustech/copr-fedora` COPR. Full installs attempt it after approved
-  repository setup and skip it when unavailable. Both Fedora image profiles
-  include Path from their existing COPR. Fresh-account folder defaults
+  repository setup and skip it when unavailable. Both Fedora 44 image profiles
+  include Path from their existing COPR; Fedora 45 omits the unavailable COPR
+  and Path. Fresh-account folder defaults
   prefer Thunar on every supported Fedora release; existing MIME preferences
   remain unchanged. Keep GTK as the file chooser portal until Path supports
   cancellation through the portal request API.
