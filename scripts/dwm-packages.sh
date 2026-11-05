@@ -72,7 +72,7 @@ dwm_packages() {
 		# fedora/updates repositories. It is required and belongs in the strict
 		# desktop transaction; the Fedora package-map check proves availability.
 		printf '%s\n' \
-			quickshell picom python3 feh dex-autostart mate-polkit xsettingsd bubblewrap libseccomp \
+			quickshell Thunar picom python3 feh dex-autostart mate-polkit xsettingsd bubblewrap libseccomp \
 			alsa-utils brightnessctl dbus-tools inotify-tools jq pulseaudio-utils pipewire pavucontrol \
 			pipewire-pulseaudio wireplumber libnotify light-locker xorg-x11-drv-libinput \
 			bluez blueman playerctl upower power-profiles-daemon flatpak xdg-desktop-portal-gtk \
@@ -158,7 +158,6 @@ dwm_packages() {
 		dwm_packages "$family" media
 		;;
 	fedora:recommended)
-		printf '%s\n' Thunar
 		dwm_packages "$family" desktop
 		dwm_packages "$family" system-management
 		dwm_packages "$family" screenshot-optional

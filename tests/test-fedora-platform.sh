@@ -247,3 +247,48 @@ for release in 44 45; do
 	fi
 done
 printf 'Release-aware gaming repository setup: PASS\n'
+
+# Exercise the installer's real component-profile block, rather than only its
+# aggregate summary. Package transactions and optional downloads stay mocked.
+awk '
+    /^install_recommended_profile\(\) \{/ { capture = 1 }
+    capture { print }
+    capture && /^}$/ { exit }
+' "$repo/install.sh" >"$work/recommended-function.sh"
+awk '
+    /^if install_recommended_profile; then$/ && !done { capture = 1 }
+    capture { print }
+    capture && /^fi$/ { capture = 0; done = 1 }
+' "$repo/install.sh" >"$work/recommended-install.sh"
+mkdir -p "$work/recommended-fixture/scripts"
+printf '#!/bin/sh\nexit 0\n' >"$work/recommended-fixture/scripts/dwm-quickshell-version-check"
+chmod +x "$work/recommended-fixture/scripts/dwm-quickshell-version-check"
+# shellcheck disable=SC2034,SC2329
+for release in 44 45; do
+	for installer_profile in core recommended full; do
+		(
+			VERSION_ID=$release INSTALL_PROFILE=$installer_profile DISTRO_FAMILY=fedora
+			REPO_DIR=$work/recommended-fixture
+			# The shared helper is linted separately; keep fixture-local mock scopes.
+			# shellcheck source=/dev/null
+			source "$repo/scripts/dwm-packages.sh"
+			info() { :; }
+			ok() { :; }
+			warn() { :; }
+			err() { printf '%s\n' "$*" >&2; }
+			install_packages() { printf '%s\n' "$@"; }
+			dwm_install_available_package_profile() { :; }
+			install_nordic_gtk_theme() { :; }
+			# shellcheck source=/dev/null
+			source "$work/recommended-function.sh"
+			# shellcheck source=/dev/null
+			source "$work/recommended-install.sh"
+		) >"$work/recommended-$release-$installer_profile"
+		if [[ $installer_profile == core ]]; then
+			if grep -Fx Thunar "$work/recommended-$release-$installer_profile"; then exit 1; fi
+		else
+			[[ $(grep -Fxc Thunar "$work/recommended-$release-$installer_profile") == 1 ]]
+		fi
+	done
+done
+printf 'Actual recommended/full installer component transactions include Thunar: PASS\n'
