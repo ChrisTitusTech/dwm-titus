@@ -21,8 +21,8 @@ platform for installation, runtime behavior, package resolution, testing, and
 release qualification. Use either the Fedora desktop image or the
 existing-system installer on Fedora Linux. The 0.8 release images target Fedora 45 x86_64, with Fedora 44 compatibility
 retained for existing-system installs and updates. See the
-[0.8 qualification record](docs/RELEASE-0.8.0.md) for tested paths and remaining
-gates. Existing published 0.7.2 downloads remain Fedora 44 until replaced.
+[0.8 qualification record](docs/RELEASE-0.8.0.md) for tested paths and hardware limits. The current 0.8.0 offline downloads
+install Fedora 45.
 Fedora 45 images use Thunar while the optional COPR/Path repository is
 unavailable. Thunar is the fresh-account default on Fedora 44 too, even with
 Path installed. Recommended and full installs provide Thunar; core installs
@@ -56,7 +56,7 @@ For complete requirements and installation details, see the
 
 ### Fedora ISO
 
-Download the **current offline images** for Fedora 44 x86_64:
+Download the **current 0.8.0 offline images** for Fedora 45 x86_64:
 
 | Image | Download |
 | --- | --- |
@@ -82,7 +82,7 @@ no Internet connection or software selection. The images include Quickshell,
 Gear Lever, `maim`, region capture and clipboard tools. Internet access is needed
 later for updates and additional software.
 
-Images built from 0.7.2 also include `fastfetch` and offer a visible initial
+The images also include `fastfetch` and offer a visible initial
 package update once repositories are reachable. The flow measures mirrors, asks
 for authorization, and preserves DNF confirmation; Enter accepts and No cancels.
 See [initial updates and DNF defaults](docs/INITIAL-UPDATE.md) for retry and

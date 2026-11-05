@@ -13,10 +13,10 @@ eyebrow: Start here
 The 0.8 release targets Fedora 45 x86_64, while retaining Fedora 44 support for
 existing-system installation, source updates and desktop runtime. See the
 [0.8 qualification record](https://github.com/ChrisTitusTech/dwm-titus/blob/main/docs/RELEASE-0.8.0.md)
-for tested paths and remaining gates. The currently published 0.7.2 downloads
-remain Fedora 44 until replacement media is published and verified. Supported source
-updates reconcile missing Wi-Fi packages on installed systems. They cannot
-modify an already downloaded or published ISO (#368).
+for tested paths and hardware limits. The current 0.8.0 offline images install
+Fedora 45 and include the Wi-Fi package/plugin fix from #368. Supported source
+updates also reconcile missing Wi-Fi packages on installed systems. Download
+new media to replace older saved ISOs.
 
 ## Dependencies
 
@@ -26,7 +26,7 @@ and the differences between installation profiles and image variants.
 
 ## Fedora ISO (Recommended for a New Installation)
 
-The current offline images install a complete Fedora 44 x86_64
+The current 0.8.0 offline images install a complete Fedora 45 x86_64
 desktop from a compressed system image. Packages are included, so installation
 works without an Internet connection or software selection.
 
@@ -42,7 +42,7 @@ download, start again instead of resuming the older file. The build manifest
 records the version, size and SHA-256 of each current image.
 
 Use the standard image unless you need the proprietary NVIDIA driver packages.
-Both include LightDM, dwm, Quickshell, Brave Origin, Celluloid, mpv, sxiv, Path, Thunar,
+Both include LightDM, dwm, Quickshell, Brave Origin, Celluloid, mpv, sxiv, Thunar,
 Alacritty, Starship, Herdr, fonts, Papirus icons, Gear Lever, and `maim` with region capture and
 clipboard dependencies. Fresh accounts use Brave Origin for web browsing,
 Celluloid for its supported audio/video formats, sxiv for its supported image
@@ -76,8 +76,9 @@ For NVIDIA, use the NVIDIA ISO link from the table with the same checksum file.
 1. Write the ISO as a disk image to an **8 GB or larger USB drive** using a USB
    image writer. This erases the USB drive; copying the ISO file onto it is not
    the same as writing the image.
-2. Boot the USB and use the default media-test/install entry. Qualification used
-   Secure Boot disabled; Secure Boot support is not verified.
+2. Boot the USB and use the default normal installation entry. The optional
+   media-test entry is also available. Qualification used Secure Boot disabled;
+   Secure Boot support is not verified.
 3. Select your language and keyboard, time zone, installation disk and partition
    layout. Create your user account and select administrator access.
 4. Review the proposed disk changes and choose **Begin Installation**. The
