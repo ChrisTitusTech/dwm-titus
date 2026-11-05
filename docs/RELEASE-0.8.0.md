@@ -36,8 +36,10 @@ before tagging and are not represented as newly built from the tag.
 
 Download a fresh SHA256SUMS alongside the ISO and run
 `sha256sum --ignore-missing -c SHA256SUMS`. Restart older partial downloads.
-The manifest records all archive and payload hashes. Public verification is
-recorded separately in PUBLICATION-VERIFICATION.json after complete downloads.
+The manifest records all archive and payload hashes. Both complete public downloads matched these digests, matching metadata and
+HTTP 206 byte-range responses. The [publication verification record](https://downloads.christitus.com/iso/PUBLICATION-VERIFICATION.json)
+records the results. Merging PR #427 automatically closed #368; its public-media
+gate is now verified.
 
 Base ISO SHA-256:
 `a1e916f139a05955b943cf183b020780cca9c399b02b8f5ec4354c9e5c1dff1a`.
